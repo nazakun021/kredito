@@ -1,0 +1,43 @@
+# --- General ---
+node_modules/
+.env
+.env.local
+.env.*.local
+*.db
+*.log
+.DS_Store
+Thumbs.db
+
+# --- Node.js / Frontend ---
+dist/
+build/
+.next/
+out/
+.vercel
+.turbo
+.npm
+.yarn/
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Rust / Soroban ---
+target/
+**/*.rs.bk
+.stellar/
+deployed.json
+
+# --- IDEs ---
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# --- Agents / AI Tools ---
+.agents/
