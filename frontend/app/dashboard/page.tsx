@@ -1,12 +1,20 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ChartColumn, Coins, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
-import api from '../../lib/api';
-import { useAuthStore } from '../../store/auth';
+import {
+  ArrowRight,
+  ChartColumn,
+  Coins,
+  RefreshCw,
+  ShieldCheck,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react';
+import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth';
 
+/* ─── Types ─── */
 interface ScoreFactor {
   key: string;
   label: string;
@@ -41,15 +49,20 @@ interface LoanStatusResponse {
   };
 }
 
+/* ─── Tier Helpers ─── */
+function tierGradient(tier: number) {
+  switch (tier) {
+    case 3: return 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)';
+    case 2: return 'linear-gradient(135deg, #94A3B8 0%, #CBD5E1 100%)';
+    case 1: return 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)';
+    default: return 'linear-gradient(135deg, #475569 0%, #64748B 100%)';
+  }
+}
+
+/* ─── Page ─── */
 export default function DashboardPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-
-  useEffect(() => {
-    if (!user) {
-      router.replace('/');
-    }
-  }, [router, user]);
 
   const scoreQuery = useQuery({
     queryKey: ['score'],
@@ -75,180 +88,299 @@ export default function DashboardPage() {
 
   const score = scoreQuery.data;
   const loanStatus = loanStatusQuery.data;
+  const isLoading = scoreQuery.isLoading;
   const nextTierProgress = score?.nextTier
-    ? Math.max(0, Math.min(100, ((score.score / score.nextTier.threshold) * 100)))
+    ? Math.max(0, Math.min(100, (score.score / score.nextTier.threshold) * 100))
     : 100;
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_#fdf8ef_0%,_#fff_40%,_#f3ebe0_100%)] px-5 py-6">
-      <div className="rounded-[2rem] bg-[#1f1308] px-5 py-6 text-[#fff8ef] shadow-[0_30px_80px_rgba(38,20,5,0.28)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-orange-200">Credit Passport</p>
-            <h1 className="mt-2 text-4xl font-black">{score?.score ?? '--'}</h1>
-            <p className="mt-2 text-sm text-orange-100">
-              {score?.tierLabel || 'Unrated'} tier • Borrow up to ₱{score?.borrowLimit?.toLocaleString?.() ?? 0}
-            </p>
-          </div>
-          <div className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold">
-            {loanStatus?.hasActiveLoan ? 'Loan Active' : 'Ready'}
-          </div>
-        </div>
+    <div className="mx-auto max-w-6xl">
+      {/* ─── Page Header ─── */}
+      <div className="mb-8 animate-fade-up">
+        <h1 className="text-2xl font-extrabold lg:text-3xl">Dashboard</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Your Credit Passport overview
+        </p>
+      </div>
 
-        <div className="mt-6 rounded-[1.4rem] bg-white/8 p-4">
-          <div className="mb-2 flex items-center justify-between text-sm text-orange-100">
-            <span>Next level progress</span>
-            <span>
-              {score?.nextTier ? `${score.pointsToNextTier} pts to ${score.nextTier.label}` : 'Top tier unlocked'}
-            </span>
-          </div>
-          <div className="h-3 rounded-full bg-white/10">
+      {/* ─── Top Row: Score + Loan Action ─── */}
+      <div className="grid gap-5 lg:grid-cols-5">
+        {/* Score Hero (wider) */}
+        <section
+          className="lg:col-span-3 rounded-2xl p-6 animate-fade-up"
+          style={{
+            animationDelay: '50ms',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border)',
+            boxShadow: 'var(--shadow-card)',
+          }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                  Credit Score
+                </p>
+                <div
+                  className="h-1.5 w-1.5 rounded-full pulse-glow"
+                  style={{ background: 'var(--color-accent)' }}
+                />
+              </div>
+              {isLoading ? (
+                <div className="skeleton mt-3 h-14 w-28" />
+              ) : (
+                <h2 className="mt-3 text-6xl font-extrabold tabular-nums">{score?.score ?? '--'}</h2>
+              )}
+            </div>
             <div
-              className="h-3 rounded-full bg-gradient-to-r from-orange-400 to-amber-200"
-              style={{ width: `${nextTierProgress}%` }}
+              className="rounded-xl px-4 py-2 text-sm font-bold"
+              style={{ background: tierGradient(score?.tier ?? 0), color: '#020617' }}
+            >
+              {score?.tierLabel || 'Unrated'}
+            </div>
+          </div>
+
+          <p className="mt-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            Borrow up to <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>₱{score?.borrowLimit?.toLocaleString?.() ?? '0'}</span>
+            {' '}· Fee {((score?.feeBps ?? 0) / 100).toFixed(2)}%
+          </p>
+
+          {/* Progress */}
+          <div className="mt-5 rounded-xl p-4" style={{ background: 'rgba(148, 163, 184, 0.06)' }}>
+            <div className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              <span>Next tier progress</span>
+              <span style={{ color: 'var(--color-text-secondary)' }}>
+                {score?.nextTier
+                  ? `${score.pointsToNextTier} pts to ${score.nextTier.label}`
+                  : 'Top tier ✓'}
+              </span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'var(--color-bg-elevated)' }}>
+              <div
+                className="h-2 rounded-full progress-animated"
+                style={{ width: `${nextTierProgress}%`, background: tierGradient(score?.tier ?? 0) }}
+              />
+            </div>
+          </div>
+
+          {/* Refresh */}
+          <button
+            id="btn-refresh-score"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            className="btn-primary btn-dark mt-5 cursor-pointer"
+          >
+            <RefreshCw size={16} className={generateMutation.isPending ? 'animate-spin' : ''} />
+            {generateMutation.isPending ? 'Refreshing on-chain score…' : 'Refresh On-Chain Score'}
+          </button>
+        </section>
+
+        {/* Loan Action + Quick Info (right column) */}
+        <div className="lg:col-span-2 flex flex-col gap-5">
+          {/* Loan Action */}
+          <section
+            className="card-elevated flex-1 animate-fade-up"
+            style={{ animationDelay: '100ms' }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                  Instant approval
+                </p>
+                <h2 className="mt-1 text-lg font-extrabold">
+                  {loanStatus?.hasActiveLoan
+                    ? 'Repay and level up'
+                    : `₱${score?.borrowLimit?.toLocaleString?.() ?? '0'}`}
+                </h2>
+              </div>
+              <div
+                className="rounded-lg px-3 py-1.5 text-xs font-bold"
+                style={{
+                  background: 'var(--color-accent-glow)',
+                  color: 'var(--color-accent)',
+                  border: '1px solid var(--color-border-accent)',
+                }}
+              >
+                Fee {((score?.feeBps ?? 0) / 100).toFixed(2)}%
+              </div>
+            </div>
+
+            {loanStatus?.hasActiveLoan ? (
+              <div className="mt-4">
+                <div className="rounded-xl p-3 text-sm" style={{ background: 'var(--color-bg-card)' }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Outstanding: </span>
+                  <span className="font-bold tabular-nums">₱{loanStatus.loan?.totalOwed ?? '0.00'}</span>
+                </div>
+                <button
+                  id="btn-repay"
+                  onClick={() => router.push('/loan/repay')}
+                  className="btn-primary btn-accent mt-4 cursor-pointer"
+                >
+                  Repay now
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                id="btn-borrow"
+                onClick={() => router.push('/loan/borrow')}
+                disabled={!score || score.tier === 0}
+                className="btn-primary btn-accent mt-5 cursor-pointer"
+              >
+                Borrow instantly
+                <ArrowRight size={16} />
+              </button>
+            )}
+          </section>
+
+          {/* Quick Info */}
+          <div className="grid grid-cols-2 gap-4 animate-fade-up" style={{ animationDelay: '150ms' }}>
+            <InfoCard
+              icon={Coins}
+              title="Pool"
+              value={`₱${Number(loanStatus?.poolBalance || 0).toLocaleString()}`}
+              isLoading={loanStatusQuery.isLoading}
+            />
+            <InfoCard
+              icon={Wallet}
+              title="Wallet"
+              value={`${user.stellarAddress.slice(0, 4)}…${user.stellarAddress.slice(-4)}`}
+              isLoading={false}
             />
           </div>
         </div>
       </div>
 
-      <button
-        onClick={() => generateMutation.mutate()}
-        disabled={generateMutation.isPending}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[1.4rem] bg-orange-600 px-5 py-4 font-bold text-white shadow-[0_18px_40px_rgba(234,88,12,0.24)] disabled:opacity-50"
-      >
-        <RefreshCw size={18} className={generateMutation.isPending ? 'animate-spin' : ''} />
-        {generateMutation.isPending ? 'Refreshing on-chain score...' : 'Refresh On-Chain Score'}
-      </button>
-
-      <div className="mt-5 grid gap-3">
-        <InfoCard
-          icon={Coins}
-          title="Pool balance"
-          value={`₱${Number(loanStatus?.poolBalance || 0).toLocaleString()}`}
-          copy="Pre-funded liquidity for the live demo."
-        />
-        <InfoCard
-          icon={Wallet}
-          title="Demo wallet"
-          value={`${user.stellarAddress.slice(0, 6)}...${user.stellarAddress.slice(-6)}`}
-          copy="Generated automatically and stored server-side for the demo session."
-        />
-      </div>
-
-      <section className="mt-5 rounded-[1.7rem] border border-stone-200 bg-white p-5 shadow-[0_18px_40px_rgba(28,25,23,0.08)]">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="rounded-full bg-stone-100 p-2 text-stone-700">
-            <ChartColumn size={18} />
+      {/* ─── Bottom Row: Scoring + Metrics ─── */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        {/* Transparent Scoring */}
+        <section className="card-elevated animate-fade-up" style={{ animationDelay: '200ms' }}>
+          <div className="mb-5 flex items-center gap-3">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-lg"
+              style={{ background: 'var(--color-bg-elevated)' }}
+            >
+              <ChartColumn size={16} style={{ color: 'var(--color-text-secondary)' }} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold">Transparent scoring</h2>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{score?.formula}</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-bold">Transparent scoring</h2>
-            <p className="text-sm text-stone-500">{score?.formula}</p>
-          </div>
-        </div>
 
-        <div className="grid gap-3">
-          {score?.factors?.map((factor) => (
-            <div key={factor.key} className="rounded-[1.2rem] bg-stone-50 p-4">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-stone-800">{factor.label}</p>
-                <p className="text-sm font-bold text-orange-700">{factor.points > 0 ? '+' : ''}{factor.points} pts</p>
-              </div>
-              <p className="mt-1 text-sm text-stone-500">
-                Raw value: <span className="font-semibold text-stone-700">{factor.value}</span> • {factor.weight}
+          <div className="space-y-2">
+            {isLoading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="skeleton h-16" />
+                ))
+              : score?.factors?.map((factor) => (
+                  <div
+                    key={factor.key}
+                    className="flex items-center justify-between rounded-xl p-3"
+                    style={{ background: 'var(--color-bg-card)' }}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">{factor.label}</p>
+                      <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        Raw: <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{factor.value}</span> · {factor.weight}
+                      </p>
+                    </div>
+                    <span
+                      className="text-sm font-bold tabular-nums"
+                      style={{ color: factor.points >= 0 ? 'var(--color-accent)' : 'var(--color-danger)' }}
+                    >
+                      {factor.points > 0 ? '+' : ''}{factor.points}
+                    </span>
+                  </div>
+                ))}
+          </div>
+        </section>
+
+        {/* Raw Metrics */}
+        <section className="card-elevated animate-fade-up" style={{ animationDelay: '250ms' }}>
+          <div className="mb-5 flex items-center gap-3">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-lg"
+              style={{ background: 'var(--color-bg-elevated)' }}
+            >
+              <TrendingUp size={16} style={{ color: 'var(--color-text-secondary)' }} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold">Raw metrics</h2>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                Anyone can recompute from the same inputs.
               </p>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      <section className="mt-5 rounded-[1.7rem] border border-stone-200 bg-white p-5 shadow-[0_18px_40px_rgba(28,25,23,0.08)]">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="rounded-full bg-stone-100 p-2 text-stone-700">
-            <ShieldCheck size={18} />
+          <div className="grid grid-cols-2 gap-3">
+            {isLoading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="skeleton h-24" />
+                ))
+              : (
+                <>
+                  <MetricTile label="tx_count" value={score?.metrics?.txCount ?? 0} />
+                  <MetricTile label="repayment_count" value={score?.metrics?.repaymentCount ?? 0} />
+                  <MetricTile label="avg_balance" value={score?.metrics?.avgBalance ?? 0} />
+                  <MetricTile label="default_count" value={score?.metrics?.defaultCount ?? 0} />
+                </>
+              )}
           </div>
-          <div>
-            <h2 className="font-bold">Raw metrics</h2>
-            <p className="text-sm text-stone-500">Anyone can recompute this score from the same inputs.</p>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <MetricTile label="tx_count" value={score?.metrics?.txCount ?? 0} />
-          <MetricTile label="repayment_count" value={score?.metrics?.repaymentCount ?? 0} />
-          <MetricTile label="avg_balance" value={score?.metrics?.avgBalance ?? 0} />
-          <MetricTile label="default_count" value={score?.metrics?.defaultCount ?? 0} />
-        </div>
-      </section>
-
-      <section className="mt-5 rounded-[1.7rem] border border-stone-200 bg-white p-5 shadow-[0_18px_40px_rgba(28,25,23,0.08)]">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-stone-500">Instant approval</p>
-            <h2 className="mt-1 text-2xl font-black text-stone-900">
-              {loanStatus?.hasActiveLoan ? 'Repay and level up' : `Borrow up to ₱${score?.borrowLimit?.toLocaleString?.() ?? 0}`}
-            </h2>
-          </div>
-          <div className="rounded-full bg-orange-100 px-3 py-2 text-sm font-bold text-orange-700">
-            Fee {((score?.feeBps ?? 0) / 100).toFixed(2)}%
-          </div>
-        </div>
-
-        {loanStatus?.hasActiveLoan ? (
-          <div className="mt-5">
-            <div className="rounded-[1.2rem] bg-stone-50 p-4 text-sm text-stone-600">
-              Outstanding: <span className="font-bold text-stone-900">₱{loanStatus.loan?.totalOwed ?? '0.00'}</span>
-            </div>
-            <button
-              onClick={() => router.push('/loan/repay')}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-[1.3rem] bg-stone-950 px-5 py-4 font-bold text-white"
-            >
-              Repay now
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => router.push('/loan/borrow')}
-            disabled={!score || score.tier === 0}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-[1.3rem] bg-stone-950 px-5 py-4 font-bold text-white disabled:opacity-40"
+          {/* Verifiability note */}
+          <div
+            className="mt-5 flex items-start gap-3 rounded-xl p-4 text-sm"
+            style={{ background: 'rgba(34, 197, 94, 0.06)', color: 'var(--color-text-secondary)' }}
           >
-            Borrow instantly
-            <ArrowRight size={18} />
-          </button>
-        )}
-      </section>
+            <ShieldCheck size={16} className="mt-0.5 shrink-0" style={{ color: 'var(--color-accent)' }} />
+            <p>All metrics are sourced from Stellar Horizon and on-chain contract events. The scoring formula is deterministic and publicly verifiable.</p>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
 
+/* ─── Components ─── */
 function InfoCard({
   icon: Icon,
   title,
   value,
-  copy,
+  isLoading,
 }: {
   icon: typeof Wallet;
   title: string;
   value: string;
-  copy: string;
+  isLoading: boolean;
 }) {
   return (
-    <div className="rounded-[1.5rem] border border-stone-200 bg-white p-4 shadow-[0_18px_40px_rgba(28,25,23,0.06)]">
-      <div className="mb-3 inline-flex rounded-full bg-stone-100 p-2 text-stone-700">
-        <Icon size={18} />
+    <div className="card">
+      <div
+        className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg"
+        style={{ background: 'var(--color-bg-elevated)' }}
+      >
+        <Icon size={14} style={{ color: 'var(--color-text-muted)' }} />
       </div>
-      <p className="text-sm uppercase tracking-[0.18em] text-stone-500">{title}</p>
-      <p className="mt-2 text-lg font-bold text-stone-900">{value}</p>
-      <p className="mt-2 text-sm text-stone-500">{copy}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
+        {title}
+      </p>
+      {isLoading ? (
+        <div className="skeleton mt-2 h-5 w-16" />
+      ) : (
+        <p className="mt-2 text-sm font-bold tabular-nums">{value}</p>
+      )}
     </div>
   );
 }
 
 function MetricTile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-[1.2rem] bg-stone-50 p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-stone-500">{label}</p>
-      <p className="mt-2 text-2xl font-black text-stone-900">{value}</p>
+    <div className="rounded-xl p-4" style={{ background: 'var(--color-bg-card)' }}>
+      <p className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+        {label}
+      </p>
+      <p className="mt-2 text-3xl font-extrabold tabular-nums">{value}</p>
     </div>
   );
 }

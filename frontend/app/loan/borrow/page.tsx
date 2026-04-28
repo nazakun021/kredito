@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, TimerReset } from 'lucide-react';
-import api from '../../../lib/api';
+import { ArrowRight, CheckCircle2, Loader2, TimerReset } from 'lucide-react';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 
 interface ScoreResponse {
   tierLabel: string;
@@ -41,101 +42,152 @@ export default function BorrowPage() {
       const { data } = await api.post('/loan/borrow', { amount: borrowAmount });
       setSuccess(data);
     } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Borrowing failed'));
+      setError(getErrorMessage(err, 'Borrowing failed. Please try again.'));
     } finally {
       setLoading(false);
     }
   };
 
+  /* ─── Success View ─── */
   if (success) {
     return (
-      <div className="min-h-screen bg-[linear-gradient(180deg,_#fdf8ef_0%,_#fff_42%,_#f3ebe0_100%)] px-5 py-8 text-center">
-        <div className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_24px_60px_rgba(28,25,23,0.08)]">
-          <div className="mx-auto mb-5 inline-flex rounded-full bg-green-100 p-4 text-green-700">
-            <CheckCircle2 size={36} />
+      <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center">
+        <div className="card-elevated w-full animate-fade-up">
+          <div className="flex flex-col items-center">
+            <div
+              className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
+              style={{ background: 'var(--color-success-bg)' }}
+            >
+              <CheckCircle2 size={32} style={{ color: 'var(--color-success)' }} />
+            </div>
+            <h1 className="text-3xl font-extrabold">Funds released</h1>
+            <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Your demo wallet received the loan instantly from the on-chain pool.
+            </p>
           </div>
-          <h1 className="text-3xl font-black text-stone-900">Funds released</h1>
-          <p className="mt-2 text-stone-500">Your demo wallet received the loan instantly from the on-chain pool.</p>
 
-          <div className="mt-6 rounded-[1.4rem] bg-stone-50 p-5 text-left">
+          <div
+            className="mt-8 rounded-xl p-5 text-left"
+            style={{ background: 'var(--color-bg-card)' }}
+          >
             <Row label="Amount" value={`₱${success.amount}`} />
             <Row label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`₱${success.fee}`} />
             <Row label="Total owed" value={`₱${success.totalOwed}`} strong />
           </div>
 
           <button
+            id="btn-continue-repay"
             onClick={() => router.push('/loan/repay')}
-            className="mt-6 w-full rounded-[1.3rem] bg-stone-950 px-5 py-4 font-bold text-white"
+            className="btn-primary btn-accent mt-8 cursor-pointer"
           >
             Continue to Repay
+            <ArrowRight size={16} />
           </button>
         </div>
       </div>
     );
   }
 
+  /* ─── Default View ─── */
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_#fdf8ef_0%,_#fff_42%,_#f3ebe0_100%)] px-5 py-8">
-      <button onClick={() => router.back()} className="mb-6 flex items-center gap-2 text-sm font-bold text-stone-700">
-        <ArrowLeft size={18} /> Back
-      </button>
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-8 animate-fade-up">
+        <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-accent)' }}>
+          Step 3
+        </p>
+        <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Borrow instantly</h1>
+        <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+          Eligibility enforced by the on-chain score and tier stored in your Credit Passport.
+        </p>
+      </div>
 
-      <div className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_24px_60px_rgba(28,25,23,0.08)]">
-        <p className="text-xs uppercase tracking-[0.3em] text-orange-700">Screen 3</p>
-        <h1 className="mt-3 text-3xl font-black text-stone-900">Borrow instantly</h1>
-        <p className="mt-2 text-stone-500">Eligibility is enforced by the on-chain score and tier stored in your Credit Passport.</p>
-
-        <div className="mt-6 rounded-[1.6rem] bg-stone-950 p-5 text-stone-50">
-          <p className="text-sm uppercase tracking-[0.24em] text-orange-200">Approved amount</p>
-          <p className="mt-3 text-4xl font-black">₱{borrowAmount.toLocaleString()}</p>
-          <div className="mt-4 text-sm text-stone-300">
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* ─── Left: Amount Card ─── */}
+        <div
+          className="card-elevated animate-fade-up"
+          style={{ animationDelay: '50ms' }}
+        >
+          <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-accent)' }}>
+            Approved amount
+          </p>
+          <p className="mt-4 text-5xl font-extrabold tabular-nums">
+            ₱{borrowAmount.toLocaleString()}
+          </p>
+          <div className="mt-6" style={{ color: 'var(--color-text-secondary)' }}>
             <Row label="Tier" value={score?.tierLabel || 'Unrated'} />
             <Row label="Fee" value={`${((score?.feeBps || 0) / 100).toFixed(2)}%`} />
             <Row label="Repayment" value={`₱${(borrowAmount + fee).toFixed(2)}`} strong />
           </div>
         </div>
 
-        <div className="mt-5 flex gap-3 rounded-[1.3rem] bg-orange-50 p-4 text-sm text-orange-900">
-          <TimerReset className="mt-0.5 shrink-0" size={18} />
-          <p>Repay before the due ledger to protect your score. Timely repayment boosts your next score refresh.</p>
+        {/* ─── Right: Confirm Card ─── */}
+        <div className="flex flex-col gap-4 animate-fade-up" style={{ animationDelay: '100ms' }}>
+          {/* Notice */}
+          <div
+            className="flex gap-3 rounded-xl p-4 text-sm"
+            style={{ background: 'rgba(245, 158, 11, 0.08)', color: 'var(--color-amber)' }}
+          >
+            <TimerReset className="mt-0.5 shrink-0" size={16} />
+            <p>
+              Repay before the due ledger to protect your score. Timely repayment boosts your next score refresh.
+            </p>
+          </div>
+
+          {/* Agreement */}
+          <label
+            className="flex cursor-pointer items-start gap-3 rounded-xl p-4 text-sm transition-colors"
+            style={{
+              background: agreed ? 'var(--color-accent-glow)' : 'var(--color-bg-card)',
+              border: agreed ? '1px solid var(--color-border-accent)' : '1px solid var(--color-border)',
+              color: 'var(--color-text-secondary)',
+            }}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 accent-[#22C55E] rounded"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+            <span>I understand the terms and want to trigger the live borrowing transaction.</span>
+          </label>
+
+          {/* Error */}
+          {error && (
+            <div
+              className="rounded-xl px-4 py-3 text-sm font-medium"
+              style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}
+              role="alert"
+            >
+              {error}
+            </div>
+          )}
+
+          {/* CTA */}
+          <button
+            id="btn-borrow-confirm"
+            onClick={handleBorrow}
+            disabled={!agreed || loading || borrowAmount <= 0}
+            className="btn-primary btn-accent mt-auto cursor-pointer"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Submitting borrow…
+              </>
+            ) : (
+              <>
+                Borrow ₱{borrowAmount.toLocaleString()}
+                <ArrowRight size={16} />
+              </>
+            )}
+          </button>
         </div>
-
-        <label className="mt-5 flex items-start gap-3 rounded-[1.3rem] bg-stone-50 p-4 text-sm text-stone-700">
-          <input
-            type="checkbox"
-            className="mt-1 h-5 w-5"
-            checked={agreed}
-            onChange={(e) => setAgreed(e.target.checked)}
-          />
-          <span>I understand the terms and want to trigger the live borrowing transaction.</span>
-        </label>
-
-        {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
-
-        <button
-          onClick={handleBorrow}
-          disabled={!agreed || loading || borrowAmount <= 0}
-          className="mt-6 w-full rounded-[1.3rem] bg-orange-600 px-5 py-4 font-bold text-white disabled:opacity-40"
-        >
-          {loading ? 'Submitting borrow...' : `Borrow ₱${borrowAmount.toLocaleString()}`}
-        </button>
       </div>
     </div>
   );
 }
 
-function getErrorMessage(err: unknown, fallback: string) {
-  if (
-    typeof err === 'object' &&
-    err !== null &&
-    'response' in err &&
-    typeof (err as { response?: { data?: { error?: string } } }).response?.data?.error === 'string'
-  ) {
-    return (err as { response?: { data?: { error?: string } } }).response?.data?.error as string;
-  }
-  return fallback;
-}
-
+/* ─── Row Component ─── */
 function Row({
   label,
   value,
@@ -146,9 +198,14 @@ function Row({
   strong?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between ${strong ? 'mt-3 border-t border-white/10 pt-3 font-bold' : 'mt-2'}`}>
+    <div
+      className={`flex items-center justify-between text-sm ${
+        strong ? 'mt-3 border-t pt-3 font-bold' : 'mt-2'
+      }`}
+      style={strong ? { borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' } : {}}
+    >
       <span>{label}</span>
-      <span>{value}</span>
+      <span className="tabular-nums">{value}</span>
     </div>
   );
 }

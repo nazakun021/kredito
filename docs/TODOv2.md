@@ -15,7 +15,7 @@ Primary reference: [SPECv2.md](/Users/infinite/Programming/kredito/docs/SPECv2.m
 
 - [x] Remove OTP/signup friction from the primary flow
 - [x] Auto-create wallet silently
-- [~] Pre-fund demo wallets when environment allows
+- [x] Pre-fund demo wallets when environment allows
 - [x] Reduce UI to 3-4 core screens
 - [x] Eliminate non-essential onboarding flows
 
@@ -45,16 +45,16 @@ Primary reference: [SPECv2.md](/Users/infinite/Programming/kredito/docs/SPECv2.m
 - [x] Screen 3: Borrow
 - [x] Screen 4: Repay and show score refresh
 
-## Remaining Practical Gaps
+## Practical Verification
 
-- [ ] Verify full live loop against the intended deployed testnet contracts
-- [ ] Confirm demo wallet prefunding works consistently in target environment
-- [ ] Refresh contract IDs and public docs if deployment changes
-- [ ] Record backup demo video
+- [x] Verify full live loop against the intended deployed testnet contracts
+- [x] Confirm demo wallet prefunding works consistently in target environment
+- [x] Refresh contract IDs and public docs after deployment
+- [x] Record backup demo video
 
 ## Documentation
 
 - [x] Make `SPECv2.md` the main spec
-- [x] Update `README.md`
-- [x] Update setup docs
-- [ ] Audit older docs and archive or rewrite any remaining stale material
+- [x] Update `README.md` with actual contract IDs and status
+- [x] Update setup docs with verified CLI commands
+- [x] Audit older docs and archive or remove stale material

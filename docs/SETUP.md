@@ -4,114 +4,87 @@ This setup guide is for the current Kredito demo described in [SPECv2.md](/Users
 
 ## 1. Prerequisites
 
-- Node.js 20+
+- Node.js 18+
 - pnpm 10+
 - Rust stable
 - Stellar CLI
-- Rust target: `wasm32v1-none`
 
-Install the target:
+## 2. Stellar Account (Issuer)
+
+You need a funded Stellar account to act as the "Bank/Issuer". Run these commands to generate and fund one automatically on the Testnet:
 
 ```bash
-rustup target add wasm32v1-none
+# Generate and fund the account
+stellar keys generate issuer --network testnet
+
+# Show the secret key (to put in backend/.env)
+stellar keys secret issuer
 ```
 
-## 2. Contracts
+## 3. Contracts
+
+Build and deploy the Soroban contracts.
 
 ```bash
 cd contracts
-stellar contract build
-```
 
-Run contract tests:
+# Build all contracts
+cargo build --target wasm32-unknown-unknown --release
 
-```bash
-cargo test -p credit_registry
-cargo test -p lending_pool
-```
+# Run contract tests
+cargo test
 
-Build the release WASM for cross-contract compatibility:
-
-```bash
-cargo build -p credit_registry --target wasm32v1-none --release
-```
-
-Deploy if needed:
-
-```bash
+# Deploy to Testnet
 ./deploy.sh
 ```
 
-## 3. Backend
+After deployment, a `deployed.json` file will be created. Use the contract IDs from this file in your backend configuration.
+
+## 4. Backend
 
 ```bash
 cd backend
 pnpm install
+cp .env.example .env
 ```
 
-Required environment variables:
+Required environment variables in `.env`:
 
-- `JWT_SECRET`
-- `ENCRYPTION_KEY`
-- `ISSUER_SECRET_KEY`
-- `PHPC_CONTRACT_ID`
-- `REGISTRY_CONTRACT_ID`
-- `LENDING_POOL_CONTRACT_ID`
+- `JWT_SECRET`: Any random string for auth tokens.
+- `ENCRYPTION_KEY`: A 64-character hex string (32 bytes). Generate with:
+  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- `ISSUER_SECRET_KEY`: The secret key from step 2 (starts with `S`).
+- `PHPC_ID`: From `deployed.json`.
+- `REGISTRY_ID`: From `deployed.json`.
+- `LENDING_POOL_ID`: From `deployed.json`.
 
-Optional but relevant:
-
-- `NETWORK_PASSPHRASE`
-- `HORIZON_URL`
-- `SOROBAN_RPC_URL`
-- `DEMO_PREFUND_STROOPS`
-
-Run:
+Run the development server:
 
 ```bash
 pnpm dev
 ```
 
-Typecheck:
-
-```bash
-pnpm exec tsc --noEmit
-```
-
-## 4. Frontend
+## 5. Frontend
 
 ```bash
 cd frontend
 pnpm install
 ```
 
-Required environment variable:
-
-- `NEXT_PUBLIC_API_URL`
-
-Run:
+Start the development dashboard:
 
 ```bash
 pnpm dev
 ```
 
-Lint:
+Access the app at [http://localhost:3000](http://localhost:3000).
 
-```bash
-pnpm lint
-```
+## 6. Current Demo Notes
 
-Production build:
-
-```bash
-pnpm exec next build --webpack
-```
-
-## 5. Current Demo Notes
-
-- The current flow starts from `POST /api/auth/demo`.
+- The current flow starts from `POST /api/auth/demo` (triggered by the "Generate Score" button).
 - Demo wallet prefunding is best-effort and depends on testnet connectivity and valid contract IDs.
-- Legacy OTP onboarding is no longer part of the active product flow.
+- Legacy OTP onboarding has been removed from the active product flow.
 
-## 6. Read This Next
+## 7. Reference
 
-Use [SPECv2.md](/Users/infinite/Programming/kredito/docs/SPECv2.md) as the main project reference.
+Use [SPECv2.md](/Users/infinite/Programming/kredito/docs/SPECv2.md) for the full technical specification.

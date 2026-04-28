@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, TrendingUp } from 'lucide-react';
-import api from '../../../lib/api';
+import { ArrowRight, CheckCircle2, Loader2, TrendingUp } from 'lucide-react';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 
 interface LoanStatusResponse {
   loan: null | {
@@ -20,6 +21,15 @@ interface RepaySuccess {
     tierLabel: string;
     borrowLimit: number;
   };
+}
+
+function tierGradient(tierLabel: string) {
+  switch (tierLabel) {
+    case 'Gold': return 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)';
+    case 'Silver': return 'linear-gradient(135deg, #94A3B8 0%, #CBD5E1 100%)';
+    case 'Bronze': return 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)';
+    default: return 'linear-gradient(135deg, #475569 0%, #64748B 100%)';
+  }
 }
 
 export default function RepayPage() {
@@ -40,95 +50,138 @@ export default function RepayPage() {
       const { data } = await api.post('/loan/repay');
       setSuccess(data);
     } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Repayment failed'));
+      setError(getErrorMessage(err, 'Repayment failed. Please try again.'));
     } finally {
       setLoading(false);
     }
   };
 
+  /* ─── Success View ─── */
   if (success) {
     return (
-      <div className="min-h-screen bg-[linear-gradient(180deg,_#fdf8ef_0%,_#fff_42%,_#f3ebe0_100%)] px-5 py-8">
-        <div className="rounded-[2rem] border border-stone-200 bg-white p-6 text-center shadow-[0_24px_60px_rgba(28,25,23,0.08)]">
-          <div className="mx-auto mb-5 inline-flex rounded-full bg-green-100 p-4 text-green-700">
-            <CheckCircle2 size={36} />
-          </div>
-          <p className="text-xs uppercase tracking-[0.3em] text-orange-700">Screen 4</p>
-          <h1 className="mt-3 text-3xl font-black text-stone-900">Repaid on time</h1>
-          <p className="mt-2 text-stone-500">The loan is closed and your Credit Passport can now unlock a stronger tier.</p>
+      <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center">
+        <div className="card-elevated w-full animate-fade-up">
+          <div className="flex flex-col items-center">
+            <div
+              className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
+              style={{ background: 'var(--color-success-bg)' }}
+            >
+              <CheckCircle2 size={32} style={{ color: 'var(--color-success)' }} />
+            </div>
 
-          <div className="mt-6 rounded-[1.5rem] bg-stone-950 p-5 text-left text-stone-50">
-            <div className="flex items-center gap-3 text-orange-200">
-              <TrendingUp size={18} />
-              <p className="font-semibold">Live score result</p>
+            <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-accent)' }}>
+              Step 4
+            </p>
+            <h1 className="mt-2 text-3xl font-extrabold">Repaid on time</h1>
+            <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              The loan is closed and your Credit Passport can now unlock a stronger tier.
+            </p>
+          </div>
+
+          {/* Updated Score Card */}
+          <div
+            className="mt-8 rounded-xl p-5 text-left"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            <div className="flex items-center gap-2" style={{ color: 'var(--color-accent)' }}>
+              <TrendingUp size={16} />
+              <p className="text-sm font-semibold">Live score result</p>
             </div>
             <div className="mt-4 flex items-end justify-between">
               <div>
-                <p className="text-sm text-stone-300">Updated score</p>
-                <p className="text-4xl font-black">{success.updatedScore?.score ?? '--'}</p>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Updated score</p>
+                <p className="text-5xl font-extrabold tabular-nums">
+                  {success.updatedScore?.score ?? '--'}
+                </p>
               </div>
-              <div className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold">
+              <div
+                className="rounded-lg px-3 py-1.5 text-xs font-bold"
+                style={{
+                  background: tierGradient(success.updatedScore?.tierLabel || 'Unrated'),
+                  color: '#020617',
+                }}
+              >
                 {success.updatedScore?.tierLabel || 'Refreshing'}
               </div>
             </div>
-            <p className="mt-4 text-sm text-stone-300">
-              Borrow limit now: ₱{Number(success.updatedScore?.borrowLimit || 0).toLocaleString()}
+            <p className="mt-4 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Borrow limit now:{' '}
+              <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                ₱{Number(success.updatedScore?.borrowLimit || 0).toLocaleString()}
+              </span>
             </p>
           </div>
 
           <button
+            id="btn-to-dashboard"
             onClick={() => router.push('/dashboard')}
-            className="mt-6 w-full rounded-[1.3rem] bg-orange-600 px-5 py-4 font-bold text-white"
+            className="btn-primary btn-accent mt-8 cursor-pointer"
           >
             See refreshed dashboard
+            <ArrowRight size={16} />
           </button>
         </div>
       </div>
     );
   }
 
+  /* ─── Default View ─── */
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_#fdf8ef_0%,_#fff_42%,_#f3ebe0_100%)] px-5 py-8">
-      <button onClick={() => router.back()} className="mb-6 flex items-center gap-2 text-sm font-bold text-stone-700">
-        <ArrowLeft size={18} /> Back
-      </button>
+    <div className="mx-auto max-w-lg">
+      <div className="mb-8 animate-fade-up">
+        <h1 className="text-2xl font-extrabold lg:text-3xl">Repay and raise the score</h1>
+        <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+          Timely repayment feeds into the next metrics refresh and upgrades the Credit Passport.
+        </p>
+      </div>
 
-      <div className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_24px_60px_rgba(28,25,23,0.08)]">
-        <h1 className="text-3xl font-black text-stone-900">Repay and raise the score</h1>
-        <p className="mt-2 text-stone-500">Timely repayment feeds back into the next metrics refresh and upgrades the Credit Passport.</p>
-
-        <div className="mt-6 rounded-[1.5rem] bg-stone-50 p-5">
+      <div className="card-elevated animate-fade-up" style={{ animationDelay: '50ms' }}>
+        {/* Loan Details */}
+        <div
+          className="rounded-xl p-5"
+          style={{ background: 'var(--color-bg-card)' }}
+        >
           <Row label="Principal" value={`₱${status?.loan?.principal ?? '0.00'}`} />
           <Row label="Fee" value={`₱${status?.loan?.fee ?? '0.00'}`} />
           <Row label="Total due" value={`₱${status?.loan?.totalOwed ?? '0.00'}`} strong />
         </div>
 
-        {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+        {/* Error */}
+        {error && (
+          <div
+            className="mt-4 rounded-xl px-4 py-3 text-sm font-medium"
+            style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}
+            role="alert"
+          >
+            {error}
+          </div>
+        )}
 
+        {/* CTA */}
         <button
+          id="btn-repay-confirm"
           onClick={handleRepay}
           disabled={loading}
-          className="mt-6 w-full rounded-[1.3rem] bg-stone-950 px-5 py-4 font-bold text-white disabled:opacity-50"
+          className="btn-primary btn-accent mt-6 cursor-pointer"
         >
-          {loading ? 'Submitting repayment...' : `Repay ₱${status?.loan?.totalOwed ?? '0.00'}`}
+          {loading ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              Submitting repayment…
+            </>
+          ) : (
+            `Repay ₱${status?.loan?.totalOwed ?? '0.00'}`
+          )}
         </button>
       </div>
     </div>
   );
 }
 
-function getErrorMessage(err: unknown, fallback: string) {
-  if (
-    typeof err === 'object' &&
-    err !== null &&
-    'response' in err &&
-    typeof (err as { response?: { data?: { error?: string } } }).response?.data?.error === 'string'
-  ) {
-    return (err as { response?: { data?: { error?: string } } }).response?.data?.error as string;
-  }
-  return fallback;
-}
-
+/* ─── Row Component ─── */
 function Row({
   label,
   value,
@@ -139,9 +192,18 @@ function Row({
   strong?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between ${strong ? 'mt-3 border-t border-stone-200 pt-3 font-bold text-stone-900' : 'mt-2 text-stone-600'}`}>
+    <div
+      className={`flex items-center justify-between text-sm ${
+        strong ? 'mt-3 border-t pt-3 font-bold' : 'mt-2'
+      }`}
+      style={
+        strong
+          ? { borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }
+          : { color: 'var(--color-text-secondary)' }
+      }
+    >
       <span>{label}</span>
-      <span>{value}</span>
+      <span className="tabular-nums">{value}</span>
     </div>
   );
 }
