@@ -1,4 +1,4 @@
-# SPEC.md — Kredito
+# SPEC.md — Kredito [IMPLEMENTED]
 
 ### SEA Stellar Hackathon · Track: Payments & Financial Access
 
@@ -125,7 +125,8 @@ A sari-sari store owner in Quezon City needs ₱5,000 for restocking. She has no
 | Language           | Rust (`#![no_std]`)                                                                       |
 | SDK                | `soroban-sdk = "22.0.0"` with `features = ["alloc"]`                                      |
 | Dev SDK            | `soroban-sdk = "22.0.0"` with `features = ["testutils", "alloc"]`                         |
-| Build target       | `wasm32-unknown-unknown`                                                                  |
+| Build target      | `wasm32v1-none` (preferred for Soroban) or `wasm32-unknown-unknown` |
+
 | CLI                | `stellar-cli` (latest, installed via `cargo install --locked stellar-cli --features opt`) |
 | Testnet RPC        | `https://soroban-testnet.stellar.org`                                                     |
 | Network passphrase | `Test SDF Network ; September 2015`                                                       |

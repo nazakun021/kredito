@@ -6,6 +6,18 @@
     - Successfully deployed the contracts and minted 100M PHPC to the lending pool.
     - Saved the deployed contract IDs to contracts/deployed.json.
 4.  Documentation: Updated TODO.md to reflect that all tasks for Phase 0 and Phase 1 are now complete.
+5.  Phase 2 (Backend): 
+    - Implemented SQLite database with tables for users, otp_requests, bootstrap_assessments, and score_events.
+    - Setup Stellar SDK client and fee-bump transaction service for gasless UX.
+    - Implemented Resend email service for OTP verification (replacing SMS).
+    - Developed two-layer scoring engine combining off-chain bootstrap signals and on-chain Stellar history.
+    - Created API routes for auth, onboarding, credit scoring, and loan management.
+6.  Phase 3 (Frontend):
+    - Setup Zustand for state management and TanStack Query for data fetching.
+    - Implemented multi-step onboarding flow (Email OTP -> Profile -> Attestation).
+    - Updated Dashboard with credit score visualization and loan management actions.
+    - Implemented score breakdown, borrow confirmation, and repayment screens.
+    - Adhered to mobile-first design constraints with zero crypto jargon.
 
 Deployed Contract IDs (Testnet):
 
