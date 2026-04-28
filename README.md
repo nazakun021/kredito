@@ -1,126 +1,132 @@
 # Kredito
-
-Uncollateralized micro-lending for unbanked Filipinos, built on Stellar.
+Transparent on-chain credit scores and instant micro-loans for the unbanked, built on Stellar.
 
 ## Problem
-
-A sari-sari store owner in Davao City needing ₱5,000 to restock has no formal bank account or credit score. Her only option is a "5-6" loan at 20% monthly interest. Despite having a real financial history from remittances, she has no way to prove her creditworthiness to formal lenders.
+Millions of micro-entrepreneurs in emerging markets have no formal credit history, making them "invisible" to traditional lenders. They are forced to rely on predatory lenders with high interest rates or wait weeks for paperwork-heavy approval processes for small, essential capital injections.
 
 ## Solution
-
-Kredito computes a transparent credit score from a two-layer model (on-chain history + off-chain bootstrap signals) and mints it as a non-transferable Soulbound Token (SBT). This SBT gates access to uncollateralized PHPC (PHP stablecoin) loans via a smart contract lending pool, with all gas fees covered by fee-bump transactions for a seamless "web2" experience.
+Kredito turns wallet activity into a transparent, deterministic, on-chain **Credit Passport**. Using Soroban smart contracts, it aggregates on-chain metrics to compute a credit score and tier, unlocking instant PHPC loans from a liquidity pool with fees that reward creditworthiness.
 
 ## Demo Flow (1 minute)
-
-1. **Sign in with email** — Embedded wallet created automatically, no seed phrases needed.
-2. **Verify Identity** — Quick email OTP verification via Resend.
-3. **Compute Score** — Credit score generated from a mix of financial profile and Stellar transaction history.
-4. **Mint SBT** — Non-transferable credit tier credential written to the `credit_registry` contract.
-5. **Borrow PHPC** — `lending_pool` verifies SBT and disburses funds instantly to the wallet.
-6. **Repay On-Chain** — Loan settled with a flat 5% fee; credit score updates upon successful repayment.
+1.  **Enter Demo Mode** — Auto-creates a silent wallet; no signup friction or passwords.
+2.  **Generate Score** — Backend aggregates off-chain wallet metrics (balances, transactions, repayments).
+3.  **Submit to Registry** — Contract computes a deterministic on-chain score and tier.
+4.  **Borrow Instantly** — On-chain lending pool disburses PHPC based on tier limits.
+5.  **Repay & Refresh** — Repayment updates metrics and boosts the user's score live.
 
 ## Architecture
+**Browser (Next.js)**
+  |-- Zustand                   (session state)
+  |-- TanStack Query            (API state management)
+  |-- Stellar SDK               (transaction signing)
 
-**Browser (Next.js 14 + Tailwind)**
-|-- TanStack Query (loan status + score polling)
-|-- Zustand (session state)
-|-- Lucide Icons (mobile-first UI)
+**Backend (Express + Node.js)**
+  |-- Stellar RPC + Horizon     (metric aggregation)
+  |-- SQLite                    (session persistence & encrypted secrets)
+  |-- Fee-bump Service          (gasless user transactions)
 
-**Backend (Node.js + Express)**
-|-- Two-Layer Scoring Engine (Horizon + Bootstrap signals)
-|-- Fee-Bump Signer (issuer keypair absorbs all XLM gas fees)
-|-- Resend Integration (Email OTP service)
-|-- SQLite (encrypted user keypairs, score history)
+**Stellar Testnet**
+  |-- `credit_registry`         (Credit Passport logic & scoring)
+  |-- `lending_pool`            (Loan disbursement & repayment)
+  |-- `phpc_token`              (Demo PHPC stablecoin)
 
-**Stellar Testnet (Soroban)**
-|-- `credit_registry` (SBT manager — set_tier, revoke_tier)
-|-- `lending_pool` (Lending engine — borrow, repay, mark_default)
-|-- `phpc_token` (SEP-41 PHP stablecoin)
+The backend acts as an orchestrator for metric aggregation and fee-sponsorship, while the final source of truth for credit and capital remains fully on-chain.
 
-## Stellar Features Used
-
-| Feature                     | Usage                                                                                   |
-| -------------------------- | --------------------------------------------------------------------------------------- |
-| **Soroban Smart Contracts** | All lending rules enforced on-chain across 3 composable contracts                       |
-| **Soulbound Tokens (SBT)**  | Non-transferable credit credentials in `credit_registry`; `transfer()` panics by design |
-| **Fee-Bump Transactions**   | Backend issuer keypair absorbs all XLM fees — users pay ₱0 in gas                       |
-| **SEP-41 Token Standard**   | PHPC stablecoin follows the standard for full ecosystem compatibility                   |
-| **Horizon API**             | Permissionless read access to wallet history for credit score computation               |
-
-## Setup
-
-### Prerequisites
-
-- **Node.js**: v20 or higher
-- **pnpm**: v10 or higher
-- **Rust**: Latest stable with `wasm32-unknown-unknown` target
-- **Stellar CLI**: For contract deployment and interaction
-
-### 1. Smart Contracts
-
-```bash
-cd contracts
-# Build the WASM binaries
-stellar contract build
-# Deploy to Testnet (requires a configured 'issuer' identity)
-./deploy.sh
+## Project Structure
+```text
+kredito/
+├── backend/            # Express server for coordination & fee-bumps
+├── contracts/          # Soroban smart contracts (Rust)
+│   ├── credit_registry/
+│   ├── lending_pool/
+│   └── phpc_token/
+├── docs/               # Technical specs and setup guides
+├── frontend/           # Next.js mobile-first dashboard
+└── README.md
 ```
 
-### 2. Backend
-
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   pnpm install
-   ```
-
-2. Create a `.env` file based on the following template:
-   ```env
-   PORT=3001
-   JWT_SECRET=your_jwt_secret
-   ENCRYPTION_KEY=your_32_byte_hex_encryption_key
-   RESEND_API_KEY=your_resend_api_key
-   ISSUER_SECRET_KEY=S... (Stellar Secret Key)
-   PHPC_ID=CC...
-   REGISTRY_ID=CC...
-   LENDING_POOL_ID=CC...
-   ```
-
-3. Start the development server:
-   ```bash
-   pnpm dev
-   ```
-
-### 3. Frontend
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   pnpm install
-   ```
-
-2. Create a `.env` file:
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:3001
-   ```
-
-3. Start the development server:
-   ```bash
-   pnpm dev
-   ```
+## Stellar Features Used
+| Feature | Usage |
+| :--- | :--- |
+| **Soroban smart contracts** | Deterministic scoring logic and automated lending gates |
+| **PHPC on Stellar** | Stablecoin for loan disbursement and repayment |
+| **Fee-bump** | Sponsors gas fees for a seamless "Zero Gas" user experience |
+| **Deterministic Scoring** | Transparent formula calculated on-chain for verifiability |
 
 ## Smart Contracts
+Currently deployed for local verification and testnet preview:
+- **Registry:** `REGISTRY_ID`
+- **Lending Pool:** `LENDING_POOL_ID`
+- **PHPC Token:** `PHPC_ID`
 
-Deployed on Stellar Testnet:
+## Contract Functions
+| Function | Caller | Description |
+| :--- | :--- | :--- |
+| `update_metrics(user, metrics)` | Issuer/Backend | Updates raw activity metrics on-chain |
+| `update_score(user)` | Anyone | Recomputes deterministic score from metrics |
+| `borrow(amount)` | Borrower | Disburses PHPC if tier limit allows |
+| `repay(amount)` | Borrower | Accepts repayment and clears loan state |
+| `mark_default(user)` | Anyone | Marks overdue loans and penalizes score |
 
-| Contract          | Address                                                    |
-| ----------------- | ---------------------------------------------------------- |
-| `credit_registry` | `CC62UK332E6DZ6GIDSUPXNEEW2BSSVWRJGRX63PJEGQVKHKFXAHRTEIT` |
-| `lending_pool`    | `CCYSCTEXUMHMPLWHDTNJ2EXZSQNVAF6KLGSYR2GDWMIOXMZPDBHXMXRI` |
-| `phpc_token`      | `CCBPBWE62NP5IZXN4QV26FD2E3IMKC7HCTPDNPGYWTKDJ5KYTSMC4AWJ` |
+## Escrow Status Lifecycle
+**Score Computed** --> **Tier Assigned** (Bronze, Silver, or Gold)
+        --> **Loan Issued**   (Disbursement from pool)
+        --> **Repaid**        (Score increases, tier may upgrade)
+        --> **Defaulted**     (Overdue loan, score penalty)
 
-Explorer: https://stellar.expert/explorer/testnet
+## Prerequisites
+- **Rust (latest stable)** + **Soroban CLI**
+- **Node.js 18+** & **pnpm**
+- **Stellar Testnet Account** (funded via Friendbot)
 
----
+## Setup
+### Smart Contracts
+```bash
+# Build all contracts
+cargo build --target wasm32-unknown-unknown --release
 
-MIT © 2026 Kredito
+# Run contract tests
+cargo test -p credit_registry
+cargo test -p lending_pool
+```
+
+### Backend
+```bash
+cd backend
+pnpm install
+# Copy .env.example to .env and configure
+npm run dev
+```
+
+### Frontend
+```bash
+cd frontend
+pnpm install
+pnpm run dev
+```
+
+## Sample CLI Invocations
+```bash
+# Update user metrics (Admin/Issuer)
+soroban contract invoke \
+  --id <REGISTRY_ID> \
+  --source issuer \
+  --network testnet \
+  -- update_metrics \
+  --user <USER_ADDRESS> \
+  --metrics '{ "tx_count": 10, "repayment_count": 2, "avg_balance": 500, "default_count": 0 }'
+
+# Borrow from pool
+soroban contract invoke \
+  --id <LENDING_POOL_ID> \
+  --source borrower \
+  --network testnet \
+  -- borrow \
+  --amount 5000000000
+```
+
+## Target Users
+Unbanked micro-entrepreneurs, sari-sari store owners, and gig workers who have significant wallet activity but lack traditional credit scores. Kredito allows them to build a **Credit Passport** that they own and can use to access fair capital.
+
+## Why Stellar
+Stellar provides the perfect rails for micro-lending: sub-cent fees make small loans viable, 5-second finality enables "instant" approval, and Soroban allows for transparent, verifiable credit logic that anyone can audit.

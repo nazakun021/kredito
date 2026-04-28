@@ -19,13 +19,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "u32": 7
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 },
                 {
-                  "string": "Philippine Peso Coin"
-                },
-                {
-                  "string": "PHPC"
+                  "i128": {
+                    "hi": 0,
+                    "lo": 200000000000
+                  }
                 }
               ]
             }
@@ -138,7 +141,7 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Admin"
+                              "symbol": "Issuer"
                             }
                           ]
                         },
@@ -150,36 +153,30 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Decimals"
+                              "symbol": "Tier1Limit"
                             }
                           ]
                         },
                         "val": {
-                          "u32": 7
+                          "i128": {
+                            "hi": 0,
+                            "lo": 50000000000
+                          }
                         }
                       },
                       {
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Name"
+                              "symbol": "Tier2Limit"
                             }
                           ]
                         },
                         "val": {
-                          "string": "Philippine Peso Coin"
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "Symbol"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "string": "PHPC"
+                          "i128": {
+                            "hi": 0,
+                            "lo": 200000000000
+                          }
                         }
                       }
                     ]

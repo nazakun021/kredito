@@ -1,10 +1,9 @@
 {
   "generators": {
-    "address": 3,
-    "nonce": 1
+    "address": 2,
+    "nonce": 0
   },
   "auth": [
-    [],
     [],
     [
       [
@@ -12,20 +11,29 @@
         {
           "function": {
             "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
               "function_name": "initialize",
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "u32": 7
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 },
                 {
-                  "string": "Philippine Peso Coin"
+                  "i128": {
+                    "hi": 0,
+                    "lo": 200000000000
+                  }
                 },
                 {
-                  "string": "PHPC"
+                  "i128": {
+                    "hi": 0,
+                    "lo": 500000000000
+                  }
                 }
               ]
             }
@@ -50,41 +58,9 @@
         {
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 1
+                "nonce": 801925984706572462
               }
             },
             "durability": "temporary"
@@ -99,7 +75,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 1
+                    "nonce": 801925984706572462
                   }
                 },
                 "durability": "temporary",
@@ -114,7 +90,7 @@
       [
         {
           "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": "ledger_key_contract_instance",
             "durability": "persistent"
           }
@@ -125,7 +101,7 @@
             "data": {
               "contract_data": {
                 "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": "ledger_key_contract_instance",
                 "durability": "persistent",
                 "val": {
@@ -138,7 +114,7 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Admin"
+                              "symbol": "Issuer"
                             }
                           ]
                         },
@@ -150,36 +126,45 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Decimals"
+                              "symbol": "Tier1Limit"
                             }
                           ]
                         },
                         "val": {
-                          "u32": 7
+                          "i128": {
+                            "hi": 0,
+                            "lo": 50000000000
+                          }
                         }
                       },
                       {
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Name"
+                              "symbol": "Tier2Limit"
                             }
                           ]
                         },
                         "val": {
-                          "string": "Philippine Peso Coin"
+                          "i128": {
+                            "hi": 0,
+                            "lo": 200000000000
+                          }
                         }
                       },
                       {
                         "key": {
                           "vec": [
                             {
-                              "symbol": "Symbol"
+                              "symbol": "Tier3Limit"
                             }
                           ]
                         },
                         "val": {
-                          "string": "PHPC"
+                          "i128": {
+                            "hi": 0,
+                            "lo": 500000000000
+                          }
                         }
                       }
                     ]

@@ -3,6 +3,8 @@ import db from './db';
 import { rpcServer, contractIds, issuerKeypair, networkPassphrase } from './stellar/client';
 import { queryContract } from './stellar/query';
 import { TransactionBuilder, Operation, xdr, Address } from '@stellar/stellar-sdk';
+import { buildScoreSummary } from './scoring/engine';
+import { updateOnChainMetrics } from './stellar/issuer';
 
 export function startCronJobs() {
   // Run every 6 hours: 0 */6 * * *
@@ -54,36 +56,22 @@ export function startCronJobs() {
           markDefaultTx.sign(issuerKeypair);
           await rpcServer.sendTransaction(markDefaultTx);
 
-          // 2. Revoke Tier on Credit Registry
-          // We wait a bit for the first tx to land or just send another one with updated seq
-          const issuerAccountUpdated = await rpcServer.getAccount(issuerKeypair.publicKey());
-          const revokeTierTx = new TransactionBuilder(issuerAccountUpdated, {
-            fee: '1000',
-            networkPassphrase,
-          })
-            .addOperation(
-              Operation.invokeHostFunction({
-                func: xdr.HostFunction.hostFunctionTypeInvokeContract(
-                  new xdr.InvokeContractArgs({
-                    contractAddress: Address.fromString(contractIds.creditRegistry).toScAddress(),
-                    functionName: 'revoke_tier',
-                    args: [Address.fromString(loanCache.stellar_pub).toScVal()],
-                  })
-                ),
-                auth: [],
-              })
-            )
-            .setTimeout(30)
-            .build();
-          
-          revokeTierTx.sign(issuerKeypair);
-          await rpcServer.sendTransaction(revokeTierTx);
+          // 2. Refresh on-chain score with the new default included in the metrics.
+          const refreshed = await buildScoreSummary(loanCache.stellar_pub);
+          await updateOnChainMetrics(loanCache.stellar_pub, refreshed.metrics);
 
           // 3. Log to score_events
           db.prepare(`
-            INSERT INTO score_events (user_id, tier, score, score_json)
-            VALUES (?, ?, ?, ?)
-          `).run(loanCache.user_id, 0, 0, JSON.stringify({ reason: 'default' }));
+            INSERT INTO score_events (user_id, tier, score, bootstrap_score, stellar_score, score_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            loanCache.user_id,
+            refreshed.tier,
+            refreshed.score,
+            0,
+            refreshed.score,
+            JSON.stringify({ reason: 'default', refreshed })
+          );
 
           // 4. Remove from active_loans
           db.prepare('DELETE FROM active_loans WHERE id = ?').run(loanCache.id);

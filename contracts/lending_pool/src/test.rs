@@ -1,11 +1,10 @@
 #![cfg(test)]
-use super::{LendingPool, LendingPoolClient};
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
-// Use the actual types for better testing if possible, 
-// but since they are in different crates, we'll keep using the WASM 
-// but I'll make sure the WASM is up to date and correct.
-// Actually, I can just use the WASM, but I'll fix the repayment test logic.
+use super::{LendingPool, LendingPoolClient};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger, LedgerInfo},
+    Address, Env, String,
+};
 
 mod phpc_token {
     soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/phpc_token.wasm");
@@ -15,8 +14,21 @@ mod credit_registry {
     soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/credit_registry.wasm");
 }
 
-#[test]
-fn test_happy_path_borrow_and_repay() {
+const TIER1_LIMIT: i128 = 50_000_000_000;
+const TIER2_LIMIT: i128 = 200_000_000_000;
+const TIER3_LIMIT: i128 = 500_000_000_000;
+const POOL_FUNDING: i128 = 1_000_000_000_000;
+
+struct TestContext {
+    env: Env,
+    admin: Address,
+    borrower: Address,
+    phpc_id: Address,
+    registry_id: Address,
+    pool_id: Address,
+}
+
+fn setup_pool(flat_fee_bps: u32, loan_term_ledgers: u32) -> TestContext {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -34,127 +46,165 @@ fn test_happy_path_borrow_and_repay() {
 
     let registry_id = env.register(credit_registry::WASM, ());
     let registry_client = credit_registry::Client::new(&env, &registry_id);
-    registry_client.initialize(&admin, &50_000_000_000, &200_000_000_000);
+    registry_client.initialize(&admin, &TIER1_LIMIT, &TIER2_LIMIT, &TIER3_LIMIT);
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
-    pool_client.initialize(&admin, &registry_id, &phpc_id, &500, &518400);
+    pool_client.initialize(
+        &admin,
+        &registry_id,
+        &phpc_id,
+        &flat_fee_bps,
+        &loan_term_ledgers,
+    );
 
-    // 1. Fund the pool
-    phpc_client.mint(&admin, &1_000_000_000_000);
-    phpc_client.approve(&admin, &pool_id, &1_000_000_000_000, &1000);
-    pool_client.deposit(&1_000_000_000_000);
+    TestContext {
+        env,
+        admin,
+        borrower,
+        phpc_id,
+        registry_id,
+        pool_id,
+    }
+}
 
-    // 2. Set borrower tier
-    registry_client.set_tier(&borrower, &1);
+fn phpc_client(ctx: &TestContext) -> phpc_token::Client<'_> {
+    phpc_token::Client::new(&ctx.env, &ctx.phpc_id)
+}
 
-    // 3. Borrow
+fn registry_client(ctx: &TestContext) -> credit_registry::Client<'_> {
+    credit_registry::Client::new(&ctx.env, &ctx.registry_id)
+}
+
+fn pool_client(ctx: &TestContext) -> LendingPoolClient<'_> {
+    LendingPoolClient::new(&ctx.env, &ctx.pool_id)
+}
+
+fn fund_pool(ctx: &TestContext, amount: i128) {
+    phpc_client(ctx).mint(&ctx.admin, &amount);
+    phpc_client(ctx).approve(&ctx.admin, &ctx.pool_id, &amount, &1000);
+    pool_client(ctx).deposit(&amount);
+}
+
+#[test]
+fn test_happy_path_borrow_and_repay() {
+    let ctx = setup_pool(500, 518_400);
+
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
+
     let borrow_amount = 5_000_000_000;
-    pool_client.borrow(&borrower, &borrow_amount);
-
-    // 4. Repay
-    let fee = (borrow_amount * 500) / 10000;
+    let fee = (borrow_amount * 500) / 10_000;
     let total_owed = borrow_amount + fee;
-    
-    // Give borrower some extra PHPC to cover the fee
-    phpc_client.mint(&borrower, &fee);
-    
-    // Borrower approves the pool to pull the total_owed
-    phpc_client.approve(&borrower, &pool_id, &total_owed, &1000);
-    
-    pool_client.repay(&borrower);
 
-    let loan = pool_client.get_loan(&borrower).unwrap();
-    assert_eq!(loan.repaid, true);
+    pool_client(&ctx).borrow(&ctx.borrower, &borrow_amount);
+    assert_eq!(
+        pool_client(&ctx).get_pool_balance(),
+        POOL_FUNDING - borrow_amount
+    );
+
+    phpc_client(&ctx).mint(&ctx.borrower, &fee);
+    phpc_client(&ctx).approve(&ctx.borrower, &ctx.pool_id, &total_owed, &1000);
+    pool_client(&ctx).repay(&ctx.borrower);
+
+    let loan = pool_client(&ctx).get_loan(&ctx.borrower).unwrap();
+    assert!(loan.repaid);
+    assert!(!loan.defaulted);
+    assert_eq!(pool_client(&ctx).get_pool_balance(), POOL_FUNDING + fee);
 }
 
 #[test]
-#[should_panic(expected = "No credit tier")]
+fn test_gold_tier_gets_lower_fee() {
+    let ctx = setup_pool(500, 518_400);
+
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &3);
+
+    let borrow_amount = 10_000_000_000;
+    pool_client(&ctx).borrow(&ctx.borrower, &borrow_amount);
+
+    let loan = pool_client(&ctx).get_loan(&ctx.borrower).unwrap();
+    assert_eq!(loan.fee, (borrow_amount * 150) / 10_000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #3)")]
+fn test_initialize_rejects_excessive_fee_bps() {
+    let _ = setup_pool(10_001, 100);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_initialize_rejects_zero_loan_term() {
+    let _ = setup_pool(500, 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_deposit_rejects_zero_amount() {
+    let ctx = setup_pool(500, 100);
+    pool_client(&ctx).deposit(&0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_no_sbt_rejection() {
-    let env = Env::default();
-    env.mock_all_auths();
+    let ctx = setup_pool(500, 518_400);
+    fund_pool(&ctx, POOL_FUNDING);
 
-    let admin = Address::generate(&env);
-    let borrower = Address::generate(&env);
-
-    let phpc_id = env.register(phpc_token::WASM, ());
-    let phpc_client = phpc_token::Client::new(&env, &phpc_id);
-    phpc_client.initialize(&admin, &7, &String::from_str(&env, "PHPC"), &String::from_str(&env, "PHPC"));
-
-    let registry_id = env.register(credit_registry::WASM, ());
-    let registry_client = credit_registry::Client::new(&env, &registry_id);
-    registry_client.initialize(&admin, &50_000_000_000, &200_000_000_000);
-
-    let pool_id = env.register(LendingPool, ());
-    let pool_client = LendingPoolClient::new(&env, &pool_id);
-    pool_client.initialize(&admin, &registry_id, &phpc_id, &500, &518400);
-
-    phpc_client.mint(&admin, &1_000_000_000_000);
-    phpc_client.approve(&admin, &pool_id, &1_000_000_000_000, &1000);
-    pool_client.deposit(&1_000_000_000_000);
-
-    pool_client.borrow(&borrower, &5_000_000_000);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
 }
 
 #[test]
-#[should_panic(expected = "Amount exceeds tier borrow limit")]
+#[should_panic(expected = "Error(Contract, #9)")]
 fn test_over_limit_rejection() {
-    let env = Env::default();
-    env.mock_all_auths();
+    let ctx = setup_pool(500, 518_400);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
 
-    let admin = Address::generate(&env);
-    let borrower = Address::generate(&env);
-
-    let phpc_id = env.register(phpc_token::WASM, ());
-    let phpc_client = phpc_token::Client::new(&env, &phpc_id);
-    phpc_client.initialize(&admin, &7, &String::from_str(&env, "PHPC"), &String::from_str(&env, "PHPC"));
-
-    let registry_id = env.register(credit_registry::WASM, ());
-    let registry_client = credit_registry::Client::new(&env, &registry_id);
-    registry_client.initialize(&admin, &50_000_000_000, &200_000_000_000);
-
-    let pool_id = env.register(LendingPool, ());
-    let pool_client = LendingPoolClient::new(&env, &pool_id);
-    pool_client.initialize(&admin, &registry_id, &phpc_id, &500, &518400);
-
-    phpc_client.mint(&admin, &1_000_000_000_000);
-    phpc_client.approve(&admin, &pool_id, &1_000_000_000_000, &1000);
-    pool_client.deposit(&1_000_000_000_000);
-
-    registry_client.set_tier(&borrower, &1); // Limit is 50,000,000,000
-
-    pool_client.borrow(&borrower, &50_000_000_001);
+    pool_client(&ctx).borrow(&ctx.borrower, &(TIER1_LIMIT + 1));
 }
 
 #[test]
-fn test_mark_default() {
-    let env = Env::default();
-    env.mock_all_auths();
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_insufficient_liquidity_rejection() {
+    let ctx = setup_pool(500, 518_400);
+    fund_pool(&ctx, 1_000);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
 
-    let admin = Address::generate(&env);
-    let borrower = Address::generate(&env);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000);
+}
 
-    let phpc_id = env.register(phpc_token::WASM, ());
-    let phpc_client = phpc_token::Client::new(&env, &phpc_id);
-    phpc_client.initialize(&admin, &7, &String::from_str(&env, "PHPC"), &String::from_str(&env, "PHPC"));
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_borrow_rejects_zero_amount() {
+    let ctx = setup_pool(500, 518_400);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
 
-    let registry_id = env.register(credit_registry::WASM, ());
-    let registry_client = credit_registry::Client::new(&env, &registry_id);
-    registry_client.initialize(&admin, &50_000_000_000, &200_000_000_000);
+    pool_client(&ctx).borrow(&ctx.borrower, &0);
+}
 
-    let pool_id = env.register(LendingPool, ());
-    let pool_client = LendingPoolClient::new(&env, &pool_id);
-    pool_client.initialize(&admin, &registry_id, &phpc_id, &500, &100);
+#[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_double_borrow_rejection() {
+    let ctx = setup_pool(500, 518_400);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
 
-    phpc_client.mint(&admin, &1_000_000_000_000);
-    phpc_client.approve(&admin, &pool_id, &1_000_000_000_000, &1000);
-    pool_client.deposit(&1_000_000_000_000);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
+}
 
-    registry_client.set_tier(&borrower, &1);
-    pool_client.borrow(&borrower, &5_000_000_000);
+#[test]
+#[should_panic(expected = "Error(Contract, #16)")]
+fn test_repay_rejects_overdue_loan() {
+    let ctx = setup_pool(500, 100);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
 
-    // Fast forward ledger sequence to after due_ledger (100)
-    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
+    ctx.env.ledger().set(LedgerInfo {
         timestamp: 0,
         protocol_version: 22,
         sequence_number: 101,
@@ -165,39 +215,70 @@ fn test_mark_default() {
         max_entry_ttl: 100000,
     });
 
-    pool_client.mark_default(&borrower);
-
-    let loan = pool_client.get_loan(&borrower).unwrap();
-    assert_eq!(loan.defaulted, true);
+    pool_client(&ctx).repay(&ctx.borrower);
 }
 
 #[test]
-#[should_panic(expected = "Active loan already exists")]
-fn test_double_borrow_rejection() {
-    let env = Env::default();
-    env.mock_all_auths();
+#[should_panic(expected = "Error(Contract, #18)")]
+fn test_mark_default_rejects_current_loan() {
+    let ctx = setup_pool(500, 100);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
 
-    let admin = Address::generate(&env);
-    let borrower = Address::generate(&env);
+    pool_client(&ctx).mark_default(&ctx.borrower);
+}
 
-    let phpc_id = env.register(phpc_token::WASM, ());
-    let phpc_client = phpc_token::Client::new(&env, &phpc_id);
-    phpc_client.initialize(&admin, &7, &String::from_str(&env, "PHPC"), &String::from_str(&env, "PHPC"));
+#[test]
+fn test_mark_default_marks_overdue_loan() {
+    let ctx = setup_pool(500, 100);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
 
-    let registry_id = env.register(credit_registry::WASM, ());
-    let registry_client = credit_registry::Client::new(&env, &registry_id);
-    registry_client.initialize(&admin, &50_000_000_000, &200_000_000_000);
+    ctx.env.ledger().set(LedgerInfo {
+        timestamp: 0,
+        protocol_version: 22,
+        sequence_number: 101,
+        network_id: [0; 32],
+        base_reserve: 0,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 100000,
+    });
 
-    let pool_id = env.register(LendingPool, ());
-    let pool_client = LendingPoolClient::new(&env, &pool_id);
-    pool_client.initialize(&admin, &registry_id, &phpc_id, &500, &518400);
+    pool_client(&ctx).mark_default(&ctx.borrower);
 
-    phpc_client.mint(&admin, &1_000_000_000_000);
-    phpc_client.approve(&admin, &pool_id, &1_000_000_000_000, &1000);
-    pool_client.deposit(&1_000_000_000_000);
+    let loan = pool_client(&ctx).get_loan(&ctx.borrower).unwrap();
+    assert!(loan.defaulted);
+    assert!(!loan.repaid);
+}
 
-    registry_client.set_tier(&borrower, &1);
+#[test]
+#[should_panic(expected = "Error(Contract, #15)")]
+fn test_repay_rejects_defaulted_loan() {
+    let ctx = setup_pool(500, 100);
+    fund_pool(&ctx, POOL_FUNDING);
+    registry_client(&ctx).set_tier(&ctx.borrower, &1);
 
-    pool_client.borrow(&borrower, &5_000_000_000);
-    pool_client.borrow(&borrower, &5_000_000_000);
+    let borrow_amount = 5_000_000_000;
+    let fee = (borrow_amount * 500) / 10_000;
+    let total_owed = borrow_amount + fee;
+
+    pool_client(&ctx).borrow(&ctx.borrower, &borrow_amount);
+    phpc_client(&ctx).mint(&ctx.borrower, &fee);
+    phpc_client(&ctx).approve(&ctx.borrower, &ctx.pool_id, &total_owed, &1000);
+
+    ctx.env.ledger().set(LedgerInfo {
+        timestamp: 0,
+        protocol_version: 22,
+        sequence_number: 101,
+        network_id: [0; 32],
+        base_reserve: 0,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 100000,
+    });
+    pool_client(&ctx).mark_default(&ctx.borrower);
+    pool_client(&ctx).repay(&ctx.borrower);
 }

@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import { initDb } from './db';
 import { startCronJobs } from './cron';
 import authRoutes from './routes/auth';
-import onboardingRoutes from './routes/onboarding';
 import creditRoutes from './routes/credit';
 import loanRoutes from './routes/loan';
 
@@ -24,7 +23,6 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/credit', creditRoutes);
 app.use('/api/loan', loanRoutes);
 

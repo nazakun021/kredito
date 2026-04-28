@@ -36,7 +36,7 @@ export async function queryContract(
   const response = await rpcServer.simulateTransaction(tx);
 
   if (rpc.Api.isSimulationSuccess(response)) {
-    return scValToNative(response.result.retval);
+    return scValToNative(response.result!.retval);
   }
   
   throw new Error(`Query failed: ${JSON.stringify(response)}`);

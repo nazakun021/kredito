@@ -6,6 +6,8 @@ import { decrypt } from '../utils/crypto';
 import { buildAndSubmitFeeBump } from '../stellar/feebump';
 import { queryContract } from '../stellar/query';
 import { contractIds, rpcServer } from '../stellar/client';
+import { buildScoreSummary, tierFeeBps } from '../scoring/engine';
+import { updateOnChainMetrics } from '../stellar/issuer';
 
 const router = Router();
 
@@ -20,6 +22,8 @@ router.post('/borrow', authMiddleware, async (req: AuthRequest, res) => {
   const userKeypair = Keypair.fromSecret(userSecret);
 
   try {
+    const scoreSummary = await buildScoreSummary(user.stellar_pub);
+    const feeBps = tierFeeBps(scoreSummary.tier);
     const stroops = BigInt(Math.floor(amount * 10_000_000));
     const txHash = await buildAndSubmitFeeBump(
       userKeypair,
@@ -37,8 +41,9 @@ router.post('/borrow', authMiddleware, async (req: AuthRequest, res) => {
     res.json({
       txHash,
       amount: amount.toFixed(2),
-      fee: (amount * 0.05).toFixed(2),
-      totalOwed: (amount * 1.05).toFixed(2),
+      fee: (amount * (feeBps / 10_000)).toFixed(2),
+      totalOwed: (amount * (1 + feeBps / 10_000)).toFixed(2),
+      feeBps,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       explorerUrl: `https://stellar.expert/explorer/testnet/tx/${txHash}`
     });
@@ -94,9 +99,37 @@ router.post('/repay', authMiddleware, async (req: AuthRequest, res) => {
     // Update DB cache
     db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
 
+    let refreshedScore = null;
+    try {
+      const summary = await buildScoreSummary(user.stellar_pub);
+      await updateOnChainMetrics(user.stellar_pub, summary.metrics);
+      refreshedScore = summary;
+      db.prepare(`
+        INSERT INTO score_events (user_id, tier, score, bootstrap_score, stellar_score, score_json, sbt_minted)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        req.userId,
+        summary.tier,
+        summary.score,
+        0,
+        summary.score,
+        JSON.stringify(summary),
+        1
+      );
+    } catch (refreshError) {
+      console.error('Failed to refresh score after repayment:', refreshError);
+    }
+
     res.json({
       txHash,
       amountRepaid: (Number(totalOwedStroops) / 10_000_000).toFixed(2),
+      updatedScore: refreshedScore ? {
+        score: refreshedScore.score,
+        tier: refreshedScore.tier,
+        tierLabel: refreshedScore.tierLabel,
+        borrowLimit: refreshedScore.borrowLimit,
+        pointsToNextTier: refreshedScore.pointsToNextTier,
+      } : null,
       explorerUrl: `https://stellar.expert/explorer/testnet/tx/${txHash}`
     });
   } catch (error: any) {
@@ -114,8 +147,10 @@ router.get('/status', authMiddleware, async (req: AuthRequest, res) => {
       [Address.fromString(user.stellar_pub).toScVal()]
     );
 
+    const poolBalance = await queryContract(contractIds.lendingPool, 'get_pool_balance', []);
+
     if (!loan) {
-      return res.json({ hasActiveLoan: false, loan: null });
+      return res.json({ hasActiveLoan: false, loan: null, poolBalance: Number(poolBalance || 0) / 10_000_000 });
     }
 
     const latestLedger = await rpcServer.getLatestLedger();
@@ -128,6 +163,7 @@ router.get('/status', authMiddleware, async (req: AuthRequest, res) => {
 
     res.json({
       hasActiveLoan: !loan.repaid && !loan.defaulted,
+      poolBalance: Number(poolBalance || 0) / 10_000_000,
       loan: {
         principal: (Number(loan.principal) / 10_000_000).toFixed(2),
         fee: (Number(loan.fee) / 10_000_000).toFixed(2),
@@ -138,9 +174,13 @@ router.get('/status', authMiddleware, async (req: AuthRequest, res) => {
       }
     });
   } catch (error) {
-    res.json({ hasActiveLoan: false, loan: null });
+    try {
+      const poolBalance = await queryContract(contractIds.lendingPool, 'get_pool_balance', []);
+      res.json({ hasActiveLoan: false, loan: null, poolBalance: Number(poolBalance || 0) / 10_000_000 });
+    } catch {
+      res.json({ hasActiveLoan: false, loan: null, poolBalance: 0 });
+    }
   }
 });
 
 export default router;
-
