@@ -3,10 +3,7 @@ import { Address } from '@stellar/stellar-sdk';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import db from '../db';
 import { asyncRoute, notFound } from '../errors';
-import {
-  buildScoreSummary,
-  getPoolSnapshot,
-} from '../scoring/engine';
+import { buildScoreSummary, getPoolSnapshot } from '../scoring/engine';
 import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
 import { queryContract } from '../stellar/query';
 import { contractIds } from '../stellar/client';
@@ -35,7 +32,7 @@ router.post(
       `
       INSERT INTO score_events (user_id, tier, score, bootstrap_score, stellar_score, score_json, sbt_minted, sbt_tx_hash)
       VALUES (?, ?, ?, 0, ?, ?, ?, ?)
-    `
+    `,
     ).run(
       user.id,
       payload.tier,
@@ -43,11 +40,11 @@ router.post(
       payload.score,
       JSON.stringify(payload),
       txHashes.metricsTxHash ? 1 : 0,
-      txHashes.metricsTxHash ?? null
+      txHashes.metricsTxHash ?? null,
     );
 
     res.json(payload);
-  })
+  }),
 );
 
 router.get(
@@ -69,7 +66,7 @@ router.get(
       ...payload,
       source: 'onchain',
     });
-  })
+  }),
 );
 
 router.get(
@@ -77,7 +74,7 @@ router.get(
   authMiddleware,
   asyncRoute(async (_req: AuthRequest, res) => {
     res.json(await getPoolSnapshot());
-  })
+  }),
 );
 
 router.get(
@@ -89,7 +86,7 @@ router.get(
       Address.fromString(user.stellar_pub).toScVal(),
     ]);
     res.json(metrics);
-  })
+  }),
 );
 
 export default router;

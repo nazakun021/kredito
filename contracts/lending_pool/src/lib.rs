@@ -285,7 +285,9 @@ impl LendingPool {
     }
 }
 
-fn get_instance_value<T: soroban_sdk::IntoVal<Env, soroban_sdk::Val> + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>>(
+fn get_instance_value<
+    T: soroban_sdk::IntoVal<Env, soroban_sdk::Val> + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
+>(
     env: &Env,
     key: &DataKey,
 ) -> T {

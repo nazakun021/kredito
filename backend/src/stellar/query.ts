@@ -1,20 +1,20 @@
-import { 
-  TransactionBuilder, 
-  rpc, 
+import {
+  TransactionBuilder,
+  rpc,
   xdr,
   Operation,
   Address,
-  scValToNative
+  scValToNative,
 } from '@stellar/stellar-sdk';
 import { rpcServer, networkPassphrase, issuerKeypair } from './client';
 
 export async function queryContract(
   contractId: string,
   functionName: string,
-  args: xdr.ScVal[]
+  args: xdr.ScVal[],
 ): Promise<any> {
   const issuerAccount = await rpcServer.getAccount(issuerKeypair.publicKey());
-  
+
   const tx = new TransactionBuilder(issuerAccount, {
     fee: '100',
     networkPassphrase,
@@ -26,10 +26,10 @@ export async function queryContract(
             contractAddress: Address.fromString(contractId).toScAddress(),
             functionName: functionName,
             args: args,
-          })
+          }),
         ),
         auth: [],
-      })
+      }),
     )
     .setTimeout(30)
     .build();
@@ -39,6 +39,6 @@ export async function queryContract(
   if (rpc.Api.isSimulationSuccess(response)) {
     return scValToNative(response.result!.retval);
   }
-  
+
   throw new Error(`Contract query failed for ${functionName}: ${JSON.stringify(response)}`);
 }

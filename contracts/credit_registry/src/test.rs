@@ -109,7 +109,13 @@ fn test_initialize_rejects_non_positive_limits() {
             invoke: &MockAuthInvoke {
                 contract: &contract_id,
                 fn_name: "initialize",
-                args: (issuer.clone(), 0i128, 200_000_000_000i128, 500_000_000_000i128).into_val(&env),
+                args: (
+                    issuer.clone(),
+                    0i128,
+                    200_000_000_000i128,
+                    500_000_000_000i128,
+                )
+                    .into_val(&env),
                 sub_invokes: &[],
             },
         }])

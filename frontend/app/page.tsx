@@ -28,11 +28,17 @@ export default function Page() {
   const [freighterReady, setFreighterReady] = useState(false);
 
   useEffect(() => {
-    setFreighterReady(isFreighterInstalled());
+    const timer = setTimeout(() => {
+      if (isFreighterInstalled()) {
+        setFreighterReady(true);
+      }
 
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('session') === 'expired') {
-      setError('Session expired. Start again.');
-    }
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('session') === 'expired') {
+        setError('Session expired. Start again.');
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const enterDemo = async () => {

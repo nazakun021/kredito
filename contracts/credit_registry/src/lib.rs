@@ -165,7 +165,10 @@ impl CreditRegistry {
     }
 
     pub fn compute_score(_env: Env, metrics: Metrics) -> u32 {
-        let avg_balance_factor = core::cmp::min(metrics.avg_balance / AVG_BALANCE_STEP, MAX_AVG_BALANCE_FACTOR);
+        let avg_balance_factor = core::cmp::min(
+            metrics.avg_balance / AVG_BALANCE_STEP,
+            MAX_AVG_BALANCE_FACTOR,
+        );
         let base_score = metrics
             .tx_count
             .saturating_mul(2)
@@ -247,9 +250,10 @@ fn store_credit_state(env: &Env, wallet: Address, metrics: Metrics, score: u32, 
     env.storage()
         .persistent()
         .set(&DataKey::CreditTier(wallet.clone()), &tier);
-    env.storage()
-        .persistent()
-        .set(&DataKey::TierTimestamp(wallet.clone()), &env.ledger().timestamp());
+    env.storage().persistent().set(
+        &DataKey::TierTimestamp(wallet.clone()),
+        &env.ledger().timestamp(),
+    );
     env.events().publish(
         (symbol_short!("score_upd"), wallet),
         (score, tier, env.ledger().timestamp()),

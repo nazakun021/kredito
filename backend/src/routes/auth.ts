@@ -33,7 +33,7 @@ router.post(
         `
         INSERT INTO users (email, stellar_pub, stellar_enc_secret, email_verified, is_external)
         VALUES (?, ?, ?, 1, 0)
-      `
+      `,
       )
       .run(syntheticEmail('demo'), keypair.publicKey(), encryptedSecret);
 
@@ -45,7 +45,7 @@ router.post(
       isNew: true,
       isExternal: false,
     });
-  })
+  }),
 );
 
 router.post(
@@ -74,7 +74,7 @@ router.post(
         `
         INSERT INTO users (email, stellar_pub, stellar_enc_secret, email_verified, is_external)
         VALUES (?, ?, NULL, 1, 1)
-      `
+      `,
       )
       .run(syntheticEmail('freighter'), parsed.data.stellarAddress);
 
@@ -84,7 +84,7 @@ router.post(
       isNew: true,
       isExternal: true,
     });
-  })
+  }),
 );
 
 export default router;

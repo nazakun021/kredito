@@ -6,5 +6,7 @@ export async function ensureDemoWalletReady(userKeypair: Keypair) {
     return;
   }
 
-  fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(userKeypair.publicKey())}`).catch(() => {});
+  fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(userKeypair.publicKey())}`).catch(
+    () => {},
+  );
 }

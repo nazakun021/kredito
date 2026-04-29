@@ -1,6 +1,5 @@
 import {
   Address,
-  Asset,
   FeeBumpTransaction,
   Horizon,
   Keypair,
@@ -31,7 +30,9 @@ export async function pollTransaction(hash: string, timeoutMs = 60_000) {
       }
 
       if (txResponse.status === 'FAILED') {
-        throw new Error(`Transaction failed on-chain: ${JSON.stringify(txResponse.resultXdr ?? txResponse)}`);
+        throw new Error(
+          `Transaction failed on-chain: ${JSON.stringify(txResponse.resultXdr ?? txResponse)}`,
+        );
       }
     } catch (error) {
       // If it's a real failure from the contract, rethrow
@@ -39,7 +40,10 @@ export async function pollTransaction(hash: string, timeoutMs = 60_000) {
         throw error;
       }
       // Otherwise, assume it's a transient RPC error and retry
-      console.warn(`Polling attempt failed for ${hash}:`, error instanceof Error ? error.message : error);
+      console.warn(
+        `Polling attempt failed for ${hash}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
 
     await sleep(1000);
@@ -59,7 +63,7 @@ async function createAccountFromIssuer(destination: string) {
       Operation.createAccount({
         destination,
         startingBalance: '10',
-      })
+      }),
     )
     .setTimeout(180)
     .build();
@@ -83,7 +87,12 @@ async function ensureUserAccount(userKeypair: Keypair) {
   }
 }
 
-function buildInvokeTransaction(source: Horizon.AccountResponse | Awaited<ReturnType<typeof rpcServer.getAccount>>, contractId: string, functionName: string, args: xdr.ScVal[]) {
+function buildInvokeTransaction(
+  source: Horizon.AccountResponse | Awaited<ReturnType<typeof rpcServer.getAccount>>,
+  contractId: string,
+  functionName: string,
+  args: xdr.ScVal[],
+) {
   return new TransactionBuilder(source, {
     fee: CLASSIC_BASE_FEE,
     networkPassphrase,
@@ -96,16 +105,21 @@ function buildInvokeTransaction(source: Horizon.AccountResponse | Awaited<Return
             contractAddress: Address.fromString(contractId).toScAddress(),
             functionName,
             args,
-          })
+          }),
         ),
         auth: [],
-      })
+      }),
     )
     .setTimeout(180)
     .build();
 }
 
-export async function buildUnsignedContractCall(userPublicKey: string, contractId: string, functionName: string, args: xdr.ScVal[]) {
+export async function buildUnsignedContractCall(
+  userPublicKey: string,
+  contractId: string,
+  functionName: string,
+  args: xdr.ScVal[],
+) {
   const sourceAccount = await rpcServer.getAccount(userPublicKey);
   const tx = buildInvokeTransaction(sourceAccount, contractId, functionName, args);
   const prepared = await rpcServer.prepareTransaction(tx);
@@ -118,14 +132,16 @@ export async function submitSponsoredSignedXdr(signedInnerXdr: string) {
     issuerKeypair,
     SPONSORED_BASE_FEE,
     innerTx,
-    networkPassphrase
+    networkPassphrase,
   );
 
   feeBump.sign(issuerKeypair);
 
   const response = await rpcServer.sendTransaction(feeBump);
   if (response.status !== 'PENDING') {
-    throw new Error(`Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`);
+    throw new Error(
+      `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
+    );
   }
 
   await pollTransaction(response.hash);
@@ -136,7 +152,7 @@ export async function buildAndSubmitFeeBump(
   userKeypair: Keypair,
   contractId: string,
   functionName: string,
-  args: xdr.ScVal[]
+  args: xdr.ScVal[],
 ): Promise<string> {
   const userAccount = await ensureUserAccount(userKeypair);
   const tx = buildInvokeTransaction(userAccount, contractId, functionName, args);
@@ -147,14 +163,16 @@ export async function buildAndSubmitFeeBump(
     issuerKeypair,
     SPONSORED_BASE_FEE,
     prepared,
-    networkPassphrase
+    networkPassphrase,
   );
 
   feeBump.sign(issuerKeypair);
   const response = await rpcServer.sendTransaction(feeBump as FeeBumpTransaction);
 
   if (response.status !== 'PENDING') {
-    throw new Error(`Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`);
+    throw new Error(
+      `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
+    );
   }
 
   await pollTransaction(response.hash);

@@ -11,7 +11,6 @@ import {
   getPoolSnapshot,
   tierFeeBps,
   toPhpAmount,
-  toPhpNumber,
   toStroops,
 } from '../scoring/engine';
 import {
@@ -36,7 +35,9 @@ async function loadUser(request: AuthRequest) {
 }
 
 async function getLoanRecord(walletAddress: string) {
-  return queryContract(contractIds.lendingPool, 'get_loan', [Address.fromString(walletAddress).toScVal()]);
+  return queryContract(contractIds.lendingPool, 'get_loan', [
+    Address.fromString(walletAddress).toScVal(),
+  ]);
 }
 
 router.post(
@@ -83,7 +84,7 @@ router.post(
         user.stellar_pub,
         contractIds.lendingPool,
         'borrow',
-        args
+        args,
       );
       return res.json({
         requiresSignature: true,
@@ -95,9 +96,14 @@ router.post(
     const userSecret = decrypt(user.stellar_enc_secret);
     try {
       const userKeypair = Keypair.fromSecret(userSecret);
-      const txHash = await buildAndSubmitFeeBump(userKeypair, contractIds.lendingPool, 'borrow', args);
+      const txHash = await buildAndSubmitFeeBump(
+        userKeypair,
+        contractIds.lendingPool,
+        'borrow',
+        args,
+      );
       db.prepare(
-        'INSERT INTO active_loans (user_id, stellar_pub) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET stellar_pub = excluded.stellar_pub'
+        'INSERT INTO active_loans (user_id, stellar_pub) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET stellar_pub = excluded.stellar_pub',
       ).run(req.userId, user.stellar_pub);
 
       res.json({
@@ -109,7 +115,7 @@ router.post(
     } finally {
       userSecret.replace?.(/./g, '');
     }
-  })
+  }),
 );
 
 router.post(
@@ -161,7 +167,7 @@ router.post(
           user.stellar_pub,
           contractIds.phpcToken,
           'approve',
-          approveArgs
+          approveArgs,
         );
         return res.json({
           requiresSignature: true,
@@ -169,7 +175,8 @@ router.post(
           unsignedXdr: unsignedApproveXdr,
           meta: {
             amountRepaid: toPhpAmount(totalOwedStroops),
-            instructions: 'Sign and submit this approve XDR first, then call /api/loan/repay again to get the repay XDR.',
+            instructions:
+              'Sign and submit this approve XDR first, then call /api/loan/repay again to get the repay XDR.',
           },
         });
       }
@@ -179,7 +186,7 @@ router.post(
         user.stellar_pub,
         contractIds.lendingPool,
         'repay',
-        repayArgs
+        repayArgs,
       );
 
       return res.json({
@@ -197,7 +204,12 @@ router.post(
     try {
       const userKeypair = Keypair.fromSecret(userSecret);
       await buildAndSubmitFeeBump(userKeypair, contractIds.phpcToken, 'approve', approveArgs);
-      const txHash = await buildAndSubmitFeeBump(userKeypair, contractIds.lendingPool, 'repay', repayArgs);
+      const txHash = await buildAndSubmitFeeBump(
+        userKeypair,
+        contractIds.lendingPool,
+        'repay',
+        repayArgs,
+      );
 
       db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
 
@@ -208,13 +220,13 @@ router.post(
         `
         INSERT INTO score_events (user_id, tier, score, bootstrap_score, stellar_score, score_json, sbt_minted)
         VALUES (?, ?, ?, 0, ?, ?, 1)
-      `
+      `,
       ).run(
         req.userId,
         refreshed.tier,
         refreshed.score,
         refreshed.score,
-        JSON.stringify(refreshed)
+        JSON.stringify(refreshed),
       );
 
       res.json({
@@ -229,7 +241,7 @@ router.post(
     } finally {
       userSecret.replace?.(/./g, '');
     }
-  })
+  }),
 );
 
 router.get(
@@ -272,7 +284,7 @@ router.get(
         status,
       },
     });
-  })
+  }),
 );
 
 router.post(
@@ -296,7 +308,7 @@ router.post(
       txHashes: hashes,
       explorerUrl: getExplorerUrl(txHash),
     });
-  })
+  }),
 );
 
 export default router;

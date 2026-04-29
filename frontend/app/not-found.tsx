@@ -9,7 +9,7 @@ export default function NotFound() {
       </p>
       <h1 className="mt-4 text-xl font-extrabold">Page not found</h1>
       <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-        The page you're looking for doesn't exist.
+        {"The page you're looking for doesn't exist."}
       </p>
       <Link
         href="/"

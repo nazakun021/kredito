@@ -1,15 +1,5 @@
-import {
-  Address,
-  Operation,
-  TransactionBuilder,
-  nativeToScVal,
-  xdr,
-} from '@stellar/stellar-sdk';
-import {
-  WalletMetrics,
-  buildScorePayload,
-  tierLabel,
-} from '../scoring/engine';
+import { Address, Operation, TransactionBuilder, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { WalletMetrics, buildScorePayload, tierLabel } from '../scoring/engine';
 import { contractIds, issuerKeypair, networkPassphrase, rpcServer } from './client';
 import { pollTransaction } from './feebump';
 import { queryContract } from './query';
@@ -27,10 +17,10 @@ async function invokeIssuerContract(functionName: string, args: xdr.ScVal[]) {
             contractAddress: Address.fromString(contractIds.creditRegistry).toScAddress(),
             functionName,
             args,
-          })
+          }),
         ),
         auth: [],
-      })
+      }),
     )
     .setTimeout(180)
     .build();
@@ -42,7 +32,9 @@ async function invokeIssuerContract(functionName: string, args: xdr.ScVal[]) {
   const response = await rpcServer.sendTransaction(prepared);
   if (response.status !== 'PENDING') {
     console.error(`Submission failed for ${functionName}:`, response);
-    throw new Error(`Issuer transaction failed: ${JSON.stringify(response.errorResult ?? response)}`);
+    throw new Error(
+      `Issuer transaction failed: ${JSON.stringify(response.errorResult ?? response)}`,
+    );
   }
 
   console.log(`Transaction ${functionName} submitted: ${response.hash}. Polling...`);
@@ -76,7 +68,9 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
     queryCreditRegistry('get_tier', [wallet]),
     queryCreditRegistry('get_metrics', [wallet]),
   ]);
-  const tierLimit = await queryCreditRegistry('get_tier_limit', [nativeToScVal(Number(tier ?? 0), { type: 'u32' })]);
+  const tierLimit = await queryCreditRegistry('get_tier_limit', [
+    nativeToScVal(Number(tier ?? 0), { type: 'u32' }),
+  ]);
 
   return buildScorePayload(walletAddress, {
     score: Number(score ?? 0),

@@ -25,7 +25,7 @@ export function calculateScore(metrics: WalletMetrics): number {
     metrics.txCount * 2 +
       metrics.repaymentCount * 10 +
       avgBalanceFactor * 5 -
-      metrics.defaultCount * 25
+      metrics.defaultCount * 25,
   );
 }
 
@@ -129,7 +129,7 @@ export function buildScorePayload(
     source: 'generated' | 'onchain';
     tierLabel?: string;
     txHashes?: { metricsTxHash?: string; scoreTxHash?: string };
-  }
+  },
 ) {
   const avgBalanceFactor = Math.min(Math.floor(input.metrics.avgBalance / 100), 10);
   const factors = buildScoreFactors(input.metrics);
@@ -157,7 +157,8 @@ export function buildScorePayload(
       defaultCount: input.metrics.defaultCount,
     },
     formula: {
-      expression: 'score = (tx_count × 2) + (repayment_count × 10) + (avg_balance_factor × 5) - (default_count × 25)',
+      expression:
+        'score = (tx_count × 2) + (repayment_count × 10) + (avg_balance_factor × 5) - (default_count × 25)',
       txComponent: input.metrics.txCount * 2,
       repaymentComponent: input.metrics.repaymentCount * 10,
       balanceComponent: avgBalanceFactor * 5,
@@ -171,7 +172,12 @@ export function buildScorePayload(
 
 export async function fetchTxCount(address: string): Promise<number> {
   try {
-    const txs = await horizonServer.transactions().forAccount(address).limit(200).order('desc').call();
+    const txs = await horizonServer
+      .transactions()
+      .forAccount(address)
+      .limit(200)
+      .order('desc')
+      .call();
     return txs.records.length;
   } catch {
     return 0;
@@ -188,7 +194,9 @@ export async function fetchAverageBalance(address: string): Promise<number> {
   }
 }
 
-export async function fetchRepaymentMetrics(address: string): Promise<Pick<WalletMetrics, 'repaymentCount' | 'defaultCount'>> {
+export async function fetchRepaymentMetrics(
+  address: string,
+): Promise<Pick<WalletMetrics, 'repaymentCount' | 'defaultCount'>> {
   try {
     const latestLedger = await rpcServer.getLatestLedger();
     const events = await rpcServer.getEvents({
@@ -264,7 +272,9 @@ export async function buildScoreSummary(address: string) {
 }
 
 export async function getPoolSnapshot() {
-  const poolBalanceRaw = BigInt(await queryContract(contractIds.lendingPool, 'get_pool_balance', []));
+  const poolBalanceRaw = BigInt(
+    await queryContract(contractIds.lendingPool, 'get_pool_balance', []),
+  );
   return {
     poolBalance: toPhpAmount(poolBalanceRaw),
     poolBalanceRaw: poolBalanceRaw.toString(),

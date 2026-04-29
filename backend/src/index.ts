@@ -11,7 +11,6 @@ import authRoutes from './routes/auth';
 import creditRoutes from './routes/credit';
 import loanRoutes from './routes/loan';
 
-
 const app = express();
 
 initDb();
@@ -21,7 +20,7 @@ app.use(
   cors({
     origin: config.corsOrigins,
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 

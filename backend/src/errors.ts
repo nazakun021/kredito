@@ -23,7 +23,7 @@ export function notFound(message: string) {
 }
 
 export function asyncRoute(
-  handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
+  handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
 ) {
   return (req: Request, res: Response, next: NextFunction) => {
     void handler(req, res, next).catch(next);
@@ -79,5 +79,7 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
   const friendly = mapSorobanError(message);
 
   console.error(error);
-  return res.status(400).json({ error: friendly ?? 'Something went wrong. Contract may be temporarily unavailable.' });
+  return res
+    .status(400)
+    .json({ error: friendly ?? 'Something went wrong. Contract may be temporarily unavailable.' });
 }

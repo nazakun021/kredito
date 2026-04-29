@@ -39,7 +39,9 @@ export function initDb() {
     )
   `);
 
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_otp_requests_user_time ON otp_requests(user_id, sent_at)`);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_otp_requests_user_time ON otp_requests(user_id, sent_at)`,
+  );
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS bootstrap_assessments (
