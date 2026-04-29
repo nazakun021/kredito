@@ -1,33 +1,100 @@
 # Kredito
 
-Transparent on-chain credit scores and instant micro-loans for the unbanked, built on Stellar.
+Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar.
 
-## Live Demo
+## Problem
 
-- **Web App**: [https://kredito-iota.vercel.app](https://kredito-iota.vercel.app)
-- **Backend API**: [https://kredito-production.up.railway.app/api](https://kredito-production.up.railway.app/api)
+Small retail business owners in the Philippines (sari-sari stores, online resellers, market vendors) lack traditional credit history, making them "invisible" to banks. They often rely on informal lenders with predatory interest rates or use personal savings, which stunts their growth. Traditional digital wallets have low transaction caps and no path to credit, leaving SMEs without the capital needed for bulk inventory orders.
 
-## Smart Contracts (Verified on Stellar Testnet)
+## Solution
 
-- `credit_registry`: `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
-- `lending_pool`: `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
-- `phpc_token`: `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
+Kredito uses deterministic on-chain transaction history to generate verifiable credit scores. These scores are stored in a Soroban smart contract and used to unlock tiered micro-loans from a decentralized liquidity pool. Settlement happens in seconds with near-zero fees, and users build a portable "Credit Passport" with every on-time repayment.
 
-These contracts are live and funded on the testnet. Full end-to-end cycles (Score -> Borrow -> Repay) have been verified with live transactions (e.g., [57d2cc...](https://stellar.expert/explorer/testnet/tx/57d2cc099cd3ac00bbcd76826a4c13989135f8077e8e7a0aca4ab2d3bc7fb8e4)).
+## Demo Flow (2 minutes)
 
-## Stack
+1. **Enter Demo** — A test wallet is automatically generated and funded to simulate a real user.
+2. **Generate Score** — The system analyzes on-chain metrics (transaction count, average balance, etc.).
+3. **Unlock Tier** — Users are assigned a tier (Bronze, Silver, Gold) and a corresponding borrow limit.
+4. **Instant Loan** — Borrow PHPC (Philippine Peso stablecoin) from the pool instantly via smart contract.
+5. **Repay & Upgrade** — Repaying on time improves the score and unlocks higher limits in real-time.
 
-- Frontend: Next.js 16, React 19, Zustand, TanStack Query
-- Backend: Express 5, SQLite, `@stellar/stellar-sdk`
-- Contracts: Soroban Rust workspace with `credit_registry`, `lending_pool`, and `phpc_token`
+## Architecture
 
-## Quick Start
+- **Frontend (Next.js 16)**: Built with React 19, Zustand for state management, and TanStack Query for data fetching.
+- **Backend (Express)**: Handles identity management, secure wallet encryption, and identity-to-wallet mapping using SQLite.
+- **Stellar (Soroban)**: Core financial logic running on the Stellar Testnet.
+- **Client SDK**: `@stellar/stellar-sdk` for transaction building, fee-sponsoring, and RPC interaction.
 
-### Contracts
+## Project Structure
+
+```text
+kredito/
+├── contracts/
+│   ├── credit_registry/        # Scoring, tiering, and metrics logic
+│   ├── lending_pool/           # Borrowing, repayment, and pool management
+│   └── phpc_token/             # SEP-41 compliant PHPC stablecoin
+├── backend/
+│   ├── src/
+│   │   ├── routes/             # Auth, Credit, and Loan API endpoints
+│   │   ├── stellar/            # Fee-bump and RPC utilities
+│   │   └── scoring/            # Off-chain score calculation logic
+├── frontend/
+│   ├── app/                    # Next.js App Router (Dashboard, Borrow, Repay)
+│   ├── store/                  # Zustand auth and UI state
+│   └── lib/                    # API clients and Freighter integration
+└── docs/                       # Architecture, Setup, and API specs
+```
+
+## Stellar Features Used
+
+| Feature                    | Usage                                                                |
+| :------------------------- | :------------------------------------------------------------------- |
+| **Soroban Contracts**      | Powering the scoring engine and the lending pool logic.              |
+| **PHPC (Stablecoin)**      | Enabling non-volatile loans pegged to the local currency (PHP).      |
+| **Sponsored Transactions** | Issuer-funded fee-bumps for a seamless, gasless user experience.     |
+| **Stellar RPC**            | Real-time indexing of on-chain activity to calculate credit metrics. |
+
+## Smart Contracts
+
+Deployed and verified on Stellar testnet:
+
+- **`credit_registry`**: `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
+- **`lending_pool`**: `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
+- **`phpc_token`**: `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface
+![Credit Registry Explorer](./images/img1.png)
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface
+![Lending Pool Explorer](./images/img2.png)
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface
+![PHPC Token Explorer](./images/img3.png)
+
+## Contract Functions
+
+| Function         | Contract          | Description                                          |
+| :--------------- | :---------------- | :--------------------------------------------------- |
+| `update_metrics` | `credit_registry` | Submits raw tx/balance metrics to update score.      |
+| `get_tier`       | `credit_registry` | Returns the current user tier (0-3).                 |
+| `borrow`         | `lending_pool`    | Validates tier/limit and disburses PHPC to borrower. |
+| `repay`          | `lending_pool`    | Accepts repayment and triggers score improvement.    |
+| `deposit`        | `lending_pool`    | Allows admins/liquidity providers to fund the pool.  |
+
+## Setup & Installation
+
+### Prerequisites
+
+- Node.js 18+ and `pnpm`
+- Rust (latest stable) and `stellar-cli`
+- Freighter browser extension (set to Testnet)
+
+### Smart Contracts
 
 ```bash
 cd contracts
 cargo test --workspace
+stellar contract build
 ```
 
 ### Backend
@@ -35,68 +102,25 @@ cargo test --workspace
 ```bash
 cd backend
 pnpm install
-pnpm build
 pnpm dev
 ```
 
-Required backend environment variables:
-
-- `JWT_SECRET`
-- `ENCRYPTION_KEY` (64 hex chars)
-- `ISSUER_SECRET_KEY`
-- `PHPC_ID`
-- `REGISTRY_ID`
-- `LENDING_POOL_ID`
-- `HORIZON_URL`
-- `SOROBAN_RPC_URL`
-- `NETWORK_PASSPHRASE`
-- `CORS_ORIGIN`
+_Requires `.env` with `JWT_SECRET`, `ENCRYPTION_KEY`, and Stellar credentials._
 
 ### Frontend
 
 ```bash
 cd frontend
 pnpm install
-pnpm exec tsc --noEmit
-pnpm exec next build --webpack
 pnpm dev
 ```
 
-Required frontend environment variables:
+_Runs at `http://localhost:3000`._
 
-- `NEXT_PUBLIC_API_URL`
+## Why Stellar?
 
-`next build` with Turbopack is unreliable in this sandbox because CSS processing attempts to bind a port. `next build --webpack` succeeds locally.
+Stellar provides the perfect infrastructure for micro-finance:
 
-## API Surface
-
-- `POST /api/auth/demo`
-- `POST /api/auth/login`
-- `POST /api/credit/generate`
-- `GET /api/credit/score`
-- `GET /api/credit/pool`
-- `POST /api/loan/borrow`
-- `POST /api/loan/repay`
-- `GET /api/loan/status`
-- `POST /api/tx/sign-and-submit`
-
-Verified:
-
-- `cargo test --workspace`
-- `backend`: `pnpm build`
-- `frontend`: `pnpm exec tsc --noEmit`
-- `frontend`: `pnpm exec next build --webpack`
-- Live testnet contract IDs (Pool balance and Registry limits verified)
-
-Not verified in this environment:
-
-- **Full E2E Cycle Verified**: Identity creation, score generation, borrowing, and two-step repayment confirmed on live Soroban RPC.
-- **Production Deployment**: Backend live on Railway (with SQLite persistence), Frontend live on Vercel.
-
-## Docs
-
-- [docs/SETUP.md](/Users/infinite/Programming/kredito/docs/SETUP.md)
-- [docs/ARCHITECTURE.md](/Users/infinite/Programming/kredito/docs/ARCHITECTURE.md)
-- [docs/SPECv3.md](/Users/infinite/Programming/kredito/docs/SPECv3.md)
-- [docs/TODOv3.md](/Users/infinite/Programming/kredito/docs/TODOv3.md)
-- [docs/TESTING.md](/Users/infinite/Programming/kredito/docs/TESTING.md)
+- **Sub-cent Fees**: Loans are economically viable even at small amounts.
+- **Instant Settlement**: Borrowers get funds in 3-5 seconds, not days.
+- **Native Compliance**: Stablecoins like PHPC allow for regulatory-friendly settlement in local currency.
