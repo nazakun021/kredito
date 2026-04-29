@@ -1,7 +1,9 @@
-import { scValToNative, xdr } from '@stellar/stellar-sdk';
+import { Address, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { LEDGERS_PER_DAY, STROOPS_PER_UNIT } from '../config';
 import { contractIds, horizonServer, rpcServer } from '../stellar/client';
 import { queryContract } from '../stellar/query';
+
+const REPAYMENT_LOOKBACK_LEDGERS = 250_000;
 
 export interface WalletMetrics {
   txCount: number;
@@ -197,10 +199,9 @@ export async function fetchAverageBalance(address: string): Promise<number> {
 export async function fetchRepaymentMetrics(
   address: string,
 ): Promise<Pick<WalletMetrics, 'repaymentCount' | 'defaultCount'>> {
-  try {
-    const latestLedger = await rpcServer.getLatestLedger();
-    const events = await rpcServer.getEvents({
-      startLedger: Math.max(0, latestLedger.sequence - 250_000),
+  async function loadEvents(startLedger: number) {
+    return rpcServer.getEvents({
+      startLedger,
       filters: [
         {
           type: 'contract',
@@ -209,6 +210,37 @@ export async function fetchRepaymentMetrics(
       ],
       limit: 200,
     });
+  }
+
+  function parseLedgerRange(error: unknown) {
+    const message =
+      typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message ?? '')
+        : '';
+    const match = message.match(/ledger range:\s*(\d+)\s*-\s*(\d+)/i);
+    if (!match) return null;
+
+    return {
+      min: Number(match[1]),
+      max: Number(match[2]),
+    };
+  }
+
+  try {
+    const latestLedger = await rpcServer.getLatestLedger();
+    const requestedStartLedger = Math.max(0, latestLedger.sequence - REPAYMENT_LOOKBACK_LEDGERS);
+    let events;
+
+    try {
+      events = await loadEvents(requestedStartLedger);
+    } catch (error) {
+      const range = parseLedgerRange(error);
+      if (!range) {
+        throw error;
+      }
+
+      events = await loadEvents(Math.max(range.min, Math.min(requestedStartLedger, range.max)));
+    }
 
     let repaymentCount = 0;
     let defaultCount = 0;
@@ -222,6 +254,21 @@ export async function fetchRepaymentMetrics(
 
       if (topicName === 'repaid') repaymentCount += 1;
       if (topicName === 'defaulted') defaultCount += 1;
+    }
+
+    // RPC event retention is limited. If older events have rolled out of the
+    // available window, at least reflect the current persisted loan outcome.
+    if (repaymentCount === 0 || defaultCount === 0) {
+      try {
+        const latestLoan = await queryContract(contractIds.lendingPool, 'get_loan', [
+          Address.fromString(address).toScVal(),
+        ]);
+
+        if (latestLoan?.repaid) repaymentCount = Math.max(repaymentCount, 1);
+        if (latestLoan?.defaulted) defaultCount = Math.max(defaultCount, 1);
+      } catch {
+        // Ignore latest-loan fallback failures and return the event-derived counts.
+      }
     }
 
     return { repaymentCount, defaultCount };

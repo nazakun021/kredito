@@ -4,10 +4,36 @@ import { useWalletStore } from '../store/walletStore';
 import { signTx } from './freighter';
 import { toast } from 'sonner';
 
+type LoanAction = 'borrow' | 'repay';
+
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/',
   timeout: 15000,
 });
+
+async function signAndSubmitWithFreighter(
+  unsignedXdr: string | string[],
+  action: LoanAction,
+  step?: string,
+) {
+  const unsignedTransactions = Array.isArray(unsignedXdr) ? unsignedXdr : [unsignedXdr];
+  const publicKey = useWalletStore.getState().publicKey;
+  if (!publicKey) throw new Error('Wallet not connected');
+
+  const signedResults = await Promise.all(
+    unsignedTransactions.map((xdr) => signTx(xdr, publicKey)),
+  );
+
+  const signedInnerXdr = signedResults.map((result) => {
+    if ('error' in result) throw new Error(result.error);
+    return result.signedXdr;
+  });
+
+  return api.post('tx/sign-and-submit', {
+    signedInnerXdr,
+    flow: { action, step },
+  });
+}
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
@@ -28,33 +54,25 @@ api.interceptors.response.use(
       (url.endsWith('loan/borrow') || url.endsWith('loan/repay'))
     ) {
       toast.info('Signature required in Freighter');
-      const unsignedXdr = Array.isArray(response.data.unsignedXdr)
-        ? response.data.unsignedXdr
-        : [response.data.unsignedXdr];
-      
-      const publicKey = useWalletStore.getState().publicKey;
-      if (!publicKey) throw new Error('Wallet not connected');
+      const action: LoanAction = url.endsWith('loan/borrow') ? 'borrow' : 'repay';
 
-      const signedResults = await Promise.all(
-        unsignedXdr.map((xdr: string) => signTx(xdr, publicKey))
+      if (action === 'repay' && response.data.step === 'approve') {
+        await signAndSubmitWithFreighter(response.data.unsignedXdr, 'repay', 'approve');
+        toast.info('Approval confirmed. Complete the on-chain repayment now.');
+        const repayResponse = await api.post('loan/repay');
+        response.data = repayResponse.data;
+        return response;
+      }
+
+      const submitResponse = await signAndSubmitWithFreighter(
+        response.data.unsignedXdr,
+        action,
+        response.data.step,
       );
-      
-      const signedInnerXdr = signedResults.map(r => {
-        if ('error' in r) throw new Error(r.error);
-        return r.signedXdr;
-      });
 
-      const submitResponse = await api.post('tx/sign-and-submit', { signedInnerXdr });
-
-      if (url.endsWith('loan/repay')) {
-        const refreshed = await api.post('credit/generate');
+      if (action === 'repay') {
         response.data = {
-          ...response.data.meta,
           ...submitResponse.data,
-          previousScore: null,
-          newScore: refreshed.data.score,
-          newTier: refreshed.data.tierLabel,
-          newBorrowLimit: refreshed.data.borrowLimit,
         };
         return response;
       }

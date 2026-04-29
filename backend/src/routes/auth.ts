@@ -128,7 +128,9 @@ router.post(
       .get(clientAccountID) as any;
 
     if (existing) {
-      db.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).run(Number(existing.id));
+      db.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+        Number(existing.id),
+      );
       return res.json({
         token: issueToken(Number(existing.id)),
         wallet: existing.stellar_pub,
@@ -146,7 +148,9 @@ router.post(
       )
       .run(syntheticEmail('freighter'), clientAccountID);
 
-    db.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).run(Number(info.lastInsertRowid));
+    db.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+      Number(info.lastInsertRowid),
+    );
 
     res.json({
       token: issueToken(Number(info.lastInsertRowid)),

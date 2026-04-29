@@ -73,18 +73,22 @@ async function createAccountFromIssuer(destination: string) {
   return response.hash;
 }
 
-async function ensureUserAccount(userKeypair: Keypair) {
+async function ensureUserAccountByAddress(publicKey: string) {
   try {
-    return await rpcServer.getAccount(userKeypair.publicKey());
+    return await rpcServer.getAccount(publicKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!message.toLowerCase().includes('account not found')) {
       throw error;
     }
 
-    await createAccountFromIssuer(userKeypair.publicKey());
-    return rpcServer.getAccount(userKeypair.publicKey());
+    await createAccountFromIssuer(publicKey);
+    return rpcServer.getAccount(publicKey);
   }
+}
+
+async function ensureUserAccount(userKeypair: Keypair) {
+  return ensureUserAccountByAddress(userKeypair.publicKey());
 }
 
 function buildInvokeTransaction(
@@ -120,7 +124,7 @@ export async function buildUnsignedContractCall(
   functionName: string,
   args: xdr.ScVal[],
 ) {
-  const sourceAccount = await rpcServer.getAccount(userPublicKey);
+  const sourceAccount = await ensureUserAccountByAddress(userPublicKey);
   const tx = buildInvokeTransaction(sourceAccount, contractId, functionName, args);
   const prepared = await rpcServer.prepareTransaction(tx);
   return prepared.toXDR();

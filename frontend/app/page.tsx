@@ -60,7 +60,15 @@ export default function Page() {
     setError('');
 
     try {
-      // loginWithFreighter now throws specific errors if missing or rejected
+      // 1. Ensure wallet store is connected and synchronized
+      await useWalletStore.getState().connect();
+      
+      const { isConnected, connectionError } = useWalletStore.getState();
+      if (!isConnected || connectionError) {
+        throw new Error(connectionError || 'Failed to connect wallet');
+      }
+
+      // 2. Perform backend login (SEP-10 challenge)
       const data = await loginWithFreighter();
 
       if (data) {
