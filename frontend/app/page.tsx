@@ -33,8 +33,15 @@ export default function Page() {
   useEffect(() => {
     let cancelled = false;
 
+    // 1. Auto-redirect if already authenticated
+    const token = useAuthStore.getState().token;
+    if (token) {
+      router.push('/dashboard');
+      return;
+    }
+
     void (async () => {
-      // Wait for Freighter injection (handles the async check internally)
+      // 2. Wait for Freighter injection
       const installed = await waitForFreighter();
       if (!cancelled) {
         setFreighterReady(installed);
@@ -53,7 +60,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   const connectWallet = async () => {
     setWalletLoading(true);
@@ -179,7 +186,21 @@ export default function Page() {
             ) : null}
 
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-              {freighterReady || checkingFreighter ? (
+              {useAuthStore.getState().token ? (
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="flex h-14 w-full items-center justify-center gap-3 rounded-xl px-8 text-base font-bold transition-all sm:w-auto"
+                  style={{
+                    background: 'var(--color-accent)',
+                    color: '#020617',
+                    boxShadow: '0 12px 40px rgba(34, 197, 94, 0.25)',
+                  }}
+                >
+                  <TrendingUp size={20} />
+                  Go to Dashboard
+                  <ArrowRight size={20} />
+                </button>
+              ) : freighterReady || checkingFreighter ? (
                 <button
                   onClick={connectWallet}
                   disabled={walletLoading}
