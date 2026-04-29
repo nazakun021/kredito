@@ -539,11 +539,11 @@ For Freighter users, the backend never sees the private key. The flow is:
 
 ### Frontend Environment Variables
 
-| Variable                    | Required | Description                                          |
-| :-------------------------- | :------- | :--------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`       | Yes      | Backend API base URL                                 |
-| `NEXT_PUBLIC_NETWORK`       | No       | `testnet` or `mainnet` (defaults to `testnet`)       |
-| `NEXT_PUBLIC_EXPLORER_URL`  | No       | Stellar Expert base URL for on-chain explorer links  |
+| Variable                   | Required | Description                                         |
+| :------------------------- | :------- | :-------------------------------------------------- |
+| `NEXT_PUBLIC_API_URL`      | Yes      | Backend API base URL                                |
+| `NEXT_PUBLIC_NETWORK`      | No       | `testnet` or `mainnet` (defaults to `testnet`)      |
+| `NEXT_PUBLIC_EXPLORER_URL` | No       | Stellar Expert base URL for on-chain explorer links |
 
 ---
 

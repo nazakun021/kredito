@@ -5,8 +5,11 @@ Transparent on-chain credit scores and instant micro-loans for the Filipino unba
 ## Links
 
 🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
+
 🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface)**
+
 🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface)**
+
 🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface)**
 
 > **SEA Stellar Hackathon · Track: Payments & Financial Access**

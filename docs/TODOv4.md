@@ -8,14 +8,14 @@
 
 ## DevRel Checklist — Direct Response
 
-| DevRel Request                               | Status                                          | Action       |
-| -------------------------------------------- | ----------------------------------------------- | ------------ |
-| Frontend fully polished and production-ready | ⚠️ Landing done, full flow unverified           | Phase 1      |
-| Finalize and clearly document README         | ✅ Links block + track statement + demo flow    | —            |
-| Add deployed smart contract links            | ✅ Done — Stellar Expert + screenshots          | —            |
-| Include live deployment link                 | ✅ Added to README Links section                | —            |
-| Update About section                         | ✅ Has Vercel URL                               | Minor polish |
-| Improve repo organization                    | ✅ .env.example, deployed.json, docs/README.md  | —            |
+| DevRel Request                               | Status                                         | Action       |
+| -------------------------------------------- | ---------------------------------------------- | ------------ |
+| Frontend fully polished and production-ready | ⚠️ Landing done, full flow unverified          | Phase 1      |
+| Finalize and clearly document README         | ✅ Links block + track statement + demo flow   | —            |
+| Add deployed smart contract links            | ✅ Done — Stellar Expert + screenshots         | —            |
+| Include live deployment link                 | ✅ Added to README Links section               | —            |
+| Update About section                         | ✅ Has Vercel URL                              | Minor polish |
+| Improve repo organization                    | ✅ .env.example, deployed.json, docs/README.md | —            |
 
 ---
 
@@ -119,84 +119,27 @@ Judges will try to run this locally. Without `.env.example`, they can't.
 
 - [x] `contracts/deployed.json` already exists with canonical IDs ✅ Done
 - [x] Removed `deployed.json` from `.gitignore` so it is tracked ✅ Done
-- [ ] Commit to repo
+- [x] Commit to repo
 
 ### 3.3 Update GitHub Repository About Section 🟡
 
 In the GitHub repo sidebar (Settings → About):
 
-- [ ] Description: `Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked. Built on Stellar Soroban.`
-- [ ] Website: `https://kredito-iota.vercel.app`
-- [ ] Topics: add `stellar`, `soroban`, `defi`, `philippines`, `micro-lending`, `web3`, `blockchain`
-- [ ] Check "Include in home page" for Packages/Deployments if available
+- [x] Description: `Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked. Built on Stellar Soroban.`
+- [x] Website: `https://kredito-iota.vercel.app`
+- [x] Topics: add `stellar`, `soroban`, `defi`, `philippines`, `micro-lending`, `web3`, `blockchain`
+- [x] Check "Include in home page" for Packages/Deployments if available
 
 ### 3.4 Verify .gitignore is Correct 🔴
 
-- [ ] Confirm `.env` files are NOT committed to the repo:
+- [x] Confirm `.env` files are NOT committed to the repo:
   ```bash
   git log --all --full-history -- "**/.env"
   # Should return nothing
   ```
-- [ ] Confirm `node_modules/` is not committed
-- [ ] Confirm `target/` (Rust build artifacts) is not committed
-- [ ] If any secrets are in git history: rotate them immediately, then use `git filter-repo` to purge
-
-### 3.5 Add a Banner Image 🟢
-
-- [ ] Take a screenshot of the live landing page at full width
-- [ ] Add as `images/banner.png`
-- [ ] Add to README right below the title:
-  ```markdown
-  ![Kredito Banner](./images/banner.png)
-  ```
-
-### 3.6 Clean Up `docs/` Folder 🟢
-
-- [ ] Ensure `docs/` contains: `ARCHITECTURE.md`, `SETUP.md`, `SPECv2.md`
-- [ ] Remove any old/stale spec files that contradict the current implementation
-- [ ] Add a `docs/README.md` index:
-
-  ```markdown
-  # Kredito Docs
-
-  - [Architecture](./ARCHITECTURE.md)
-  - [Setup Guide](./SETUP.md)
-  - [Technical Spec](./SPECv2.md)
-  ```
-
----
-
-## Phase 4 — Reply to DevRel 🔴
-
-### Only do this after Phase 1 and 2 are complete.
-
-- [ ] Draft reply email to Armielyn:
-
-  ```
-  Hi Armielyn,
-
-  Thank you for the feedback — we've completed all the requested updates:
-
-  ✅ Frontend fully polished and production-ready:
-     https://kredito-iota.vercel.app
-
-  ✅ README updated with live demo link, demo video, contract explorer links,
-     and track statement. All contract IDs verified against live testnet.
-
-  ✅ Deployed smart contract links:
-     Credit Registry: https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface
-     Lending Pool: https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface
-     PHPC Token: https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface
-
-  ✅ Live deployment: https://kredito-iota.vercel.app
-  ✅ Demo video: [Loom link]
-  ✅ GitHub About section updated with description, URL, and topics.
-  ✅ .env.example and contracts/deployed.json added for reproducibility.
-
-  Repository: https://github.com/nazakun021/kredito
-
-  Ready for full evaluation. Thank you!
-  ```
+- [x] Confirm `node_modules/` is not committed
+- [x] Confirm `target/` (Rust build artifacts) is not committed
+- [x] If any secrets are in git history: rotate them immediately, then use `git filter-repo` to purge
 
 ---
 
@@ -204,7 +147,6 @@ In the GitHub repo sidebar (Settings → About):
 
 ### In case live demo has issues during judge evaluation
 
-- [ ] Record backup Loom video of working full loop (even on localhost is fine)
 - [ ] Take 4 screenshots — one per demo screen — and add to `images/` folder:
   - `images/screen1-landing.png`
   - `images/screen2-dashboard.png`
