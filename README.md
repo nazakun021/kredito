@@ -1,6 +1,6 @@
 # Kredito
 
-Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar.
+Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar and accessed through Freighter.
 
 ## Links
 
@@ -22,9 +22,9 @@ Small retail business owners in the Philippines (sari-sari stores, online resell
 
 Kredito uses deterministic on-chain transaction history to generate verifiable credit scores. These scores are stored in a Soroban smart contract and used to unlock tiered micro-loans from a decentralized liquidity pool. Settlement happens in seconds with near-zero fees, and users build a portable "Credit Passport" with every on-time repayment.
 
-## Demo Flow (under 60 seconds)
+## Product Flow
 
-1. **Generate Score** — Click one button. Wallet created silently. No signup.
+1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth challenge.
 2. **Review Credit Passport** — See raw metrics, the exact formula, and your on-chain tier.
 3. **Borrow Instantly** — Pool disburses PHPC to your wallet via smart contract.
 4. **Repay & Level Up** — Repayment updates your score live. Higher tier = bigger limit.
@@ -32,7 +32,7 @@ Kredito uses deterministic on-chain transaction history to generate verifiable c
 ## Architecture
 
 - **Frontend (Next.js 16)**: Built with React 19, Zustand for state management, and TanStack Query for data fetching.
-- **Backend (Express)**: Handles identity management, secure wallet encryption, and identity-to-wallet mapping using SQLite.
+- **Backend (Express)**: Handles wallet-auth sessions, score orchestration, fee sponsorship, and wallet identity records in SQLite.
 - **Stellar (Soroban)**: Core financial logic running on the Stellar Testnet.
 - **Client SDK**: `@stellar/stellar-sdk` for transaction building, fee-sponsoring, and RPC interaction.
 
@@ -96,7 +96,7 @@ Explorer Link: https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4
 
 ### Prerequisites
 
-- Node.js 18+ and `pnpm`
+- Node.js 20+ and `pnpm`
 - Rust (latest stable) and `stellar-cli`
 - Freighter browser extension (set to Testnet)
 
@@ -116,7 +116,7 @@ pnpm install
 pnpm dev
 ```
 
-_Requires `.env` with `JWT_SECRET`, `ENCRYPTION_KEY`, and Stellar credentials._
+_Requires `backend/.env` with `JWT_SECRET`, `ENCRYPTION_KEY`, `ISSUER_SECRET_KEY`, `WEB_AUTH_SECRET_KEY` (or reuse the issuer key), `HOME_DOMAIN`, `WEB_AUTH_DOMAIN`, and the deployed Stellar contract IDs._
 
 ### Frontend
 
@@ -126,7 +126,7 @@ pnpm install
 pnpm dev
 ```
 
-_Runs at `http://localhost:3000`._
+_Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
 
 ## Why Stellar?
 

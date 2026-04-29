@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { useWalletStore } from '@/store/walletStore';
+import ConnectWalletButton from './ConnectWalletButton';
+import NetworkBadge from './NetworkBadge';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -23,12 +26,13 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const disconnectWallet = useWalletStore((s) => s.disconnect);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
     clearAuth();
+    disconnectWallet();
     router.replace('/');
   };
 
@@ -41,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           borderColor: 'var(--color-border)',
         }}
       >
-        <SidebarContent pathname={pathname} walletAddress={user?.wallet} onLogout={handleLogout} />
+        <SidebarContent pathname={pathname} onLogout={handleLogout} />
       </aside>
 
       {mobileOpen && (
@@ -69,7 +73,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarContent
               pathname={pathname}
-              walletAddress={user?.wallet}
               onLogout={handleLogout}
               onNavClick={() => setMobileOpen(false)}
             />
@@ -114,25 +117,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="flex-1" />
 
-          {user && (
-            <div
-              className="hidden items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium sm:flex"
-              style={{
-                background: 'var(--color-bg-card)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              <div className="h-2 w-2 rounded-full pulse-glow" style={{ background: 'var(--color-accent)' }} />
-              {user.wallet.slice(0, 4)}…{user.wallet.slice(-4)}
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            <NetworkBadge />
+            <ConnectWalletButton />
+          </div>
 
           <button
             onClick={handleLogout}
             className="flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer lg:hidden"
             style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-            aria-label="End demo session"
+            aria-label="Disconnect wallet session"
           >
             <LogOut size={14} style={{ color: 'var(--color-text-muted)' }} />
           </button>
@@ -146,15 +140,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function SidebarContent({
   pathname,
-  walletAddress,
   onLogout,
   onNavClick,
 }: {
   pathname: string;
-  walletAddress?: string;
   onLogout: () => void;
   onNavClick?: () => void;
 }) {
+  const walletAddress = useWalletStore((s) => s.publicKey);
   return (
     <>
       <div className="flex items-center gap-3 px-6 py-6">
@@ -209,7 +202,7 @@ function SidebarContent({
           style={{ color: 'var(--color-text-muted)' }}
         >
           <LogOut size={16} />
-          End Demo Session
+          Disconnect Wallet
         </button>
       </div>
     </>

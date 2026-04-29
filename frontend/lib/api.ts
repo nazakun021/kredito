@@ -1,9 +1,12 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth';
-import { signWithFreighter } from './freighter';
+import { useWalletStore } from '../store/walletStore';
+import { signTx } from './freighter';
+import { toast } from 'sonner';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/',
+  timeout: 15000,
 });
 
 api.interceptors.request.use((config) => {
@@ -22,16 +25,29 @@ api.interceptors.response.use(
     if (
       user?.isExternal &&
       response.data?.requiresSignature &&
-      (url.endsWith('/loan/borrow') || url.endsWith('/loan/repay'))
+      (url.endsWith('loan/borrow') || url.endsWith('loan/repay'))
     ) {
+      toast.info('Signature required in Freighter');
       const unsignedXdr = Array.isArray(response.data.unsignedXdr)
         ? response.data.unsignedXdr
         : [response.data.unsignedXdr];
-      const signedInnerXdr = await Promise.all(unsignedXdr.map((xdr: string) => signWithFreighter(xdr)));
-      const submitResponse = await api.post('/tx/sign-and-submit', { signedInnerXdr });
+      
+      const publicKey = useWalletStore.getState().publicKey;
+      if (!publicKey) throw new Error('Wallet not connected');
 
-      if (url.endsWith('/loan/repay')) {
-        const refreshed = await api.post('/credit/generate');
+      const signedResults = await Promise.all(
+        unsignedXdr.map((xdr: string) => signTx(xdr, publicKey))
+      );
+      
+      const signedInnerXdr = signedResults.map(r => {
+        if ('error' in r) throw new Error(r.error);
+        return r.signedXdr;
+      });
+
+      const submitResponse = await api.post('tx/sign-and-submit', { signedInnerXdr });
+
+      if (url.endsWith('loan/repay')) {
+        const refreshed = await api.post('credit/generate');
         response.data = {
           ...response.data.meta,
           ...submitResponse.data,

@@ -29,9 +29,12 @@ export const config = {
   jwtSecret: required('JWT_SECRET'),
   encryptionKey,
   issuerSecretKey: required('ISSUER_SECRET_KEY'),
+  webAuthSecretKey: required('WEB_AUTH_SECRET_KEY', process.env.ISSUER_SECRET_KEY),
   horizonUrl: required('HORIZON_URL', 'https://horizon-testnet.stellar.org'),
   sorobanRpcUrl: required('SOROBAN_RPC_URL', 'https://soroban-testnet.stellar.org'),
   networkPassphrase: required('NETWORK_PASSPHRASE', Networks.TESTNET),
+  homeDomain: required('HOME_DOMAIN', 'localhost'),
+  webAuthDomain: required('WEB_AUTH_DOMAIN', 'localhost:3001'),
   corsOrigins: optionalCsv(process.env.CORS_ORIGIN, ['http://localhost:3000']),
   contractIds: {
     phpcToken: required('PHPC_ID', process.env.PHPC_CONTRACT_ID),

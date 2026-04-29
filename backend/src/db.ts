@@ -31,6 +31,10 @@ export function initDb() {
     db.exec(`ALTER TABLE users ADD COLUMN is_external BOOLEAN NOT NULL DEFAULT 0`);
   }
 
+  if (!userColumnNames.has('last_login_at')) {
+    db.exec(`ALTER TABLE users ADD COLUMN last_login_at DATETIME`);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS otp_requests (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,6 +45,20 @@ export function initDb() {
 
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_otp_requests_user_time ON otp_requests(user_id, sent_at)`,
+  );
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_challenges (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      stellar_pub   TEXT NOT NULL,
+      challenge_hash TEXT NOT NULL UNIQUE,
+      expires_at    DATETIME NOT NULL,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup ON auth_challenges(stellar_pub, challenge_hash)`,
   );
 
   db.exec(`

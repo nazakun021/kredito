@@ -100,7 +100,7 @@ export default function DashboardPage() {
   }, [generateQuery.data, scoreQuery]);
 
   const refreshMutation = useMutation({
-    mutationFn: () => api.post('/credit/generate').then((res) => res.data),
+    mutationFn: () => api.post('credit/generate').then((res) => res.data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['score-generate'] });
       await queryClient.invalidateQueries({ queryKey: ['score'] });

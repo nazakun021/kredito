@@ -7,6 +7,8 @@ import { ArrowRight, CheckCircle2, Loader2, TrendingUp } from 'lucide-react';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
+import { useWalletStore } from '@/store/walletStore';
+import { REQUIRED_NETWORK } from '@/lib/constants';
 
 interface LoanStatusResponse {
   hasActiveLoan: boolean;
@@ -51,6 +53,10 @@ export default function RepayPage() {
   const [success, setSuccess] = useState<RepaySuccess | null>(null);
   const [error, setError] = useState('');
 
+  const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
+  const isCorrectNetwork = network === REQUIRED_NETWORK;
+  const canRepay = walletConnected && isCorrectNetwork;
+
   const { data: status } = useQuery({
     queryKey: ['loan-status'],
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
@@ -72,7 +78,7 @@ export default function RepayPage() {
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.post('/loan/repay');
+      const { data } = await api.post('loan/repay');
       setSuccess(data);
       await queryClient.invalidateQueries({ queryKey: ['score'] });
       await queryClient.invalidateQueries({ queryKey: ['score-generate'] });
@@ -160,13 +166,17 @@ export default function RepayPage() {
           />
         </div>
 
-        {error ? (
+        {error || (walletConnected && !isCorrectNetwork ? walletError : null) ? (
           <div className="mt-4 rounded-xl px-4 py-3 text-sm font-medium" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }} role="alert">
-            {error}
+            {error || walletError}
           </div>
         ) : null}
 
-        <button onClick={handleRepay} disabled={loading} className="btn-primary btn-accent mt-6">
+        <button 
+          onClick={handleRepay} 
+          disabled={loading || !canRepay} 
+          className="btn-primary btn-accent mt-6 disabled:opacity-50"
+        >
           {loading ? (
             <>
               <Loader2 size={16} className="animate-spin" />

@@ -7,6 +7,8 @@ import { ArrowRight, CheckCircle2, Loader2, TimerReset } from 'lucide-react';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
+import { useWalletStore } from '@/store/walletStore';
+import { REQUIRED_NETWORK } from '@/lib/constants';
 
 interface ScoreResponse {
   tier: number;
@@ -39,6 +41,10 @@ export default function BorrowPage() {
   const [success, setSuccess] = useState<BorrowSuccess | null>(null);
   const [error, setError] = useState('');
 
+  const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
+  const isCorrectNetwork = network === REQUIRED_NETWORK;
+  const canBorrow = walletConnected && isCorrectNetwork;
+
   const { data: score } = useQuery({
     queryKey: ['score'],
     queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
@@ -69,7 +75,7 @@ export default function BorrowPage() {
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.post('/loan/borrow', { amount: borrowAmount });
+      const { data } = await api.post('loan/borrow', { amount: borrowAmount });
       setSuccess(data);
       await queryClient.invalidateQueries({ queryKey: ['loan-status'] });
       await queryClient.invalidateQueries({ queryKey: ['pool'] });
@@ -90,7 +96,7 @@ export default function BorrowPage() {
             </div>
             <h1 className="text-3xl font-extrabold">Funds released</h1>
             <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Your demo wallet received the loan instantly from the on-chain pool.
+              Your wallet received the loan instantly from the on-chain pool.
             </p>
           </div>
 
@@ -162,13 +168,17 @@ export default function BorrowPage() {
             <span>I understand the terms and want to trigger the live borrowing transaction.</span>
           </label>
 
-          {error ? (
+          {error || (walletConnected && !isCorrectNetwork ? walletError : null) ? (
             <div className="rounded-xl px-4 py-3 text-sm font-medium" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }} role="alert">
-              {error}
+              {error || walletError}
             </div>
           ) : null}
 
-          <button onClick={handleBorrow} disabled={!agreed || loading || borrowAmount <= 0 || score?.tier === 0} className="btn-primary btn-accent mt-auto">
+          <button 
+            onClick={handleBorrow} 
+            disabled={!agreed || loading || borrowAmount <= 0 || score?.tier === 0 || !canBorrow} 
+            className="btn-primary btn-accent mt-auto disabled:opacity-50"
+          >
             {loading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />

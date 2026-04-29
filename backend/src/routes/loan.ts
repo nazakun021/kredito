@@ -288,6 +288,30 @@ router.get(
 );
 
 router.post(
+  '/submit',
+  authMiddleware,
+  asyncRoute(async (req: AuthRequest, res) => {
+    const payload = req.body?.signedXdr || req.body?.signedInnerXdr;
+    const signedInnerXdr = Array.isArray(payload) ? payload : [payload];
+    if (!signedInnerXdr.every((entry) => typeof entry === 'string' && entry.length > 0)) {
+      throw badRequest('signedXdr is required');
+    }
+
+    const hashes: string[] = [];
+    for (const xdr of signedInnerXdr) {
+      hashes.push(await submitSponsoredSignedXdr(xdr));
+    }
+
+    const txHash = hashes[hashes.length - 1];
+    res.json({
+      txHash,
+      txHashes: hashes,
+      explorerUrl: getExplorerUrl(txHash),
+    });
+  }),
+);
+
+router.post(
   '/sign-and-submit',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {

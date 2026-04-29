@@ -45,8 +45,8 @@ Kredito has three distinct layers that interact to deliver credit scores and loa
 ### Key Design Principles
 
 - **On-chain as source of truth**: Credit scores, loan records, and token balances are all stored on-chain. The backend only mirrors derived state for query efficiency.
-- **Gasless UX**: The backend's issuer keypair sponsors all user transactions via fee-bump transactions, so demo users pay zero fees.
-- **Dual wallet mode**: The system supports both managed wallets (demo users, where the backend holds the encrypted secret) and external wallets (Freighter users, where the backend only builds unsigned XDR for the user to sign).
+- **Gasless UX**: The backend's issuer keypair sponsors user transactions via fee-bump transactions, so wallet users do not need XLM for fees in the normal flow.
+- **Wallet-first auth**: Users authenticate with Freighter by signing a short-lived Stellar WebAuth challenge. The backend issues JWT sessions only after verifying that signature.
 - **Deterministic scoring**: The credit score formula is identical in the Rust smart contract and the TypeScript scoring engine. The backend computes off-chain, then writes the result on-chain via the issuer authority.
 
 ---
@@ -193,14 +193,13 @@ backend/src/
 ├── middleware/
 │   └── auth.ts       # JWT verification middleware
 ├── routes/
-│   ├── auth.ts       # POST /demo, POST /login
+│   ├── auth.ts       # POST /challenge, POST /login
 │   ├── credit.ts     # POST /generate, GET /score, GET /pool, GET /metrics
 │   └── loan.ts       # POST /borrow, POST /repay, GET /status, POST /sign-and-submit
 ├── scoring/
 │   └── engine.ts     # Off-chain score calculation, Horizon/RPC data fetching
 ├── stellar/
 │   ├── client.ts     # RPC/Horizon server instances, issuer keypair
-│   ├── demo.ts       # Demo wallet funding (Friendbot)
 │   ├── feebump.ts    # Fee-bump transaction builder and submitter
 │   ├── issuer.ts     # updateOnChainMetrics(), getOnChainCreditSnapshot()
 │   └── query.ts      # Generic read-only contract query helper
@@ -215,8 +214,8 @@ backend/src/
 
 | Method | Path     | Auth | Description                                                                                 |
 | :----- | :------- | :--- | :------------------------------------------------------------------------------------------ |
-| `POST` | `/demo`  | None | Generate a new keypair, encrypt the secret, fund via Friendbot, return JWT + wallet address |
-| `POST` | `/login` | None | Register or look up a Freighter wallet address, return JWT                                  |
+| `POST` | `/challenge` | None | Build a short-lived Stellar WebAuth challenge for a wallet address                       |
+| `POST` | `/login`     | None | Verify the signed challenge, register or look up the wallet, return JWT                  |
 
 #### Credit (`/api/credit`)
 
@@ -231,8 +230,8 @@ backend/src/
 
 | Method | Path               | Auth | Description                                                                                 |
 | :----- | :----------------- | :--- | :------------------------------------------------------------------------------------------ |
-| `POST` | `/borrow`          | JWT  | Validate tier/limit, call `lending_pool.borrow` (managed) or return unsigned XDR (external) |
-| `POST` | `/repay`           | JWT  | Two-step for external wallets (approve → repay); single fee-bump for managed                |
+| `POST` | `/borrow`          | JWT  | Validate tier/limit and return or submit the borrowing transaction flow                    |
+| `POST` | `/repay`           | JWT  | Two-step wallet flow (`approve` → `repay`) for PHPC repayment                              |
 | `GET`  | `/status`          | JWT  | Return active loan state, due date, and pool balance                                        |
 | `POST` | `/sign-and-submit` | JWT  | Accept signed inner XDR from Freighter, wrap in fee-bump, submit                            |
 
@@ -250,20 +249,10 @@ The off-chain engine mirrors the on-chain Rust formula exactly:
 
 ### 3.4 Fee-Bump Transaction Flow (`stellar/feebump.ts`)
 
-All transactions sent on behalf of users are wrapped in a fee-bump signed by the issuer. This makes the UX gasless:
+Transactions that require wallet authorization are wrapped in an issuer-signed fee-bump after the user signs the inner transaction in Freighter. This keeps the UX gasless:
 
 ```
-For managed wallet (demo mode):
-  1. ensureUserAccount()         — create account on-chain if needed
-  2. buildInvokeTransaction()    — build the inner contract call tx
-  3. rpcServer.prepareTransaction() — simulate, apply resource footprint
-  4. prepared.sign(userKeypair)  — user signs the inner tx
-  5. buildFeeBumpTransaction()   — issuer wraps it
-  6. feeBump.sign(issuerKeypair) — issuer signs the outer
-  7. rpcServer.sendTransaction() — submit
-  8. pollTransaction()           — wait for SUCCESS/FAILED
-
-For external wallet (Freighter mode):
+For wallet users (Freighter mode):
   1. buildUnsignedContractCall() — build + prepare, return raw XDR
   → Frontend passes to Freighter for signing
   → POST /sign-and-submit with signedInnerXdr
@@ -292,7 +281,7 @@ Runs every 6 hours. Iterates all rows in `active_loans`:
 frontend/
 ├── app/
 │   ├── layout.tsx          # Root layout with QueryClientProvider
-│   ├── page.tsx            # Landing page (wallet connect, demo entry)
+│   ├── page.tsx            # Landing page and wallet connect entry
 │   ├── dashboard/
 │   │   └── page.tsx        # Score overview, loan status, borrow/repay actions
 │   ├── loan/
@@ -311,34 +300,27 @@ frontend/
 
 ### 4.2 Authentication Flows
 
-**Demo Mode**:
-
-1. User clicks "Try Demo" on landing page.
-2. Frontend calls `POST /api/auth/demo`.
-3. Backend generates a keypair, funds it, returns `{ token, wallet }`.
-4. Zustand `auth` store saves the JWT.
-5. All subsequent requests include `Authorization: Bearer <token>`.
-
-**Freighter Mode**:
-
-1. User clicks "Connect Freighter".
-2. Frontend detects Freighter via `getPublicKey()`.
-3. Frontend calls `POST /api/auth/login` with the public key.
-4. Backend returns a JWT tied to that wallet.
-5. For transactions, the frontend calls the backend for unsigned XDR, signs with Freighter, then calls `POST /api/loan/sign-and-submit`.
+1. User clicks `Connect Wallet`.
+2. Frontend requests Freighter access and gets the public key.
+3. Frontend calls `POST /api/auth/challenge`.
+4. Backend returns a short-lived Stellar WebAuth challenge XDR.
+5. Frontend signs the challenge in Freighter.
+6. Frontend calls `POST /api/auth/login` with the signed challenge.
+7. Backend verifies the signature, looks up or creates the user record, and returns a JWT.
+8. All subsequent requests include `Authorization: Bearer <token>`.
 
 ### 4.3 Transaction Signing (Freighter)
 
-For external wallet users, the repayment flow is two steps because PHPC requires a prior `approve` allowance:
+The repayment flow is two steps because PHPC requires a prior `approve` allowance:
 
 ```
 1. POST /api/loan/repay → { requiresSignature: true, step: "approve", unsignedXdr }
    └─ Freighter.signTransaction(unsignedXdr)
-   └─ POST /api/loan/sign-and-submit { signedInnerXdr: approveXdr }
+   └─ POST /api/tx/sign-and-submit { signedInnerXdr: approveXdr }
 
 2. POST /api/loan/repay (again) → { requiresSignature: true, step: "repay", unsignedXdr }
    └─ Freighter.signTransaction(unsignedXdr)
-   └─ POST /api/loan/sign-and-submit { signedInnerXdr: repayXdr }
+   └─ POST /api/tx/sign-and-submit { signedInnerXdr: repayXdr }
 ```
 
 ---
@@ -374,7 +356,7 @@ DB: INSERT INTO score_events (user_id, tier, score, ...)
 Frontend: display score, tier, borrow limit, factor breakdown
 ```
 
-### 5.2 Loan Borrow (Managed Wallet)
+### 5.2 Loan Borrow
 
 ```
 User: "Borrow 1,000 PHPC"
@@ -389,9 +371,15 @@ Backend:
   ├── Check no active loan on-chain
   ├── Check amount ≤ tier limit
   ├── Calculate fee (500 bps for Bronze)
-  └── buildAndSubmitFeeBump(userKeypair, lending_pool, "borrow", [...])
+  └── build unsigned contract call for lending_pool.borrow(...)
         ├── lending_pool.borrow() calls credit_registry.get_tier() on-chain
         └── lending_pool transfers PHPC to wallet
+  │
+  ▼
+Frontend signs in Freighter
+  │
+  ▼
+Backend fee-bumps and submits signed XDR
   │
   ▼
 DB: INSERT INTO active_loans (user_id, stellar_pub)
@@ -400,7 +388,7 @@ DB: INSERT INTO active_loans (user_id, stellar_pub)
 Frontend: display txHash, amount, fee, due date
 ```
 
-### 5.3 Loan Repay (Managed Wallet)
+### 5.3 Loan Repay
 
 ```
 User: "Repay loan"
@@ -412,8 +400,12 @@ Frontend: POST /api/loan/repay
 Backend:
   ├── getLoanRecord(wallet) → validate not repaid/defaulted
   ├── Calculate totalOwed = principal + fee
-  ├── buildAndSubmitFeeBump(userKeypair, phpc_token, "approve", [wallet, pool, totalOwed])
-  ├── buildAndSubmitFeeBump(userKeypair, lending_pool, "repay", [wallet])
+  ├── build unsigned approve transaction
+  ├── Frontend signs in Freighter
+  ├── Backend fee-bumps and submits approve
+  ├── build unsigned repay transaction
+  ├── Frontend signs in Freighter
+  ├── Backend fee-bumps and submits repay
   ├── DB: DELETE FROM active_loans WHERE user_id = ?
   ├── buildScoreSummary(wallet) → refreshed metrics (repaymentCount +1)
   └── updateOnChainMetrics(wallet, refreshed.metrics)
@@ -436,11 +428,20 @@ SQLite database at `backend/kredito.db` (path configurable via `DATABASE_PATH` e
 | Column               | Type          | Description                                              |
 | :------------------- | :------------ | :------------------------------------------------------- |
 | `id`                 | `INTEGER PK`  | Auto-increment                                           |
-| `email`              | `TEXT UNIQUE` | Synthetic for demo; real for Freighter                   |
+| `email`              | `TEXT UNIQUE` | Synthetic internal identifier for the wallet user record |
 | `stellar_pub`        | `TEXT UNIQUE` | Stellar wallet public key (G...)                         |
-| `stellar_enc_secret` | `TEXT`        | AES-256-GCM encrypted secret (NULL for external wallets) |
-| `is_external`        | `BOOLEAN`     | `1` = Freighter user, `0` = managed demo wallet          |
-| `email_verified`     | `BOOLEAN`     | Always `1` in demo/Freighter flow                        |
+| `stellar_enc_secret` | `TEXT`        | Reserved/nullable field; unused in the Freighter-first flow |
+| `is_external`        | `BOOLEAN`     | `1` for wallet-authenticated users                       |
+| `email_verified`     | `BOOLEAN`     | Always `1` in the current wallet-login flow              |
+
+### `auth_challenges`
+
+| Column           | Type         | Description                                              |
+| :--------------- | :----------- | :------------------------------------------------------- |
+| `id`             | `INTEGER PK` |                                                            |
+| `stellar_pub`    | `TEXT`       | Wallet address requesting authentication                 |
+| `challenge_hash` | `TEXT UNIQUE`| Hash of the issued login challenge transaction           |
+| `expires_at`     | `DATETIME`   | Challenge expiration timestamp                           |
 
 ### `score_events`
 
@@ -476,21 +477,22 @@ SQLite database at `backend/kredito.db` (path configurable via `DATABASE_PATH` e
 
 ## 7. Security Model
 
-### Wallet Secret Encryption
+### Wallet Authentication
 
-Demo wallet secrets are encrypted with AES-256-GCM before storage. The key is a 64-hex-character value set in the `ENCRYPTION_KEY` environment variable. The IV and auth tag are stored alongside the ciphertext.
+Wallet login is challenge-based. The backend issues a short-lived Stellar WebAuth transaction, the user signs it in Freighter, and the backend verifies the signature before issuing a JWT. Issued challenges are hashed and stored briefly in `auth_challenges` to prevent replay.
+
+### Secret Handling
+
+The Freighter-first flow does not require the backend to store user wallet secrets. `ENCRYPTION_KEY` remains part of the backend configuration surface for encrypted internal secrets and backward-compatible schema handling.
 
 ```typescript
-// crypto.ts
-encrypt(plaintext: string) → "iv:authTag:ciphertext" (hex-encoded)
-decrypt(stored: string)    → plaintext secret
+// auth.ts
+challenge -> Freighter signature -> verified JWT session
 ```
-
-The decrypted secret is used in memory only for the duration of the transaction, and the variable is overwritten afterward.
 
 ### JWT Authentication
 
-All protected routes require a `Bearer` JWT issued at login/demo time. Tokens expire after 24 hours. The `JWT_SECRET` must be a strong random value set in the environment.
+All protected routes require a `Bearer` JWT issued after successful wallet login. Tokens expire after 24 hours. The `JWT_SECRET` must be a strong random value set in the environment.
 
 ### Issuer Keypair
 
@@ -528,6 +530,9 @@ For Freighter users, the backend never sees the private key. The flow is:
 | `JWT_SECRET`         | Yes      | Signing key for JWTs                   |
 | `ENCRYPTION_KEY`     | Yes      | 64 hex chars for AES-256-GCM           |
 | `ISSUER_SECRET_KEY`  | Yes      | Soroban issuer/admin keypair           |
+| `WEB_AUTH_SECRET_KEY`| Yes      | Signing key for wallet login challenges |
+| `HOME_DOMAIN`        | Yes      | Home domain embedded in login challenges |
+| `WEB_AUTH_DOMAIN`    | Yes      | Web auth domain embedded in login challenges |
 | `PHPC_ID`            | Yes      | PHPC token contract address            |
 | `REGISTRY_ID`        | Yes      | credit_registry contract address       |
 | `LENDING_POOL_ID`    | Yes      | lending_pool contract address          |
