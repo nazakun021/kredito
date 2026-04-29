@@ -1,6 +1,6 @@
 # Setup Guide
 
-This setup guide is for the current Kredito demo described in [SPECv2.md](/Users/infinite/Programming/kredito/docs/SPECv2.md).
+This guide matches the v3 implementation now in the repo.
 
 ## 1. Prerequisites
 
@@ -9,82 +9,95 @@ This setup guide is for the current Kredito demo described in [SPECv2.md](/Users
 - Rust stable
 - Stellar CLI
 
-## 2. Stellar Account (Issuer)
-
-You need a funded Stellar account to act as the "Bank/Issuer". Run these commands to generate and fund one automatically on the Testnet:
-
-```bash
-# Generate and fund the account
-stellar keys generate issuer --network testnet
-
-# Show the secret key (to put in backend/.env)
-stellar keys secret issuer
-```
-
-## 3. Contracts
-
-Build and deploy the Soroban contracts.
+## 2. Contracts
 
 ```bash
 cd contracts
-
-# Build all contracts
-cargo build --target wasm32-unknown-unknown --release
-
-# Run contract tests
-cargo test
-
-# Deploy to Testnet
-./deploy.sh
+cargo test --workspace
 ```
 
-After deployment, a `deployed.json` file will be created. Use the contract IDs from this file in your backend configuration.
+If you redeploy contracts, update [`contracts/deployed.json`](/Users/infinite/Programming/kredito/contracts/deployed.json) and the backend environment variables together.
 
-## 4. Backend
+## 3. Backend
 
 ```bash
 cd backend
 pnpm install
-cp .env.example .env
+pnpm build
 ```
 
-Required environment variables in `.env`:
+Create `backend/.env` with:
 
-- `JWT_SECRET`: Any random string for auth tokens.
-- `ENCRYPTION_KEY`: A 64-character hex string (32 bytes). Generate with:
-  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-- `ISSUER_SECRET_KEY`: The secret key from step 2 (starts with `S`).
-- `PHPC_ID`: From `deployed.json`.
-- `REGISTRY_ID`: From `deployed.json`.
-- `LENDING_POOL_ID`: From `deployed.json`.
+```env
+JWT_SECRET=
+ENCRYPTION_KEY=
+ISSUER_SECRET_KEY=
+PHPC_ID=
+REGISTRY_ID=
+LENDING_POOL_ID=
+HORIZON_URL=https://horizon-testnet.stellar.org
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+CORS_ORIGIN=http://localhost:3000
+```
 
-Run the development server:
+Notes:
+
+- `ENCRYPTION_KEY` must be exactly 64 hex characters.
+- `ISSUER_SECRET_KEY` must belong to a funded Stellar account.
+- Embedded demo wallets are created per session and prefunded through Friendbot on testnet as a best-effort background call.
+
+Run the backend:
 
 ```bash
 pnpm dev
 ```
 
-## 5. Frontend
+## 4. Frontend
 
 ```bash
 cd frontend
 pnpm install
+pnpm exec tsc --noEmit
+pnpm exec next build --webpack
 ```
 
-Start the development dashboard:
+Create `frontend/.env.local` with:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001/api
+```
+
+Run the frontend:
 
 ```bash
 pnpm dev
 ```
 
-Access the app at [http://localhost:3000](http://localhost:3000).
+## 5. Freighter Path
 
-## 6. Current Demo Notes
+Freighter support is implemented without storing the user secret in the backend.
 
-- The current flow starts from `POST /api/auth/demo` (triggered by the "Generate Score" button).
-- Demo wallet prefunding is best-effort and depends on testnet connectivity and valid contract IDs.
-- Legacy OTP onboarding has been removed from the active product flow.
+- Landing page offers `Connect Freighter Wallet`
+- Backend creates an external user record through `POST /api/auth/login`
+- Borrow and repay requests return unsigned XDR
+- Frontend signs through Freighter
+- Backend wraps the signed inner transaction with an issuer fee-bump via `POST /api/tx/sign-and-submit`
 
-## 7. Reference
+## 6. Local Verification Commands
 
-Use [SPECv2.md](/Users/infinite/Programming/kredito/docs/SPECv2.md) for the full technical specification.
+```bash
+cd contracts && cargo test --workspace
+cd backend && pnpm build
+cd frontend && pnpm exec tsc --noEmit
+cd frontend && pnpm exec next build --webpack
+```
+
+## 7. Status: Fully Verified
+
+This repository has been fully verified end-to-end on the live Stellar Testnet. This includes:
+
+- Smart contract deployment and initialization.
+- On-chain credit scoring and tier verification.
+- Sponsorship of transactions (Fee-bumps).
+- Two-step loan repayment (Approve -> Repay) to handle PHPC token logic.

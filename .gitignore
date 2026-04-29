@@ -42,3 +42,7 @@ deployed.json
 # --- Agents / AI Tools ---
 .agents/
 skills-lock.json
+
+# --- Testing Artifacts ---
+*.xdr
+payload.json

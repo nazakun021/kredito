@@ -96,6 +96,7 @@ html {
 body {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

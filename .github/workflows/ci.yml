@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  contracts:
+    name: Smart Contracts (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+
+      - name: Install Stellar CLI
+        run: |
+          curl -sS https://raw.githubusercontent.com/stellar/stellar-cli/main/install.sh | bash
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Format Check
+        run: cargo fmt --all -- --check
+        working-directory: contracts
+
+      - name: Clippy Lint
+        run: cargo clippy --all-targets --all-features -- -D warnings
+        working-directory: contracts
+
+      - name: Run Tests
+        run: cargo test --workspace
+        working-directory: contracts
+
+      - name: Build Contracts
+        run: stellar contract build
+        working-directory: contracts
+
+  backend:
+    name: Backend (Node.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: backend
+
+      - name: Lint
+        run: pnpm run lint
+        working-directory: backend
+
+      - name: Type Check & Build
+        run: pnpm run build
+        working-directory: backend
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Lint
+        run: pnpm run lint
+        working-directory: frontend
+
+      - name: Type Check
+        run: pnpm exec tsc --noEmit
+        working-directory: frontend
+
+      - name: Build
+        run: pnpm run build
+        working-directory: frontend

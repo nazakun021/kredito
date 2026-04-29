@@ -1,16 +1,11 @@
 import crypto from 'node:crypto';
+import { config } from '../config';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-
-if (!ENCRYPTION_KEY || Buffer.from(ENCRYPTION_KEY, 'hex').length !== 32) {
-  throw new Error('Invalid or missing ENCRYPTION_KEY. Must be 32-byte hex string.');
-}
-
-const key = Buffer.from(ENCRYPTION_KEY, 'hex');
+const key = Buffer.from(config.encryptionKey, 'hex');
 
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(IV_LENGTH);

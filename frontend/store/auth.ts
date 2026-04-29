@@ -4,10 +4,10 @@ import { persist } from 'zustand/middleware';
 interface AuthState {
   token: string | null;
   user: {
-    email: string;
-    stellarAddress: string;
+    wallet: string;
+    isExternal: boolean;
   } | null;
-  setAuth: (token: string, user: { email: string; stellarAddress: string }) => void;
+  setAuth: (token: string, user: { wallet: string; isExternal: boolean }) => void;
   clearAuth: () => void;
 }
 

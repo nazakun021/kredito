@@ -1,27 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  ArrowRight,
+  Eye,
+  Globe,
+  Link2,
+  Loader2,
   ShieldCheck,
   Sparkles,
-  Wallet,
-  ArrowRight,
-  Loader2,
-  Zap,
-  Eye,
   TrendingUp,
-  Globe,
+  Wallet,
+  Zap,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { useAuthStore } from '@/store/auth';
+import { connectFreighter, isFreighterInstalled } from '@/lib/freighter';
 import { getErrorMessage } from '@/lib/errors';
+import { useAuthStore } from '@/store/auth';
 
 export default function Page() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
   const [loading, setLoading] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
   const [error, setError] = useState('');
+  const [freighterReady, setFreighterReady] = useState(false);
+
+  useEffect(() => {
+    setFreighterReady(isFreighterInstalled());
+
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('session') === 'expired') {
+      setError('Session expired. Start again.');
+    }
+  }, []);
 
   const enterDemo = async () => {
     setLoading(true);
@@ -29,8 +41,7 @@ export default function Page() {
 
     try {
       const { data } = await api.post('/auth/demo');
-      setAuth(data.token, data.user);
-      await api.post('/credit/generate');
+      setAuth(data.token, { wallet: data.wallet, isExternal: false });
       router.push('/dashboard');
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Unable to start the demo. Please try again.'));
@@ -39,9 +50,28 @@ export default function Page() {
     }
   };
 
+  const connectWallet = async () => {
+    setWalletLoading(true);
+    setError('');
+
+    try {
+      const publicKey = await connectFreighter();
+      if (!publicKey) {
+        return;
+      }
+
+      const { data } = await api.post('/auth/login', { stellarAddress: publicKey });
+      setAuth(data.token, { wallet: data.wallet, isExternal: true });
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Unable to connect Freighter right now.'));
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-dvh">
-      {/* ─── Ambient glow (top-left) ─── */}
       <div
         className="pointer-events-none fixed left-0 top-0"
         style={{
@@ -51,7 +81,6 @@ export default function Page() {
         }}
         aria-hidden="true"
       />
-      {/* ─── Ambient glow (right) ─── */}
       <div
         className="pointer-events-none fixed right-0 top-1/3"
         style={{
@@ -62,7 +91,6 @@ export default function Page() {
         aria-hidden="true"
       />
 
-      {/* ─── Navbar ─── */}
       <nav
         className="sticky top-0 z-40"
         style={{
@@ -99,15 +127,13 @@ export default function Page() {
             }}
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-            {loading ? 'Starting…' : 'Try Demo'}
+            {loading ? 'Generating...' : 'Try Demo'}
           </button>
         </div>
       </nav>
 
-      {/* ─── Hero Section ─── */}
       <section className="mx-auto max-w-6xl px-6 lg:px-10">
         <div className="flex min-h-[calc(100dvh-9rem)] flex-col justify-center gap-12 py-16 text-center lg:flex-row lg:items-center lg:text-left lg:gap-20">
-          {/* Left: Copy */}
           <div className="min-w-0 flex-1 animate-fade-up">
             <div
               className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold"
@@ -131,7 +157,7 @@ export default function Page() {
               Transparent on-chain credit scores and instant micro-loans for the unbanked. Generate a score, unlock a loan, and build your Credit Passport.
             </p>
 
-            {error && (
+            {error ? (
               <div
                 className="mx-auto mt-6 max-w-md rounded-xl px-4 py-3 text-sm font-medium lg:mx-0"
                 style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}
@@ -139,11 +165,10 @@ export default function Page() {
               >
                 {error}
               </div>
-            )}
+            ) : null}
 
             <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
               <button
-                id="cta-generate-score"
                 onClick={enterDemo}
                 disabled={loading}
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-xl px-8 text-base font-bold cursor-pointer transition-all sm:w-auto"
@@ -156,7 +181,7 @@ export default function Page() {
                 {loading ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Starting demo…
+                    Generating...
                   </>
                 ) : (
                   <>
@@ -165,6 +190,37 @@ export default function Page() {
                   </>
                 )}
               </button>
+            </div>
+
+            <div className="mt-4 flex w-full max-w-sm flex-col gap-3 lg:max-w-none lg:items-start">
+              <div className="flex w-full items-center gap-3 text-xs uppercase tracking-[0.22em]" style={{ color: 'var(--color-text-muted)' }}>
+                <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
+                or
+                <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
+              </div>
+
+              {freighterReady ? (
+                <button
+                  onClick={connectWallet}
+                  disabled={walletLoading}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border px-5 text-sm font-semibold transition-colors sm:w-auto"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-card)' }}
+                >
+                  {walletLoading ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                  {walletLoading ? 'Connecting...' : 'Connect Freighter Wallet'}
+                </button>
+              ) : (
+                <a
+                  href="https://freighter.app"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border px-5 text-sm font-semibold transition-colors sm:w-auto"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-card)' }}
+                >
+                  <Link2 size={14} />
+                  Get Freighter
+                </a>
+              )}
 
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                 Stellar Testnet · No real money
@@ -172,7 +228,6 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Right: Stats preview */}
           <div className="w-full max-w-sm min-w-0 lg:max-w-none lg:flex-1 animate-fade-up" style={{ animationDelay: '200ms' }}>
             <div
               className="rounded-2xl p-6"
@@ -196,10 +251,7 @@ export default function Page() {
                   Silver
                 </div>
               </div>
-              <div
-                className="mt-5 rounded-xl p-4"
-                style={{ background: 'rgba(148, 163, 184, 0.06)' }}
-              >
+              <div className="mt-5 rounded-xl p-4" style={{ background: 'rgba(148, 163, 184, 0.06)' }}>
                 <div className="flex justify-between text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
                   <span>Progress to Gold</span>
                   <span style={{ color: 'var(--color-text-secondary)' }}>36 pts</span>
@@ -210,7 +262,7 @@ export default function Page() {
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Borrow limit', value: '₱20,000' },
+                  { label: 'Borrow limit', value: 'P20,000' },
                   { label: 'Fee rate', value: '3.00%' },
                   { label: 'Transactions', value: '12' },
                   { label: 'Repayments', value: '2' },
@@ -228,7 +280,6 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── Features Grid ─── */}
       <section id="features" className="mx-auto max-w-6xl px-6 pb-20 lg:px-10">
         <div className="text-center animate-fade-up">
           <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-accent)' }}>
@@ -258,107 +309,33 @@ export default function Page() {
               copy: 'Repayment upgrades your score, tier, and available limit. Build your credit passport over time.',
             },
             {
-              icon: Zap,
-              title: 'Instant settlement',
-              copy: 'Loan disbursement and repayment happen in real time through Soroban smart contracts on Stellar.',
-            },
-            {
-              icon: ShieldCheck,
-              title: 'Gasless transactions',
-              copy: 'All contract calls are fee-bumped by the platform. Users never pay transaction fees.',
-            },
-            {
               icon: Sparkles,
-              title: 'On-chain verification',
-              copy: 'Anyone can recompute any score from the same inputs. The formula is public and deterministic.',
+              title: 'Gasless UX',
+              copy: 'Issuer-sponsored fee-bumps keep the user flow smooth even while the contracts settle on Stellar.',
+            },
+            {
+              icon: Zap,
+              title: 'Instant disbursement',
+              copy: 'Borrowing and repayment happen against the live testnet pool with visible transaction hashes.',
+            },
+            {
+              icon: Globe,
+              title: 'Freighter option',
+              copy: 'Existing Stellar users can connect a wallet and score their real address instead of a generated demo one.',
             },
           ].map(({ icon: Icon, title, copy }) => (
-            <div
-              key={title}
-              className="card group transition-all hover:border-[rgba(148,163,184,0.2)]"
-            >
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-                style={{ background: 'var(--color-bg-elevated)' }}
-              >
-                <Icon size={18} style={{ color: 'var(--color-text-secondary)' }} />
+            <div key={title} className="card-elevated animate-fade-up">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: 'var(--color-bg-card)' }}>
+                <Icon size={18} style={{ color: 'var(--color-accent)' }} />
               </div>
-              <h3 className="mt-4 text-sm font-bold">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+              <h3 className="mt-5 text-lg font-bold">{title}</h3>
+              <p className="mt-2 text-sm leading-6" style={{ color: 'var(--color-text-secondary)' }}>
                 {copy}
               </p>
             </div>
           ))}
         </div>
       </section>
-
-      {/* ─── How it Works ─── */}
-      <section id="how-it-works" className="border-t" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
-        <div className="mx-auto max-w-6xl px-6 py-20 lg:px-10">
-          <div className="text-center animate-fade-up">
-            <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-accent)' }}>
-              Demo Flow
-            </p>
-            <h2 className="mt-3 text-3xl font-extrabold">Four steps to a Credit Passport</h2>
-          </div>
-
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { step: '01', title: 'Generate Score', desc: 'We create a wallet, mint test PHPC, and compute your on-chain credit score.' },
-              { step: '02', title: 'Review Passport', desc: 'See every metric, weight, tier, and the exact formula that computed your score.' },
-              { step: '03', title: 'Borrow Instantly', desc: 'Take a micro-loan from the pool. Amount and fee are determined by your tier.' },
-              { step: '04', title: 'Repay & Level Up', desc: 'Repay the loan to boost your score and unlock higher tiers and larger limits.' },
-            ].map(({ step, title, desc }) => (
-              <div key={step} className="animate-fade-up">
-                <p className="text-3xl font-extrabold tabular-nums" style={{ color: 'var(--color-accent)', opacity: 0.3 }}>
-                  {step}
-                </p>
-                <h3 className="mt-3 text-base font-bold">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
-                  {desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── CTA Banner ─── */}
-      <section className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-6 py-16 text-center lg:px-10">
-          <h2 className="text-2xl font-extrabold">Ready to try it?</h2>
-          <p className="max-w-md text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Generate your first on-chain credit score in under a minute. No signup, no gas fees, no real money.
-          </p>
-          <button
-            onClick={enterDemo}
-            disabled={loading}
-            className="flex h-14 items-center gap-2 rounded-xl px-10 text-base font-bold cursor-pointer transition-all"
-            style={{
-              background: 'var(--color-accent)',
-              color: '#020617',
-              boxShadow: '0 8px 32px rgba(34, 197, 94, 0.3)',
-            }}
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-            {loading ? 'Starting…' : 'Launch Demo'}
-            {!loading && <ArrowRight size={18} />}
-          </button>
-        </div>
-      </section>
-
-      {/* ─── Footer ─── */}
-      <footer className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={14} style={{ color: 'var(--color-text-muted)' }} />
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Kredito · Stellar Testnet</span>
-          </div>
-          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Demo only · No real money
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

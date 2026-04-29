@@ -1,48 +1,122 @@
-import { 
-  TransactionBuilder, 
-  Keypair, 
-  FeeBumpTransaction, 
-  rpc, 
-  xdr,
+import {
+  Address,
+  Asset,
+  FeeBumpTransaction,
+  Horizon,
+  Keypair,
+  Memo,
   Operation,
-  Address
+  Transaction,
+  TransactionBuilder,
+  xdr,
 } from '@stellar/stellar-sdk';
-import { rpcServer, networkPassphrase, issuerKeypair } from './client';
+import { horizonServer, issuerKeypair, networkPassphrase, rpcServer } from './client';
 
-export async function buildAndSubmitFeeBump(
-  userKeypair: Keypair,
-  contractId: string,
-  functionName: string,
-  args: xdr.ScVal[]
-): Promise<string> {
-  const userAccount = await rpcServer.getLedgerEntries(
-    xdr.LedgerKey.account(new xdr.LedgerKeyAccount({ accountId: userKeypair.xdrPublicKey() }))
-  ).then(() => rpcServer.getAccount(userKeypair.publicKey()));
+const CLASSIC_BASE_FEE = '100';
+const SPONSORED_BASE_FEE = '1000000';
 
-  const innerTx = new TransactionBuilder(userAccount, {
-    fee: '100',
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function pollTransaction(hash: string, timeoutMs = 60_000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const txResponse = await rpcServer.getTransaction(hash);
+
+      if (txResponse.status === 'SUCCESS') {
+        return txResponse;
+      }
+
+      if (txResponse.status === 'FAILED') {
+        throw new Error(`Transaction failed on-chain: ${JSON.stringify(txResponse.resultXdr ?? txResponse)}`);
+      }
+    } catch (error) {
+      // If it's a real failure from the contract, rethrow
+      if (error instanceof Error && error.message.includes('Transaction failed on-chain')) {
+        throw error;
+      }
+      // Otherwise, assume it's a transient RPC error and retry
+      console.warn(`Polling attempt failed for ${hash}:`, error instanceof Error ? error.message : error);
+    }
+
+    await sleep(1000);
+  }
+
+  throw new Error('Transaction timeout');
+}
+
+async function createAccountFromIssuer(destination: string) {
+  const issuerAccount = await horizonServer.loadAccount(issuerKeypair.publicKey());
+  const tx = new TransactionBuilder(issuerAccount, {
+    fee: CLASSIC_BASE_FEE,
     networkPassphrase,
+    memo: Memo.none(),
+  })
+    .addOperation(
+      Operation.createAccount({
+        destination,
+        startingBalance: '10',
+      })
+    )
+    .setTimeout(180)
+    .build();
+
+  tx.sign(issuerKeypair);
+  const response = await horizonServer.submitTransaction(tx);
+  return response.hash;
+}
+
+async function ensureUserAccount(userKeypair: Keypair) {
+  try {
+    return await rpcServer.getAccount(userKeypair.publicKey());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.toLowerCase().includes('account not found')) {
+      throw error;
+    }
+
+    await createAccountFromIssuer(userKeypair.publicKey());
+    return rpcServer.getAccount(userKeypair.publicKey());
+  }
+}
+
+function buildInvokeTransaction(source: Horizon.AccountResponse | Awaited<ReturnType<typeof rpcServer.getAccount>>, contractId: string, functionName: string, args: xdr.ScVal[]) {
+  return new TransactionBuilder(source, {
+    fee: CLASSIC_BASE_FEE,
+    networkPassphrase,
+    memo: Memo.none(),
   })
     .addOperation(
       Operation.invokeHostFunction({
         func: xdr.HostFunction.hostFunctionTypeInvokeContract(
           new xdr.InvokeContractArgs({
             contractAddress: Address.fromString(contractId).toScAddress(),
-            functionName: functionName,
-            args: args,
+            functionName,
+            args,
           })
         ),
         auth: [],
       })
     )
-    .setTimeout(30)
+    .setTimeout(180)
     .build();
+}
 
-  innerTx.sign(userKeypair);
+export async function buildUnsignedContractCall(userPublicKey: string, contractId: string, functionName: string, args: xdr.ScVal[]) {
+  const sourceAccount = await rpcServer.getAccount(userPublicKey);
+  const tx = buildInvokeTransaction(sourceAccount, contractId, functionName, args);
+  const prepared = await rpcServer.prepareTransaction(tx);
+  return prepared.toXDR();
+}
 
+export async function submitSponsoredSignedXdr(signedInnerXdr: string) {
+  const innerTx = TransactionBuilder.fromXDR(signedInnerXdr, networkPassphrase) as Transaction;
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     issuerKeypair,
-    '1000000',
+    SPONSORED_BASE_FEE,
     innerTx,
     networkPassphrase
   );
@@ -50,24 +124,39 @@ export async function buildAndSubmitFeeBump(
   feeBump.sign(issuerKeypair);
 
   const response = await rpcServer.sendTransaction(feeBump);
+  if (response.status !== 'PENDING') {
+    throw new Error(`Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`);
+  }
+
+  await pollTransaction(response.hash);
+  return response.hash;
+}
+
+export async function buildAndSubmitFeeBump(
+  userKeypair: Keypair,
+  contractId: string,
+  functionName: string,
+  args: xdr.ScVal[]
+): Promise<string> {
+  const userAccount = await ensureUserAccount(userKeypair);
+  const tx = buildInvokeTransaction(userAccount, contractId, functionName, args);
+  const prepared = await rpcServer.prepareTransaction(tx);
+  prepared.sign(userKeypair);
+
+  const feeBump = TransactionBuilder.buildFeeBumpTransaction(
+    issuerKeypair,
+    SPONSORED_BASE_FEE,
+    prepared,
+    networkPassphrase
+  );
+
+  feeBump.sign(issuerKeypair);
+  const response = await rpcServer.sendTransaction(feeBump as FeeBumpTransaction);
 
   if (response.status !== 'PENDING') {
-    throw new Error(`Transaction failed: ${JSON.stringify(response.errorResult)}`);
+    throw new Error(`Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`);
   }
 
-  // Poll for result
-  let status = response.status;
-  let txHash = response.hash;
-  
-  for (let i = 0; i < 30; i++) {
-    const txResponse = await rpcServer.getTransaction(txHash);
-    if (txResponse.status === 'SUCCESS') {
-      return txHash;
-    } else if (txResponse.status === 'FAILED') {
-      throw new Error('Transaction failed on-chain');
-    }
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-
-  throw new Error('Transaction timeout');
+  await pollTransaction(response.hash);
+  return response.hash;
 }

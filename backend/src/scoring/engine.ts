@@ -1,5 +1,7 @@
-import { scValToNative } from '@stellar/stellar-sdk';
-import { horizonServer, rpcServer, contractIds } from '../stellar/client';
+import { scValToNative, xdr } from '@stellar/stellar-sdk';
+import { LEDGERS_PER_DAY, STROOPS_PER_UNIT } from '../config';
+import { contractIds, horizonServer, rpcServer } from '../stellar/client';
+import { queryContract } from '../stellar/query';
 
 export interface WalletMetrics {
   txCount: number;
@@ -47,23 +49,10 @@ export function tierLabel(tier: number) {
   }
 }
 
-export function tierBorrowLimit(tier: number) {
-  switch (tier) {
-    case 3:
-      return 50000;
-    case 2:
-      return 20000;
-    case 1:
-      return 5000;
-    default:
-      return 0;
-  }
-}
-
 export function tierFeeBps(tier: number) {
   switch (tier) {
     case 3:
-      return 150;
+      return 100;
     case 2:
       return 300;
     case 1:
@@ -80,7 +69,24 @@ export function nextTier(score: number) {
   return null;
 }
 
+export function toPhpAmount(value: bigint | number) {
+  const amount = typeof value === 'bigint' ? value : BigInt(value);
+  const whole = amount / STROOPS_PER_UNIT;
+  const fraction = amount % STROOPS_PER_UNIT;
+  return `${whole.toString()}.${fraction.toString().padStart(7, '0').replace(/0+$/, '').padEnd(2, '0')}`;
+}
+
+export function toPhpNumber(value: bigint | number) {
+  return Number(toPhpAmount(value));
+}
+
+export function toStroops(amount: number) {
+  return BigInt(Math.round(amount * 10_000_000));
+}
+
 export function buildScoreFactors(metrics: WalletMetrics): ScoreFactor[] {
+  const avgBalanceFactor = Math.min(Math.floor(metrics.avgBalance / 100), 10);
+
   return [
     {
       key: 'txCount',
@@ -97,11 +103,11 @@ export function buildScoreFactors(metrics: WalletMetrics): ScoreFactor[] {
       points: metrics.repaymentCount * 10,
     },
     {
-      key: 'avgBalance',
+      key: 'avgBalanceFactor',
       label: 'Average balance factor',
-      value: Math.min(Math.floor(metrics.avgBalance / 100), 10),
+      value: avgBalanceFactor,
       weight: 'avg_balance_factor × 5',
-      points: Math.min(Math.floor(metrics.avgBalance / 100), 10) * 5,
+      points: avgBalanceFactor * 5,
     },
     {
       key: 'defaultCount',
@@ -113,9 +119,59 @@ export function buildScoreFactors(metrics: WalletMetrics): ScoreFactor[] {
   ];
 }
 
+export function buildScorePayload(
+  walletAddress: string,
+  input: {
+    score: number;
+    tier: number;
+    tierLimit: bigint;
+    metrics: WalletMetrics;
+    source: 'generated' | 'onchain';
+    tierLabel?: string;
+    txHashes?: { metricsTxHash?: string; scoreTxHash?: string };
+  }
+) {
+  const avgBalanceFactor = Math.min(Math.floor(input.metrics.avgBalance / 100), 10);
+  const factors = buildScoreFactors(input.metrics);
+  const upcomingTier = nextTier(input.score);
+
+  return {
+    walletAddress,
+    source: input.source,
+    score: input.score,
+    tier: input.tier,
+    tierNumeric: input.tier,
+    tierLabel: input.tierLabel ?? tierLabel(input.tier),
+    borrowLimit: toPhpAmount(input.tierLimit),
+    borrowLimitRaw: input.tierLimit.toString(),
+    feeRate: tierFeeBps(input.tier) / 100,
+    feeBps: tierFeeBps(input.tier),
+    progressToNext: upcomingTier ? Math.max(0, upcomingTier.threshold - input.score) : 0,
+    nextTier: upcomingTier?.label ?? null,
+    nextTierThreshold: upcomingTier?.threshold ?? null,
+    metrics: {
+      txCount: input.metrics.txCount,
+      repaymentCount: input.metrics.repaymentCount,
+      avgBalance: input.metrics.avgBalance,
+      avgBalanceFactor,
+      defaultCount: input.metrics.defaultCount,
+    },
+    formula: {
+      expression: 'score = (tx_count × 2) + (repayment_count × 10) + (avg_balance_factor × 5) - (default_count × 25)',
+      txComponent: input.metrics.txCount * 2,
+      repaymentComponent: input.metrics.repaymentCount * 10,
+      balanceComponent: avgBalanceFactor * 5,
+      defaultPenalty: input.metrics.defaultCount * 25,
+      total: input.score,
+    },
+    factors,
+    txHashes: input.txHashes ?? {},
+  };
+}
+
 export async function fetchTxCount(address: string): Promise<number> {
   try {
-    const txs = await horizonServer.transactions().forAccount(address).limit(200).call();
+    const txs = await horizonServer.transactions().forAccount(address).limit(200).order('desc').call();
     return txs.records.length;
   } catch {
     return 0;
@@ -135,16 +191,15 @@ export async function fetchAverageBalance(address: string): Promise<number> {
 export async function fetchRepaymentMetrics(address: string): Promise<Pick<WalletMetrics, 'repaymentCount' | 'defaultCount'>> {
   try {
     const latestLedger = await rpcServer.getLatestLedger();
-    const startLedger = Math.max(0, latestLedger.sequence - 200_000);
-
     const events = await rpcServer.getEvents({
-      startLedger,
+      startLedger: Math.max(0, latestLedger.sequence - 250_000),
       filters: [
         {
           type: 'contract',
           contractIds: [contractIds.lendingPool],
         },
       ],
+      limit: 200,
     });
 
     let repaymentCount = 0;
@@ -156,6 +211,7 @@ export async function fetchRepaymentMetrics(address: string): Promise<Pick<Walle
       if (topicAddress !== address) {
         continue;
       }
+
       if (topicName === 'repaid') repaymentCount += 1;
       if (topicName === 'defaulted') defaultCount += 1;
     }
@@ -181,22 +237,44 @@ export async function buildWalletMetrics(address: string): Promise<WalletMetrics
   };
 }
 
+export async function getTierLimit(tier: number) {
+  if (tier <= 0) {
+    return 0n;
+  }
+
+  const result = await queryContract(contractIds.creditRegistry, 'get_tier_limit', [
+    xdr.ScVal.scvU32(tier),
+  ]);
+  return BigInt(result ?? 0);
+}
+
 export async function buildScoreSummary(address: string) {
   const metrics = await buildWalletMetrics(address);
   const score = calculateScore(metrics);
   const tier = scoreToTier(score);
-  const next = nextTier(score);
+  const tierLimit = await getTierLimit(tier);
 
-  return {
-    metrics,
+  return buildScorePayload(address, {
     score,
     tier,
-    tierLabel: tierLabel(tier),
-    borrowLimit: tierBorrowLimit(tier),
-    feeBps: tierFeeBps(tier),
-    factors: buildScoreFactors(metrics),
-    formula: 'score = (tx_count × 2) + (repayment_count × 10) + (avg_balance_factor × 5) - (default_count × 25)',
-    nextTier: next,
-    pointsToNextTier: next ? Math.max(0, next.threshold - score) : 0,
+    tierLimit,
+    metrics,
+    source: 'generated',
+  });
+}
+
+export async function getPoolSnapshot() {
+  const poolBalanceRaw = BigInt(await queryContract(contractIds.lendingPool, 'get_pool_balance', []));
+  return {
+    poolBalance: toPhpAmount(poolBalanceRaw),
+    poolBalanceRaw: poolBalanceRaw.toString(),
   };
+}
+
+export function estimateDueDateFromLedgers(daysRemaining: number) {
+  return new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function computeDaysRemaining(currentLedger: number, dueLedger: number) {
+  return Math.floor((dueLedger - currentLedger) / LEDGERS_PER_DAY);
 }

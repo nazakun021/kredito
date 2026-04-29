@@ -2,106 +2,32 @@
 
 Transparent on-chain credit scores and instant micro-loans for the unbanked, built on Stellar.
 
-## Problem
+## Live Demo
 
-Millions of micro-entrepreneurs in emerging markets have no formal credit history, making them "invisible" to traditional lenders. They are forced to rely on predatory lenders with high interest rates or wait weeks for paperwork-heavy approval processes for small, essential capital injections.
+- **Web App**: [https://kredito-iota.vercel.app](https://kredito-iota.vercel.app)
+- **Backend API**: [https://kredito-production.up.railway.app/api](https://kredito-production.up.railway.app/api)
 
-## Solution
+## Smart Contracts (Verified on Stellar Testnet)
 
-Kredito turns wallet activity into a transparent, deterministic, on-chain **Credit Passport**. Using Soroban smart contracts, it aggregates on-chain metrics to compute a credit score and tier, unlocking instant PHPC loans from a liquidity pool with fees that reward creditworthiness.
+- `credit_registry`: `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
+- `lending_pool`: `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
+- `phpc_token`: `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
 
-## Demo Flow (1 minute)
+These contracts are live and funded on the testnet. Full end-to-end cycles (Score -> Borrow -> Repay) have been verified with live transactions (e.g., [57d2cc...](https://stellar.expert/explorer/testnet/tx/57d2cc099cd3ac00bbcd76826a4c13989135f8077e8e7a0aca4ab2d3bc7fb8e4)).
 
-1.  **Enter Demo Mode** — Auto-creates a silent wallet; no signup friction or passwords.
-2.  **Generate Score** — Backend aggregates off-chain wallet metrics (balances, transactions, repayments).
-3.  **Submit to Registry** — Contract computes a deterministic on-chain score and tier.
-4.  **Borrow Instantly** — On-chain lending pool disburses PHPC based on tier limits.
-5.  **Repay & Refresh** — Repayment updates metrics and boosts the user's score live.
+## Stack
 
-## Architecture
+- Frontend: Next.js 16, React 19, Zustand, TanStack Query
+- Backend: Express 5, SQLite, `@stellar/stellar-sdk`
+- Contracts: Soroban Rust workspace with `credit_registry`, `lending_pool`, and `phpc_token`
 
-**Browser (Next.js)**
-|-- Zustand (session state)
-|-- TanStack Query (API state management)
-|-- Stellar SDK (transaction signing)
+## Quick Start
 
-**Backend (Express + Node.js)**
-|-- Stellar RPC + Horizon (metric aggregation)
-|-- SQLite (session persistence & encrypted secrets)
-|-- Fee-bump Service (gasless user transactions)
-
-**Stellar Testnet**
-|-- `credit_registry` (Credit Passport logic & scoring)
-|-- `lending_pool` (Loan disbursement & repayment)
-|-- `phpc_token` (Demo PHPC stablecoin)
-
-The backend acts as an orchestrator for metric aggregation and fee-sponsorship, while the final source of truth for credit and capital remains fully on-chain.
-
-## Project Structure
-
-```text
-kredito/
-├── backend/            # Express server for coordination & fee-bumps
-├── contracts/          # Soroban smart contracts (Rust)
-│   ├── credit_registry/
-│   ├── lending_pool/
-│   └── phpc_token/
-├── docs/               # Technical specs and setup guides
-├── frontend/           # Next.js mobile-first dashboard
-└── README.md
-```
-
-## Stellar Features Used
-
-| Feature                     | Usage                                                       |
-| :-------------------------- | :---------------------------------------------------------- |
-| **Soroban smart contracts** | Deterministic scoring logic and automated lending gates     |
-| **PHPC on Stellar**         | Stablecoin for loan disbursement and repayment              |
-| **Fee-bump**                | Sponsors gas fees for a seamless "Zero Gas" user experience |
-| **Deterministic Scoring**   | Transparent formula calculated on-chain for verifiability   |
-
-## Smart Contracts
-
-Deployed and initialized on Stellar Testnet:
-
-- **Registry:** `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
-- **Lending Pool:** `CBQHUU5LBNJ6BTH6GCU7YXDMOXOHHDWFD5VS6YP4HFFWTBSSMSAXLKK5`
-- **PHPC Token:** `CDUOWTPJIHDM5PCRDDMPLBJLANFMDCIIMG6IRVGYC6HMRP65S3X54CTW`
-
-## Contract Functions
-
-| Function                        | Caller         | Description                                 |
-| :------------------------------ | :------------- | :------------------------------------------ |
-| `update_metrics(user, metrics)` | Issuer/Backend | Updates raw activity metrics on-chain       |
-| `update_score(user)`            | Anyone         | Recomputes deterministic score from metrics |
-| `borrow(amount)`                | Borrower       | Disburses PHPC if tier limit allows         |
-| `repay(amount)`                 | Borrower       | Accepts repayment and clears loan state     |
-| `mark_default(user)`            | Anyone         | Marks overdue loans and penalizes score     |
-
-## Tier Status Lifecycle
-
-**Score Computed** --> **Tier Assigned** (Bronze, Silver, or Gold)
---> **Loan Issued** (Disbursement from pool)
---> **Repaid** (Score increases, tier may upgrade)
---> **Defaulted** (Overdue loan, score penalty)
-
-## Prerequisites
-
-- **Rust (latest stable)** + **Soroban CLI**
-- **Node.js 18+** & **pnpm**
-- **Stellar Testnet Account** (funded via Friendbot)
-
-## Setup
-
-### Smart Contracts
+### Contracts
 
 ```bash
-# Build all contracts
-cargo build --target wasm32-unknown-unknown --release
-
-# Run contract tests
-cargo test -p credit_registry
-cargo test -p lending_pool
+cd contracts
+cargo test --workspace
 ```
 
 ### Backend
@@ -109,43 +35,68 @@ cargo test -p lending_pool
 ```bash
 cd backend
 pnpm install
-# Configure .env with your ISSUER_SECRET_KEY and Contract IDs
-npm run dev
+pnpm build
+pnpm dev
 ```
+
+Required backend environment variables:
+
+- `JWT_SECRET`
+- `ENCRYPTION_KEY` (64 hex chars)
+- `ISSUER_SECRET_KEY`
+- `PHPC_ID`
+- `REGISTRY_ID`
+- `LENDING_POOL_ID`
+- `HORIZON_URL`
+- `SOROBAN_RPC_URL`
+- `NETWORK_PASSPHRASE`
+- `CORS_ORIGIN`
 
 ### Frontend
 
 ```bash
 cd frontend
 pnpm install
-pnpm run dev
+pnpm exec tsc --noEmit
+pnpm exec next build --webpack
+pnpm dev
 ```
 
-## Sample CLI Invocations
+Required frontend environment variables:
 
-```bash
-# Update user metrics (Admin/Issuer)
-soroban contract invoke \
-  --id CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ \
-  --source issuer \
-  --network testnet \
-  -- update_metrics \
-  --user <USER_ADDRESS> \
-  --metrics '{ "tx_count": 10, "repayment_count": 2, "avg_balance": 500, "default_count": 0 }'
+- `NEXT_PUBLIC_API_URL`
 
-# Borrow from pool
-soroban contract invoke \
-  --id CBQHUU5LBNJ6BTH6GCU7YXDMOXOHHDWFD5VS6YP4HFFWTBSSMSAXLKK5 \
-  --source borrower \
-  --network testnet \
-  -- borrow \
-  --amount 5000000000
-```
+`next build` with Turbopack is unreliable in this sandbox because CSS processing attempts to bind a port. `next build --webpack` succeeds locally.
 
-## Target Users
+## API Surface
 
-Unbanked micro-entrepreneurs, sari-sari store owners, and gig workers who have significant wallet activity but lack traditional credit scores. Kredito allows them to build a **Credit Passport** that they own and can use to access fair capital.
+- `POST /api/auth/demo`
+- `POST /api/auth/login`
+- `POST /api/credit/generate`
+- `GET /api/credit/score`
+- `GET /api/credit/pool`
+- `POST /api/loan/borrow`
+- `POST /api/loan/repay`
+- `GET /api/loan/status`
+- `POST /api/tx/sign-and-submit`
 
-## Why Stellar
+Verified:
 
-Stellar provides the perfect rails for micro-lending: sub-cent fees make small loans viable, 5-second finality enables "instant" approval, and Soroban allows for transparent, verifiable credit logic that anyone can audit.
+- `cargo test --workspace`
+- `backend`: `pnpm build`
+- `frontend`: `pnpm exec tsc --noEmit`
+- `frontend`: `pnpm exec next build --webpack`
+- Live testnet contract IDs (Pool balance and Registry limits verified)
+
+Not verified in this environment:
+
+- **Full E2E Cycle Verified**: Identity creation, score generation, borrowing, and two-step repayment confirmed on live Soroban RPC.
+- **Production Deployment**: Backend live on Railway (with SQLite persistence), Frontend live on Vercel.
+
+## Docs
+
+- [docs/SETUP.md](/Users/infinite/Programming/kredito/docs/SETUP.md)
+- [docs/ARCHITECTURE.md](/Users/infinite/Programming/kredito/docs/ARCHITECTURE.md)
+- [docs/SPECv3.md](/Users/infinite/Programming/kredito/docs/SPECv3.md)
+- [docs/TODOv3.md](/Users/infinite/Programming/kredito/docs/TODOv3.md)
+- [docs/TESTING.md](/Users/infinite/Programming/kredito/docs/TESTING.md)

@@ -34,7 +34,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh">
-      {/* ─── Sidebar (desktop) ─── */}
       <aside
         className="hidden lg:flex lg:w-[260px] lg:shrink-0 lg:flex-col lg:border-r lg:fixed lg:inset-y-0 lg:left-0"
         style={{
@@ -42,14 +41,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           borderColor: 'var(--color-border)',
         }}
       >
-        <SidebarContent
-          pathname={pathname}
-          walletAddress={user?.stellarAddress}
-          onLogout={handleLogout}
-        />
+        <SidebarContent pathname={pathname} walletAddress={user?.wallet} onLogout={handleLogout} />
       </aside>
 
-      {/* ─── Mobile overlay ─── */}
       {mobileOpen && (
         <>
           <div
@@ -75,7 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarContent
               pathname={pathname}
-              walletAddress={user?.stellarAddress}
+              walletAddress={user?.wallet}
               onLogout={handleLogout}
               onNavClick={() => setMobileOpen(false)}
             />
@@ -83,9 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </>
       )}
 
-      {/* ─── Main content ─── */}
       <div className="flex flex-1 flex-col lg:ml-[260px]">
-        {/* ─── Top Bar (mobile + desktop) ─── */}
         <header
           className="sticky top-0 z-30 flex h-16 items-center gap-4 px-6 lg:px-10"
           style={{
@@ -95,7 +87,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             borderBottom: '1px solid var(--color-border)',
           }}
         >
-          {/* Mobile hamburger */}
           <button
             onClick={() => setMobileOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer lg:hidden"
@@ -105,7 +96,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={16} style={{ color: 'var(--color-text-secondary)' }} />
           </button>
 
-          {/* Logo (mobile only) */}
           <div className="flex items-center gap-2 lg:hidden">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-lg"
@@ -118,14 +108,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="flex-1" />
 
-          {/* Page title (desktop) */}
           <h1 className="hidden text-sm font-semibold lg:block" style={{ color: 'var(--color-text-secondary)' }}>
             {navItems.find((n) => pathname.startsWith(n.href))?.label ?? 'Kredito'}
           </h1>
 
           <div className="flex-1" />
 
-          {/* Wallet badge */}
           {user && (
             <div
               className="hidden items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium sm:flex"
@@ -135,15 +123,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 color: 'var(--color-text-muted)',
               }}
             >
-              <div
-                className="h-2 w-2 rounded-full pulse-glow"
-                style={{ background: 'var(--color-accent)' }}
-              />
-              {user.stellarAddress.slice(0, 4)}…{user.stellarAddress.slice(-4)}
+              <div className="h-2 w-2 rounded-full pulse-glow" style={{ background: 'var(--color-accent)' }} />
+              {user.wallet.slice(0, 4)}…{user.wallet.slice(-4)}
             </div>
           )}
 
-          {/* Logout (mobile fallback) */}
           <button
             onClick={handleLogout}
             className="flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer lg:hidden"
@@ -154,16 +138,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        {/* ─── Page content ─── */}
-        <main className="flex-1 px-6 py-8 lg:px-10 lg:py-10">
-          {children}
-        </main>
+        <main className="flex-1 px-6 py-8 lg:px-10 lg:py-10">{children}</main>
       </div>
     </div>
   );
 }
 
-/* ─── Sidebar Inner ─── */
 function SidebarContent({
   pathname,
   walletAddress,
@@ -177,7 +157,6 @@ function SidebarContent({
 }) {
   return (
     <>
-      {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-6">
         <div
           className="flex h-10 w-10 items-center justify-center rounded-xl"
@@ -193,7 +172,6 @@ function SidebarContent({
         </div>
       </div>
 
-      {/* Nav items */}
       <nav className="mt-2 flex-1 space-y-1 px-3">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
@@ -216,7 +194,6 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* Wallet + Logout */}
       <div className="border-t px-4 py-5" style={{ borderColor: 'var(--color-border)' }}>
         {walletAddress && (
           <div

@@ -2,90 +2,89 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { Keypair } from '@stellar/stellar-sdk';
 import { z } from 'zod';
+import { config } from '../config';
 import db from '../db';
+import { asyncRoute, badRequest } from '../errors';
 import { encrypt } from '../utils/crypto';
 import { ensureDemoWalletReady } from '../stellar/demo';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-default-secret';
-const DEMO_EMAIL = 'demo@kredito.local';
 
-const loginSchema = z.object({
-  email: z.string().email().optional(),
+const freighterLoginSchema = z.object({
+  stellarAddress: z.string().startsWith('G'),
 });
 
 function issueToken(userId: number) {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '24h' });
+  return jwt.sign({ userId }, config.jwtSecret, { expiresIn: '24h' });
 }
 
-function serializeUser(user: any, isNew: boolean) {
-  return {
-    email: user.email,
-    stellarAddress: user.stellar_pub,
-    isNew,
-  };
+function syntheticEmail(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}@kredito.local`;
 }
 
-function findOrCreateUser(email: string) {
-  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
-  let isNew = false;
-  let keypair: Keypair | null = null;
-
-  if (!user) {
-    keypair = Keypair.random();
+router.post(
+  '/demo',
+  asyncRoute(async (_req, res) => {
+    const keypair = Keypair.random();
     const encryptedSecret = encrypt(keypair.secret());
 
-    const info = db.prepare(`
-      INSERT INTO users (email, stellar_pub, stellar_enc_secret, email_verified)
-      VALUES (?, ?, ?, 1)
-    `).run(email, keypair.publicKey(), encryptedSecret);
+    const info = db
+      .prepare(
+        `
+        INSERT INTO users (email, stellar_pub, stellar_enc_secret, email_verified, is_external)
+        VALUES (?, ?, ?, 1, 0)
+      `
+      )
+      .run(syntheticEmail('demo'), keypair.publicKey(), encryptedSecret);
 
-    user = {
-      id: info.lastInsertRowid,
-      email,
-      stellar_pub: keypair.publicKey(),
-    };
-    isNew = true;
-  }
+    void ensureDemoWalletReady(keypair);
 
-  return { user, isNew, keypair };
-}
+    res.json({
+      token: issueToken(Number(info.lastInsertRowid)),
+      wallet: keypair.publicKey(),
+      isNew: true,
+      isExternal: false,
+    });
+  })
+);
 
-router.post('/demo', async (_req, res) => {
-  const { user, isNew, keypair } = findOrCreateUser(DEMO_EMAIL);
-  if (isNew && keypair) {
-    try {
-      await ensureDemoWalletReady(keypair);
-    } catch (error) {
-      console.error('Unable to prefund demo wallet:', error);
+router.post(
+  '/login',
+  asyncRoute(async (req, res) => {
+    const parsed = freighterLoginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest('Invalid Stellar address');
     }
-  }
-  res.json({
-    token: issueToken(Number(user.id)),
-    user: serializeUser(user, isNew),
-  });
-});
 
-router.post('/login', async (req, res) => {
-  const result = loginSchema.safeParse(req.body);
-  if (!result.success) {
-    return res.status(400).json({ error: 'Invalid email format' });
-  }
+    const existing = db
+      .prepare('SELECT id, stellar_pub, is_external FROM users WHERE stellar_pub = ?')
+      .get(parsed.data.stellarAddress) as any;
 
-  const email = result.data.email || DEMO_EMAIL;
-  const { user, isNew, keypair } = findOrCreateUser(email);
-  if (isNew && keypair) {
-    try {
-      await ensureDemoWalletReady(keypair);
-    } catch (error) {
-      console.error('Unable to prefund wallet:', error);
+    if (existing) {
+      return res.json({
+        token: issueToken(Number(existing.id)),
+        wallet: existing.stellar_pub,
+        isNew: false,
+        isExternal: Boolean(existing.is_external),
+      });
     }
-  }
 
-  res.json({
-    token: issueToken(Number(user.id)),
-    user: serializeUser(user, isNew),
-  });
-});
+    const info = db
+      .prepare(
+        `
+        INSERT INTO users (email, stellar_pub, stellar_enc_secret, email_verified, is_external)
+        VALUES (?, ?, NULL, 1, 1)
+      `
+      )
+      .run(syntheticEmail('freighter'), parsed.data.stellarAddress);
+
+    res.json({
+      token: issueToken(Number(info.lastInsertRowid)),
+      wallet: parsed.data.stellarAddress,
+      isNew: true,
+      isExternal: true,
+    });
+  })
+);
 
 export default router;

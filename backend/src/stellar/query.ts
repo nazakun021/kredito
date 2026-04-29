@@ -31,6 +31,7 @@ export async function queryContract(
         auth: [],
       })
     )
+    .setTimeout(30)
     .build();
 
   const response = await rpcServer.simulateTransaction(tx);
@@ -39,5 +40,5 @@ export async function queryContract(
     return scValToNative(response.result!.retval);
   }
   
-  throw new Error(`Query failed: ${JSON.stringify(response)}`);
+  throw new Error(`Contract query failed for ${functionName}: ${JSON.stringify(response)}`);
 }
