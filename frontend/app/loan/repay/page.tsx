@@ -12,10 +12,13 @@ import { REQUIRED_NETWORK } from '@/lib/constants';
 
 interface LoanStatusResponse {
   hasActiveLoan: boolean;
+  walletPhpBalance: string;
   loan: null | {
     principal: string;
     fee: string;
     totalOwed: string;
+    walletBalance: string;
+    shortfall: string;
     dueDate: string;
     daysRemaining: number;
     status: string;
@@ -158,6 +161,10 @@ export default function RepayPage() {
           <Row label="Principal" value={`P${status?.loan?.principal ?? '0.00'}`} />
           <Row label="Fee owed" value={`P${status?.loan?.fee ?? '0.00'}`} />
           <Row label="Total due" value={`P${status?.loan?.totalOwed ?? '0.00'}`} strong />
+          <Row label="Wallet PHPC" value={`P${status?.loan?.walletBalance ?? status?.walletPhpBalance ?? '0.00'}`} />
+          {status?.loan?.shortfall && status.loan.shortfall !== '0.00' ? (
+            <Row label="Still needed" value={`P${status.loan.shortfall}`} tone="danger" />
+          ) : null}
           <Row label="Due date" value={status?.loan?.dueDate ? new Date(status.loan.dueDate).toLocaleDateString() : '-'} />
           <Row
             label="Days remaining"
@@ -165,6 +172,12 @@ export default function RepayPage() {
             tone={status?.loan ? (status.loan.daysRemaining <= 0 ? 'danger' : status.loan.daysRemaining <= 7 ? 'amber' : 'success') : undefined}
           />
         </div>
+
+        {status?.loan?.shortfall && status.loan.shortfall !== '0.00' ? (
+          <div className="mt-4 rounded-xl px-4 py-3 text-sm font-medium" style={{ background: 'rgba(245, 158, 11, 0.08)', color: 'var(--color-amber)' }}>
+            Repayment pulls funds from your connected wallet. You borrowed only the principal, so the fee is not auto-funded. Add at least P{status.loan.shortfall} PHPC to this wallet before repaying.
+          </div>
+        ) : null}
 
         {error || (walletConnected && !isCorrectNetwork ? walletError : null) ? (
           <div className="mt-4 rounded-xl px-4 py-3 text-sm font-medium" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }} role="alert">

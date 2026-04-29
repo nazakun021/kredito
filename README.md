@@ -27,7 +27,19 @@ Kredito uses deterministic on-chain transaction history to generate verifiable c
 1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth challenge.
 2. **Review Credit Passport** — See raw metrics, the exact formula, and your on-chain tier.
 3. **Borrow Instantly** — Pool disburses PHPC to your wallet via smart contract.
-4. **Repay & Level Up** — Repayment updates your score live. Higher tier = bigger limit.
+4. **Repay & Level Up** — Repayment pulls PHPC from that same connected wallet, then updates your score live. Higher tier = bigger limit.
+
+## Current Demo Note
+
+Repayment requires the wallet to hold `principal + fee`.
+
+Example:
+
+- borrow `500 PHPC`
+- fee `25 PHPC`
+- total repayment due `525 PHPC`
+
+Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
 
 ## Architecture
 
@@ -113,6 +125,7 @@ stellar contract build
 ```bash
 cd backend
 pnpm install
+pnpm build
 pnpm dev
 ```
 
@@ -123,10 +136,19 @@ _Requires `backend/.env` with `JWT_SECRET`, `ENCRYPTION_KEY`, `ISSUER_SECRET_KEY
 ```bash
 cd frontend
 pnpm install
+pnpm lint
+pnpm exec next build --webpack
 pnpm dev
 ```
 
 _Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
+
+## Documentation
+
+- [DEMO.md](./DEMO.md): presenter runbook and dashboard E2E demo flow
+- [docs/SETUP.md](./docs/SETUP.md): local setup
+- [docs/TESTING.md](./docs/TESTING.md): live E2E testing steps
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): system architecture
 
 ## Why Stellar?
 

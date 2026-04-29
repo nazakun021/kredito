@@ -48,6 +48,13 @@ async function getLoanRecord(walletAddress: string) {
   ]);
 }
 
+async function getWalletTokenBalance(walletAddress: string) {
+  const result = await queryContract(contractIds.phpcToken, 'balance', [
+    Address.fromString(walletAddress).toScVal(),
+  ]);
+  return BigInt(result ?? 0);
+}
+
 router.post(
   '/borrow',
   authMiddleware,
@@ -144,6 +151,14 @@ router.post(
     }
 
     const totalOwedStroops = BigInt(loan.principal) + BigInt(loan.fee);
+    const walletBalanceStroops = await getWalletTokenBalance(user.stellar_pub);
+    if (walletBalanceStroops < totalOwedStroops) {
+      const shortfall = totalOwedStroops - walletBalanceStroops;
+      throw badRequest(
+        `Insufficient PHPC balance to repay. You owe P${toPhpAmount(totalOwedStroops)}, but your wallet only has P${toPhpAmount(walletBalanceStroops)}. Add P${toPhpAmount(shortfall)} more PHPC to this same wallet and try again.`,
+      );
+    }
+
     const approveArgs = [
       Address.fromString(user.stellar_pub).toScVal(),
       Address.fromString(contractIds.lendingPool).toScVal(),
@@ -257,14 +272,20 @@ router.get(
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
     const user = await loadUser(req);
-    const [loan, poolSnapshot, latestLedger] = await Promise.all([
+    const [loan, poolSnapshot, latestLedger, walletBalanceStroops] = await Promise.all([
       getLoanRecord(user.stellar_pub),
       getPoolSnapshot(),
       rpcServer.getLatestLedger(),
+      getWalletTokenBalance(user.stellar_pub),
     ]);
 
     if (!loan) {
-      return res.json({ hasActiveLoan: false, loan: null, ...poolSnapshot });
+      return res.json({
+        hasActiveLoan: false,
+        loan: null,
+        walletPhpBalance: toPhpAmount(walletBalanceStroops),
+        ...poolSnapshot,
+      });
     }
 
     const currentLedger = latestLedger.sequence;
@@ -281,12 +302,18 @@ router.get(
 
     return res.json({
       hasActiveLoan,
+      walletPhpBalance: toPhpAmount(walletBalanceStroops),
       ...poolSnapshot,
       loan: hasActiveLoan
         ? {
             principal: toPhpAmount(BigInt(loan.principal)),
             fee: toPhpAmount(BigInt(loan.fee)),
             totalOwed: toPhpAmount(BigInt(loan.principal) + BigInt(loan.fee)),
+            walletBalance: toPhpAmount(walletBalanceStroops),
+            shortfall:
+              walletBalanceStroops < BigInt(loan.principal) + BigInt(loan.fee)
+                ? toPhpAmount(BigInt(loan.principal) + BigInt(loan.fee) - walletBalanceStroops)
+                : '0.00',
             dueLedger,
             currentLedger,
             dueDate: estimateDueDateFromLedgers(daysRemaining),

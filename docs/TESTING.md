@@ -36,16 +36,28 @@ echo "Tester Pubkey: $PUBKEY"
 
 ## 3. Authenticate with Kredito
 
-Login as an external wallet to get a session token.
+Authenticate with the actual Freighter-style challenge flow.
 
 ```bash
-# Login and capture the JWT token
-AUTH_RESPONSE=$(curl -s -X POST http://localhost:3001/api/auth/login \
+# 1. Request challenge XDR
+CHALLENGE_XDR=$(curl -s -X POST http://localhost:3001/api/auth/challenge \
   -H "Content-Type: application/json" \
-  -d "{\"stellarAddress\": \"$PUBKEY\"}")
+  -d "{\"stellarAddress\": \"$PUBKEY\"}" | jq -r '.challengeXdr')
+
+# 2. Sign it from file to avoid shell escaping issues
+printf '%s' "$CHALLENGE_XDR" > challenge.xdr
+stellar tx sign challenge.xdr --sign-with-key e2e-tester --network testnet --quiet > signed_challenge.xdr
+
+# 3. Exchange signed challenge for JWT
+AUTH_RESPONSE=$(jq -n --rawfile xdr signed_challenge.xdr '{"signedChallengeXdr": $xdr | sub("\n$"; "")}' \
+  | curl -s -X POST http://localhost:3001/api/auth/login \
+      -H "Content-Type: application/json" \
+      -d @-)
 
 TOKEN=$(echo "$AUTH_RESPONSE" | jq -r '.token')
 echo "JWT Token: $TOKEN"
+
+rm challenge.xdr signed_challenge.xdr
 ```
 
 ---
@@ -99,6 +111,14 @@ Repayment is split into two steps: `Approve` and `Repay`.
 > [!WARNING]
 > **The Fee Trap**: To repay a loan of 500 PHPC, you need **525 PHPC** in your wallet (500 principal + 25 fee). Since you only borrowed 500, you must have some extra PHPC to cover the fee, or the contract will return an "Insufficient Balance" error.
 
+Before repayment, confirm the wallet balance:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/loan/status | jq .
+```
+
+If `walletPhpBalance` is below `loan.totalOwed`, mint more PHPC to that same wallet before continuing.
+
 ### Step 1: Approve PHPC Spending
 
 ```bash
@@ -106,7 +126,7 @@ Repayment is split into two steps: `Approve` and `Repay`.
 curl -s -X POST http://localhost:3001/api/loan/repay \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"amount": 525}' | jq -r '.unsignedXdr' > approve_unsigned.xdr
+  | jq -r '.unsignedXdr' > approve_unsigned.xdr
 
 # 2. Sign
 stellar tx sign approve_unsigned.xdr --sign-with-key e2e-tester --network testnet --quiet > approve_signed.xdr
@@ -130,7 +150,7 @@ Wait ~5 seconds for the ledger to close before running this.
 curl -s -X POST http://localhost:3001/api/loan/repay \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"amount": 525}' | jq -r '.unsignedXdr' > repay_unsigned.xdr
+  | jq -r '.unsignedXdr' > repay_unsigned.xdr
 
 # 2. Sign
 stellar tx sign repay_unsigned.xdr --sign-with-key e2e-tester --network testnet --quiet > repay_signed.xdr
@@ -165,13 +185,37 @@ If you see `unknown sort specifier` or `missing end of string`, it means you are
 
 ### Insufficient Balance on Repay
 
-If Repay Step 2 returns `error: Requirement not met (Insufficient balance or No credit tier)`, it almost always means you don't have enough PHPC to cover the **repayment fee**. Use the issuer to mint some extra PHPC to your tester wallet.
+If repay returns an insufficient balance error, mint more PHPC into the same wallet:
+
+```bash
+stellar contract invoke \
+  --id CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR \
+  --source issuer \
+  --network testnet -- \
+  mint \
+  --to $PUBKEY \
+  --amount 250000000
+```
+
+That example mints `25 PHPC`.
+
+The current backend also exposes the shortfall directly through `GET /api/loan/status` and returns a clearer error message from `POST /api/loan/repay`.
+
+### Soroban RPC Retry Responses
+
+If score generation fails with `TRY_AGAIN_LATER`, the RPC is congested. Wait a few seconds and retry:
+
+```bash
+curl -s -X POST http://localhost:3001/api/credit/generate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" | jq .
+```
 
 ---
 
 ## 8. Final Verification
 
-Check status to ensure `hasActiveLoan` is `false`.
+Check status to ensure `hasActiveLoan` is `false` and `loan` is `null`.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/loan/status | jq .

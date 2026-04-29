@@ -231,8 +231,8 @@ backend/src/
 | Method | Path               | Auth | Description                                                                                 |
 | :----- | :----------------- | :--- | :------------------------------------------------------------------------------------------ |
 | `POST` | `/borrow`          | JWT  | Validate tier/limit and return or submit the borrowing transaction flow                    |
-| `POST` | `/repay`           | JWT  | Two-step wallet flow (`approve` → `repay`) for PHPC repayment                              |
-| `GET`  | `/status`          | JWT  | Return active loan state, due date, and pool balance                                        |
+| `POST` | `/repay`           | JWT  | Two-step wallet flow (`approve` → `repay`) for PHPC repayment, with wallet balance validation |
+| `GET`  | `/status`          | JWT  | Return active loan state, wallet PHPC balance, due date, and pool balance                   |
 | `POST` | `/sign-and-submit` | JWT  | Accept signed inner XDR from Freighter, wrap in fee-bump, submit                            |
 
 ### 3.3 Scoring Engine (`scoring/engine.ts`)
@@ -241,7 +241,7 @@ The off-chain engine mirrors the on-chain Rust formula exactly:
 
 1. **`fetchTxCount(address)`**: Calls Horizon to count recent transactions (last 200).
 2. **`fetchAverageBalance(address)`**: Reads the native XLM balance from Horizon.
-3. **`fetchRepaymentMetrics(address)`**: Scans Soroban RPC events on `lending_pool` for `repaid` and `defaulted` events associated with the wallet.
+3. **`fetchRepaymentMetrics(address)`**: Scans Soroban RPC events on `lending_pool` for `repaid` and `defaulted` events associated with the wallet, clamping to the available RPC ledger window and falling back to the latest loan outcome when retained event history is incomplete.
 4. **`buildWalletMetrics(address)`**: Combines all three sources in parallel.
 5. **`calculateScore(metrics)`**: Applies the deterministic formula.
 6. **`scoreToTier(score)`**: Maps score → tier (0–3).
@@ -323,6 +323,8 @@ The repayment flow is two steps because PHPC requires a prior `approve` allowanc
    └─ POST /api/tx/sign-and-submit { signedInnerXdr: repayXdr }
 ```
 
+Repayment also requires the connected wallet to already hold `principal + fee`. The backend now checks the wallet's PHPC balance before building the repay flow and returns an explicit shortfall if the balance is insufficient.
+
 ---
 
 ## 5. Data Flows
@@ -388,6 +390,8 @@ DB: INSERT INTO active_loans (user_id, stellar_pub)
 Frontend: display txHash, amount, fee, due date
 ```
 
+The borrowed PHPC is disbursed into the actual connected wallet. There is no separate in-app balance.
+
 ### 5.3 Loan Repay
 
 ```
@@ -400,6 +404,7 @@ Frontend: POST /api/loan/repay
 Backend:
   ├── getLoanRecord(wallet) → validate not repaid/defaulted
   ├── Calculate totalOwed = principal + fee
+  ├── Query PHPC wallet balance → reject early if walletBalance < totalOwed
   ├── build unsigned approve transaction
   ├── Frontend signs in Freighter
   ├── Backend fee-bumps and submits approve
@@ -416,6 +421,8 @@ DB: INSERT INTO score_events (tier, score, ...) — new improved score
   ▼
 Frontend: display newScore, newTier, newBorrowLimit
 ```
+
+If the wallet only holds the borrowed principal and not the extra fee amount, repayment fails until the wallet is topped up with additional PHPC.
 
 ---
 

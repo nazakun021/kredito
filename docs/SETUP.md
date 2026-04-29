@@ -92,16 +92,48 @@ Kredito now uses Freighter as the primary login path. The backend never stores t
 6. Borrow and repay requests return unsigned XDR when a wallet signature is needed.
 7. Frontend signs through Freighter and submits the signed XDR back to `POST /api/tx/sign-and-submit`.
 
-## 6. Local Verification Commands
+## 6. Repayment Funding Requirement
+
+Repayment uses the actual connected wallet balance.
+
+This means:
+
+- borrow sends `PHPC` into the connected wallet
+- repay pulls `principal + fee` from that same wallet
+- the fee is not auto-funded
+
+Example:
+
+- borrowed amount: `500 PHPC`
+- fee: `25 PHPC`
+- total due: `525 PHPC`
+
+If the wallet only holds the borrowed `500 PHPC`, repayment will fail until the user adds at least `25 PHPC` more to that same wallet.
+
+You can mint extra PHPC from the issuer/admin account:
+
+```bash
+stellar contract invoke \
+  --id CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR \
+  --source issuer \
+  --network testnet -- \
+  mint \
+  --to <WALLET_ADDRESS> \
+  --amount 250000000
+```
+
+That example mints `25 PHPC` because the token uses `7` decimals.
+
+## 7. Local Verification Commands
 
 ```bash
 cd contracts && cargo test --workspace
 cd backend && pnpm build
 cd frontend && pnpm lint
-cd frontend && pnpm build
+cd frontend && pnpm exec next build --webpack
 ```
 
-## 7. Status: Fully Verified
+## 8. Status: Verified Flow
 
 This repository has been verified end-to-end on the Stellar Testnet. This includes:
 
@@ -110,3 +142,4 @@ This repository has been verified end-to-end on the Stellar Testnet. This includ
 - On-chain credit scoring and tier verification.
 - Sponsorship of transactions (fee-bumps).
 - Two-step loan repayment (`approve` -> `repay`) to handle PHPC token logic.
+- Wallet-balance validation before repay, including explicit PHPC shortfall reporting.
