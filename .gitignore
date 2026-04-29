@@ -28,7 +28,6 @@ next-env.d.ts
 target/
 **/*.rs.bk
 .stellar/
-deployed.json
 
 # --- IDEs ---
 .vscode/

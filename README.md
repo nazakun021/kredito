@@ -2,6 +2,15 @@
 
 Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar.
 
+## Links
+
+🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
+🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface)**
+🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface)**
+🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface)**
+
+> **SEA Stellar Hackathon · Track: Payments & Financial Access**
+
 ## Problem
 
 Small retail business owners in the Philippines (sari-sari stores, online resellers, market vendors) lack traditional credit history, making them "invisible" to banks. They often rely on informal lenders with predatory interest rates or use personal savings, which stunts their growth. Traditional digital wallets have low transaction caps and no path to credit, leaving SMEs without the capital needed for bulk inventory orders.
@@ -10,13 +19,12 @@ Small retail business owners in the Philippines (sari-sari stores, online resell
 
 Kredito uses deterministic on-chain transaction history to generate verifiable credit scores. These scores are stored in a Soroban smart contract and used to unlock tiered micro-loans from a decentralized liquidity pool. Settlement happens in seconds with near-zero fees, and users build a portable "Credit Passport" with every on-time repayment.
 
-## Demo Flow (2 minutes)
+## Demo Flow (under 60 seconds)
 
-1. **Enter Demo** — A test wallet is automatically generated and funded to simulate a real user.
-2. **Generate Score** — The system analyzes on-chain metrics (transaction count, average balance, etc.).
-3. **Unlock Tier** — Users are assigned a tier (Bronze, Silver, Gold) and a corresponding borrow limit.
-4. **Instant Loan** — Borrow PHPC (Philippine Peso stablecoin) from the pool instantly via smart contract.
-5. **Repay & Upgrade** — Repaying on time improves the score and unlocks higher limits in real-time.
+1. **Generate Score** — Click one button. Wallet created silently. No signup.
+2. **Review Credit Passport** — See raw metrics, the exact formula, and your on-chain tier.
+3. **Borrow Instantly** — Pool disburses PHPC to your wallet via smart contract.
+4. **Repay & Level Up** — Repayment updates your score live. Higher tier = bigger limit.
 
 ## Architecture
 

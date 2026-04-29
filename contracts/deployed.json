@@ -1,0 +1,10 @@
+{
+  "network": "testnet",
+  "contracts": {
+    "credit_registry": "CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ",
+    "lending_pool": "CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH",
+    "phpc_token": "CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR"
+  },
+  "verifiedAt": "2026-04-29T07:53:00Z",
+  "notes": "PHPC and Lending Pool redeployed to fix UnreachableCodeReached panic in simulation. Credit Registry remains the same."
+}
