@@ -32,16 +32,16 @@ jobs:
         run: cargo fmt --all -- --check
         working-directory: contracts
 
+      - name: Build Contracts
+        run: stellar contract build
+        working-directory: contracts
+
       - name: Clippy Lint
         run: cargo clippy --all-targets --all-features -- -D warnings
         working-directory: contracts
 
       - name: Run Tests
         run: cargo test --workspace
-        working-directory: contracts
-
-      - name: Build Contracts
-        run: stellar contract build
         working-directory: contracts
 
   backend:
