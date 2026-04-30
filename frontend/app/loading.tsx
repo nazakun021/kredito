@@ -1,3 +1,5 @@
+// frontend/app/loading.tsx
+
 export default function Loading() {
   return (
     <div className="min-h-dvh px-5 py-8">

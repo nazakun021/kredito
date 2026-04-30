@@ -1,3 +1,5 @@
+// frontend/components/ConnectWalletButton.tsx
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -27,7 +29,8 @@ export default function ConnectWalletButton() {
         href="https://freighter.app" 
         target="_blank" 
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+        className="btn-primary"
+        style={{ background: 'var(--color-accent)', color: 'var(--color-bg-primary)' }}
       >
         Install Freighter ↗
       </a>
@@ -41,10 +44,10 @@ export default function ConnectWalletButton() {
       <div className="relative">
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all"
+          className="btn-primary btn-dark flex items-center gap-2 px-4 py-2 text-sm font-medium"
         >
-          <Wallet size={16} className="text-emerald-500" />
-          <span>{truncated}</span>
+          <Wallet size={16} style={{ color: 'var(--color-accent)' }} />
+          <span className="font-mono">{truncated}</span>
           <ChevronDown size={14} className={`transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
         </button>
 
@@ -54,13 +57,25 @@ export default function ConnectWalletButton() {
               className="fixed inset-0 z-40" 
               onClick={() => setShowDropdown(false)} 
             />
-            <div className="absolute right-0 mt-2 w-48 py-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div 
+              className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
+            >
+              <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                <p className="text-[10px] font-semibold tracking-widest uppercase mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Connected Address
+                </p>
+                <p className="text-xs font-mono break-all" style={{ color: 'var(--color-text-secondary)' }}>
+                  {publicKey}
+                </p>
+              </div>
               <button
                 onClick={() => {
                   disconnect();
                   setShowDropdown(false);
                 }}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-400 hover:bg-slate-800 transition-colors text-left"
+                className="flex items-center gap-2 w-full px-4 py-3 text-sm transition-colors text-left hover:bg-slate-800/50"
+                style={{ color: 'var(--color-danger)' }}
               >
                 <LogOut size={14} />
                 Disconnect
@@ -76,7 +91,7 @@ export default function ConnectWalletButton() {
     <button
       onClick={() => connect()}
       disabled={isConnecting}
-      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20"
+      className="btn-primary btn-accent"
     >
       {isConnecting ? (
         <>

@@ -1,3 +1,5 @@
+// frontend/components/WalletProvider.tsx
+
 'use client';
 
 import { useEffect, ReactNode } from 'react';

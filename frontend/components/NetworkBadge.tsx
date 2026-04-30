@@ -1,3 +1,5 @@
+// frontend/components/NetworkBadge.tsx
+
 'use client';
 
 import { useWalletStore } from '../store/walletStore';
@@ -12,13 +14,14 @@ export default function NetworkBadge() {
 
   return (
     <div 
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-        isCorrect 
-          ? 'bg-yellow-100 text-yellow-800 border-yellow-200' 
-          : 'bg-red-100 text-red-800 border-red-200'
-      }`}
+      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border"
+      style={{
+        background: isCorrect ? 'var(--color-accent-glow)' : 'var(--color-danger-bg)',
+        color: isCorrect ? 'var(--color-accent)' : 'var(--color-danger)',
+        borderColor: isCorrect ? 'var(--color-border-accent)' : 'var(--color-danger)'
+      }}
     >
-      {isCorrect ? 'Testnet' : network === 'PUBLIC' ? '⚠ Wrong Network' : '⚠ Unknown Network'}
+      {isCorrect ? 'Testnet ✓' : network === 'PUBLIC' ? '⚠ Wrong Network' : '⚠ Unknown Network'}
     </div>
   );
 }

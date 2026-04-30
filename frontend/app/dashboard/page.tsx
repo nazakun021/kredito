@@ -1,3 +1,5 @@
+// frontend/app/dashboard/page.tsx
+
 'use client';
 
 import { useEffect } from 'react';
@@ -6,13 +8,15 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   ChartColumn,
-  Coins,
+  Clock,
   RefreshCw,
   TrendingUp,
   Wallet,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import { tierGradient, tierLabel, tierContextPhrase } from '@/lib/tiers';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 
 interface ScoreResponse {
   score: number;
@@ -50,70 +54,63 @@ interface LoanStatusResponse {
   };
 }
 
-function tierGradient(tier: number) {
-  switch (tier) {
-    case 3:
-      return 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)';
-    case 2:
-      return 'linear-gradient(135deg, #94A3B8 0%, #CBD5E1 100%)';
-    case 1:
-      return 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)';
-    default:
-      return 'linear-gradient(135deg, #475569 0%, #64748B 100%)';
-  }
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
 
-  const generateQuery = useQuery({
-    queryKey: ['score-generate', user?.wallet],
-    queryFn: () => api.post<ScoreResponse>('/credit/generate').then((res) => res.data),
+  // 1. Primary: Get the latest cached score (fast)
+  const scoreQuery = useQuery({
+    queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
+    queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
     enabled: !!user,
-    retry: 1,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
-  const scoreQuery = useQuery({
-    queryKey: ['score'],
-    queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
-    enabled: false,
+  // 2. Secondary: Generate a new score if none exists or user clicks refresh
+  const generateMutation = useMutation({
+    mutationFn: () => api.post<ScoreResponse>('/credit/generate').then((res) => res.data),
+    onSuccess: async (data) => {
+      queryClient.setQueryData(QUERY_KEYS.score(user?.wallet ?? ''), data);
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus });
+    },
   });
+
+  // 3. Auto-trigger generate only if score is missing
+  const mutate = generateMutation.mutate;
+  useEffect(() => {
+    if (
+      scoreQuery.isError && 
+      !generateMutation.isPending && 
+      !generateMutation.data && 
+      !generateMutation.isError
+    ) {
+      mutate();
+    }
+  }, [scoreQuery.isError, generateMutation.isPending, generateMutation.data, generateMutation.isError, mutate]);
 
   const poolQuery = useQuery({
-    queryKey: ['pool'],
+    queryKey: QUERY_KEYS.pool,
     queryFn: () => api.get<{ poolBalance: string }>('/credit/pool').then((res) => res.data),
     enabled: !!user,
+    staleTime: 30 * 1000,
   });
 
   const loanStatusQuery = useQuery({
-    queryKey: ['loan-status'],
+    queryKey: QUERY_KEYS.loanStatus,
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
     enabled: !!user,
-  });
-
-  useEffect(() => {
-    if (generateQuery.data) {
-      void scoreQuery.refetch();
-    }
-  }, [generateQuery.data, scoreQuery]);
-
-  const refreshMutation = useMutation({
-    mutationFn: () => api.post('credit/generate').then((res) => res.data),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['score-generate'] });
-      await queryClient.invalidateQueries({ queryKey: ['score'] });
-      await queryClient.invalidateQueries({ queryKey: ['pool'] });
-      await queryClient.invalidateQueries({ queryKey: ['loan-status'] });
-    },
+    staleTime: 30 * 1000,
   });
 
   if (!user) return null;
 
-  const score = scoreQuery.data ?? generateQuery.data;
+  const score = scoreQuery.data ?? generateMutation.data;
   const loanStatus = loanStatusQuery.data;
-  const isLoading = generateQuery.isLoading || (generateQuery.isSuccess && scoreQuery.isFetching && !scoreQuery.data);
+  const isLoading = (scoreQuery.isLoading && !scoreQuery.data) || generateMutation.isPending;
+  
   const nextTierProgress = score?.nextTierThreshold
     ? Math.max(0, Math.min(100, (score.score / score.nextTierThreshold) * 100))
     : 100;
@@ -129,58 +126,83 @@ export default function DashboardPage() {
 
       <div className="grid gap-5 lg:grid-cols-5">
         <section
-          className="lg:col-span-3 rounded-2xl p-6 animate-fade-up"
+          className="lg:col-span-3 rounded-2xl p-6 animate-fade-up relative overflow-hidden"
           style={{
             background: 'var(--color-bg-secondary)',
             border: '1px solid var(--color-border)',
             boxShadow: 'var(--shadow-card)',
           }}
         >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
-                Credit Passport
-              </p>
-              {isLoading ? (
-                <div className="skeleton mt-3 h-14 w-28" />
-              ) : (
-                <h2 className="mt-3 text-6xl font-extrabold tabular-nums">{score?.score ?? '--'}</h2>
-              )}
+          <div className="flex items-start justify-between gap-4 relative z-10">
+            <div className="flex items-center gap-6">
+              <div className="relative flex items-center justify-center h-32 w-32">
+                <ScoreArc score={score?.score ?? 0} isLoading={isLoading} />
+                <div className="text-center">
+                  <p className="text-[10px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Score
+                  </p>
+                  {isLoading ? (
+                    <div className="skeleton h-10 w-16 mx-auto" />
+                  ) : (
+                    <h2 
+                      className="text-4xl font-extrabold tabular-nums"
+                      aria-label={`Credit score: ${score?.score ?? "not available"}`}
+                    >
+                      {score?.score ?? '--'}
+                    </h2>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                  Credit Status
+                </p>
+                <p className="text-lg font-bold mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                  {score ? tierContextPhrase(score.score) : '--'}
+                </p>
+              </div>
             </div>
             <div
-              className="rounded-xl px-4 py-2 text-sm font-bold"
+              className="rounded-xl px-4 py-2 text-sm font-bold shadow-lg"
               style={{ background: tierGradient(score?.tier ?? 0), color: '#020617' }}
             >
               {score?.tierLabel ?? 'Unrated'}
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 relative z-10">
             <Metric label="Borrow limit" value={`P${score?.borrowLimit ?? '0.00'}`} loading={isLoading} />
             <Metric label="Fee rate" value={`${(score?.feeRate ?? 0).toFixed(2)}%`} loading={isLoading} />
             <Metric label="Transactions" value={`${score?.metrics.txCount ?? 0}`} loading={isLoading} />
             <Metric label="Repayments" value={`${score?.metrics.repaymentCount ?? 0}`} loading={isLoading} />
           </div>
 
-          <div className="mt-5 rounded-xl p-4" style={{ background: 'rgba(148, 163, 184, 0.06)' }}>
+          <div className="mt-6 rounded-xl p-4 relative z-10" style={{ background: 'rgba(148, 163, 184, 0.06)' }}>
             <div className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              <span>Progress to {score?.nextTier ?? 'Top tier'}</span>
+              <span>
+                {score?.nextTier 
+                  ? `You need ${score.progressToNext} more points to reach ${score.nextTier}` 
+                  : 'You have reached the top tier'}
+              </span>
               <span style={{ color: 'var(--color-text-secondary)' }}>
-                {score?.nextTier ? `${score.progressToNext} pts` : 'Complete'}
+                {score?.nextTier ? `${score.score} / ${score.nextTierThreshold}` : 'Max'}
               </span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'var(--color-bg-elevated)' }}>
-              <div className="h-2 rounded-full progress-animated" style={{ width: `${nextTierProgress}%`, background: tierGradient(score?.tier ?? 0) }} />
+              <div 
+                className="h-2 rounded-full progress-animated" 
+                style={{ width: `${nextTierProgress}%`, background: tierGradient(score?.tier ?? 0) }} 
+              />
             </div>
           </div>
 
           <button
-            onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
-            className="btn-primary btn-dark mt-5"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            className="btn-primary btn-dark mt-6 relative z-10"
           >
-            <RefreshCw size={16} className={refreshMutation.isPending ? 'animate-spin' : ''} />
-            {refreshMutation.isPending ? 'Refreshing on-chain score...' : 'Refresh On-Chain Score'}
+            <RefreshCw size={16} className={generateMutation.isPending ? 'animate-spin' : ''} />
+            {generateMutation.isPending ? 'Refreshing on-chain score...' : 'Refresh On-Chain Score'}
           </button>
         </section>
 
@@ -224,14 +246,19 @@ export default function DashboardPage() {
                 disabled={!score || score.tier === 0}
                 className="btn-primary btn-accent mt-5"
               >
-                {score?.tier === 0 ? 'Keep transacting to improve your score' : `Borrow P${score?.borrowLimit ?? '0.00'}`}
+                {score?.tier === 0 ? 'Tier too low to borrow' : `Borrow P${score?.borrowLimit ?? '0.00'}`}
                 {score?.tier === 0 ? null : <ArrowRight size={16} />}
               </button>
+            )}
+            {score?.tier === 0 && (
+              <p className="mt-3 text-center text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                Your current tier doesn't qualify for borrowing. Complete more on-chain transactions to build your score.
+              </p>
             )}
           </section>
 
           <div className="grid grid-cols-2 gap-4 animate-fade-up">
-            <InfoCard icon={Coins} title="Pool" value={`P${poolQuery.data?.poolBalance ?? '0.00'}`} isLoading={poolQuery.isLoading} />
+            <InfoCard icon={Clock} title="Last Updated" value={score ? "Just now" : "--"} isLoading={isLoading} />
             <InfoCard icon={Wallet} title="Wallet" value={`${user.wallet.slice(0, 4)}…${user.wallet.slice(-4)}`} isLoading={false} />
           </div>
         </div>
@@ -252,19 +279,21 @@ export default function DashboardPage() {
           </div>
 
           {isLoading ? (
-            <div className="space-y-2">
+            <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading formula">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="skeleton h-16" />
               ))}
             </div>
           ) : score ? (
-            <div className="rounded-2xl p-4 font-mono text-sm leading-7" style={{ background: 'var(--color-bg-card)' }}>
-              <p>score = ({score.metrics.txCount} x 2) = {score.formula.txComponent}</p>
-              <p>      + ({score.metrics.repaymentCount} x 10) = {score.formula.repaymentComponent}</p>
-              <p>      + ({score.metrics.avgBalanceFactor} x 5) = {score.formula.balanceComponent}</p>
-              <p>      - ({score.metrics.defaultCount} x 25) = {score.formula.defaultPenalty}</p>
-              <p>      -------------------------</p>
-              <p className="font-bold">      = {score.formula.total}</p>
+            <div className="rounded-2xl p-6 font-mono text-sm leading-8" style={{ background: 'var(--color-bg-card)' }}>
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-x-4 max-w-sm">
+                <span>score</span> <span className="text-slate-500">=</span> <span className="text-right">({score.metrics.txCount} x 2) = {score.formula.txComponent}</span>
+                <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.repaymentCount} x 10) = {score.formula.repaymentComponent}</span>
+                <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.avgBalanceFactor} x 5) = {score.formula.balanceComponent}</span>
+                <span></span> <span className="text-slate-500">-</span> <span className="text-right">({score.metrics.defaultCount} x 25) = {score.formula.defaultPenalty}</span>
+                <div className="col-span-3 border-t my-2 border-slate-700"></div>
+                <span className="font-bold">Total</span> <span></span> <span className="text-right font-bold text-emerald-500">= {score.formula.total}</span>
+              </div>
             </div>
           ) : null}
         </section>
@@ -284,12 +313,12 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-2 gap-3">
             {isLoading
-              ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-24" />)
+              ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-24" role="status" aria-busy="true" />)
               : [
-                  { label: 'Avg balance', value: `${score?.metrics.avgBalance ?? 0}` },
+                  { label: 'Avg balance', value: `${score?.metrics.avgBalance ?? 0} PHPC` },
                   { label: 'Balance factor', value: `${score?.metrics.avgBalanceFactor ?? 0}` },
                   { label: 'Defaults', value: `${score?.metrics.defaultCount ?? 0}` },
-                  { label: 'Wallet', value: `${user.wallet.slice(0, 6)}...` },
+                  { label: 'Status', value: score?.tier === 0 ? 'Building' : 'Active' },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl p-4" style={{ background: 'var(--color-bg-card)' }}>
                     <p className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
@@ -300,10 +329,9 @@ export default function DashboardPage() {
                 ))}
           </div>
 
-          {(generateQuery.isError || poolQuery.isError || loanStatusQuery.isError) ? (
+          {(scoreQuery.isError && !generateMutation.isPending) || poolQuery.isError || loanStatusQuery.isError ? (
             <button
               onClick={() => {
-                void generateQuery.refetch();
                 void scoreQuery.refetch();
                 void poolQuery.refetch();
                 void loanStatusQuery.refetch();
@@ -348,6 +376,45 @@ function InfoCard({
         {title}
       </p>
       {isLoading ? <div className="skeleton mt-3 h-7 w-20" /> : <p className="mt-2 text-lg font-bold tabular-nums">{value}</p>}
+    </div>
+  );
+}
+
+function ScoreArc({ score, isLoading }: { score: number; isLoading: boolean }) {
+  const maxScore = 850;
+  const percentage = Math.min(100, Math.max(0, (score / maxScore) * 100));
+  const radius = 58;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percentage / 100) * circumference;
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center">
+      <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 140 140">
+        <circle
+          cx="70"
+          cy="70"
+          r={radius}
+          stroke="currentColor"
+          strokeWidth="4"
+          fill="transparent"
+          className="text-slate-800"
+        />
+        <circle
+          cx="70"
+          cy="70"
+          r={radius}
+          stroke="currentColor"
+          strokeWidth="4"
+          fill="transparent"
+          strokeDasharray={circumference}
+          style={{ 
+            strokeDashoffset: isLoading ? circumference : offset,
+            transition: 'stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1)',
+            color: 'var(--color-accent)'
+          }}
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
   );
 }

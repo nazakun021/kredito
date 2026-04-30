@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { Address } from '@stellar/stellar-sdk';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import db from '../db';
-import { asyncRoute, notFound } from '../errors';
+import { asyncRoute, notFound, unauthorized } from '../errors';
 import { buildScoreSummary, getPoolSnapshot } from '../scoring/engine';
 import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
 import { queryContract } from '../stellar/query';
@@ -11,9 +11,15 @@ import { contractIds } from '../stellar/client';
 const router = Router();
 
 async function loadUser(request: AuthRequest) {
-  return db
+  const user = db
     .prepare('SELECT id, stellar_pub, stellar_enc_secret, is_external FROM users WHERE id = ?')
     .get(request.userId) as any;
+
+  if (!user) {
+    throw unauthorized('User not found. Please log in again.');
+  }
+
+  return user;
 }
 
 router.post(

@@ -1,3 +1,5 @@
+// frontend/app/page.tsx
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -24,6 +26,7 @@ import NetworkBadge from '@/components/NetworkBadge';
 export default function Page() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const token = useAuthStore((state) => state.token);
   const { connectionError: walletError } = useWalletStore();
   const [walletLoading, setWalletLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +37,6 @@ export default function Page() {
     let cancelled = false;
 
     // 1. Auto-redirect if already authenticated
-    const token = useAuthStore.getState().token;
     if (token) {
       router.push('/dashboard');
       return;
@@ -60,7 +62,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, token]);
 
   const connectWallet = async () => {
     setWalletLoading(true);
@@ -186,7 +188,7 @@ export default function Page() {
             ) : null}
 
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-              {useAuthStore.getState().token ? (
+              {token ? (
                 <button
                   onClick={() => router.push('/dashboard')}
                   className="flex h-14 w-full items-center justify-center gap-3 rounded-xl px-8 text-base font-bold transition-all sm:w-auto"

@@ -1,3 +1,5 @@
+// frontend/lib/errors.ts
+
 /**
  * Extract a user-facing error message from any thrown value.
  *

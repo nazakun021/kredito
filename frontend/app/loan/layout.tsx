@@ -1,3 +1,5 @@
+// frontend/app/loan/layout.tsx
+
 'use client';
 
 import { useEffect } from 'react';

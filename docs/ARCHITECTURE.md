@@ -1,591 +1,1311 @@
-# Kredito — Architecture
+# Kredito Architecture
 
-This document describes the complete technical architecture of Kredito — an on-chain credit scoring and micro-lending platform built on Stellar/Soroban for Filipino SMEs. It covers the smart contracts, backend service, and frontend client, along with the data flows that connect them.
+This document describes the repository as it exists today and is intended to be the single high-level technical reference for the project.
 
----
+Kredito is a Freighter-first micro-lending application on Stellar Testnet. It combines:
 
-## Table of Contents
+- Soroban smart contracts for credit state, token balances, and loan enforcement
+- A Node/Express backend for wallet authentication, score orchestration, fee sponsorship, and local persistence
+- A Next.js frontend for wallet connection, score visibility, and borrow/repay flows
 
-1. [System Overview](#1-system-overview)
-2. [Smart Contracts (Soroban)](#2-smart-contracts-soroban)
-3. [Backend Service](#3-backend-service)
-4. [Frontend Client](#4-frontend-client)
-5. [Data Flows](#5-data-flows)
-6. [Database Schema](#6-database-schema)
-7. [Security Model](#7-security-model)
-8. [Infrastructure & Deployment](#8-infrastructure--deployment)
-9. [CI/CD Pipeline](#9-cicd-pipeline)
+The implementation is optimized for a demoable, transparent "credit passport" experience where a Stellar address can:
 
----
+1. authenticate with a signed SEP-10 style challenge
+2. generate an on-chain score from observable wallet activity
+3. borrow PHPC from a lending pool if its tier qualifies
+4. repay from the same wallet and improve future scoring
 
-## 1. System Overview
+## 1. System Summary
 
-Kredito has three distinct layers that interact to deliver credit scores and loans:
+### 1.1 Primary runtime layers
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     USER / BROWSER                       │
-│              Next.js Frontend (Vercel)                   │
-│         Freighter Wallet  ──  REST API client            │
-└────────────────────┬────────────────────────────────────┘
-                     │  HTTPS
-┌────────────────────▼────────────────────────────────────┐
-│                  BACKEND SERVICE                         │
-│             Express 5 + TypeScript (Railway)             │
-│   Auth │ Scoring Engine │ Stellar Utilities │ Cron       │
-│                   SQLite (kredito.db)                    │
-└────────────────────┬────────────────────────────────────┘
-                     │  Soroban RPC / Horizon API
-┌────────────────────▼────────────────────────────────────┐
-│                STELLAR TESTNET                           │
-│  credit_registry  ──  lending_pool  ──  phpc_token       │
-└─────────────────────────────────────────────────────────┘
+```text
+Browser + Freighter
+  -> Next.js frontend
+  -> Express API
+  -> Horizon + Soroban RPC
+  -> Soroban contracts on Stellar Testnet
 ```
 
-### Key Design Principles
+### 1.2 Core design choices
 
-- **On-chain as source of truth**: Credit scores, loan records, and token balances are all stored on-chain. The backend only mirrors derived state for query efficiency.
-- **Gasless UX**: The backend's issuer keypair sponsors user transactions via fee-bump transactions, so wallet users do not need XLM for fees in the normal flow.
-- **Wallet-first auth**: Users authenticate with Freighter by signing a short-lived Stellar WebAuth challenge. The backend issues JWT sessions only after verifying that signature.
-- **Deterministic scoring**: The credit score formula is identical in the Rust smart contract and the TypeScript scoring engine. The backend computes off-chain, then writes the result on-chain via the issuer authority.
+- On-chain contracts are the financial source of truth.
+- The backend derives metrics off-chain, then writes those metrics back on-chain through an issuer/admin authority.
+- User login is wallet-based, not email/password based.
+- Transactions are fee-sponsored by the backend issuer account through fee bump transactions.
+- The frontend is built around external wallets, even though the backend still contains dormant support for encrypted wallet secrets.
 
----
+### 1.3 Current network assumptions
 
-## 2. Smart Contracts (Soroban)
+- Network: Stellar Testnet
+- Wallet: Freighter
+- Contracts: addresses are tracked in [`contracts/deployed.json`](/Users/infinite/Programming/kredito/contracts/deployed.json)
+- Explorer links: Stellar Expert testnet URLs
 
-Three contracts form the core financial protocol, deployed as a Rust workspace (`contracts/`).
+## 2. Repository Layout
 
-### 2.1 `credit_registry`
-
-**Address**: `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
-
-Stores on-chain credit state for each wallet: raw metrics, a computed score, and a tier assignment. Only the designated issuer address can write to it.
-
-**Storage** (persistent per-wallet):
-
-| Key                      | Type      | Description                                                 |
-| :----------------------- | :-------- | :---------------------------------------------------------- |
-| `Metrics(Address)`       | `Metrics` | `{ tx_count, repayment_count, avg_balance, default_count }` |
-| `Score(Address)`         | `u32`     | Computed credit score (0–∞)                                 |
-| `CreditTier(Address)`    | `u32`     | Tier 0 (Unrated), 1 (Bronze), 2 (Silver), 3 (Gold)          |
-| `TierTimestamp(Address)` | `u64`     | Ledger timestamp of last tier change                        |
-| `Tier1Limit`             | `i128`    | Maximum borrow limit for Bronze                             |
-| `Tier2Limit`             | `i128`    | Maximum borrow limit for Silver                             |
-| `Tier3Limit`             | `i128`    | Maximum borrow limit for Gold                               |
-
-**Scoring Formula** (identical in Rust and TypeScript):
-
-```
-score = (tx_count × 2) + (repayment_count × 10) + (min(avg_balance / 100, 10) × 5) − (default_count × 25)
+```text
+kredito/
+├── backend/      Express API, SQLite persistence, Stellar integration
+├── contracts/    Soroban Rust workspace
+├── frontend/     Next.js App Router client
+├── docs/         Setup, testing, architecture, specs
+├── DEMO.md       Demo script / presenter runbook
+└── README.md     Product overview and quickstart
 ```
 
-**Tier Thresholds**:
+### 2.1 Backend
 
-- **Bronze** (Tier 1): score ≥ 40 → borrow up to 5,000 PHPC
-- **Silver** (Tier 2): score ≥ 80 → borrow up to 20,000 PHPC
-- **Gold** (Tier 3): score ≥ 120 → borrow up to 50,000 PHPC
+[`backend/src`](/Users/infinite/Programming/kredito/backend/src) contains:
 
-**Key Functions**:
+- `index.ts`: server bootstrap, middleware, route mounting
+- `config.ts`: environment loading and validation
+- `db.ts`: SQLite connection and schema creation/migration
+- `errors.ts`: app error helpers and Soroban-friendly error mapping
+- `cron.ts`: scheduled overdue-loan monitoring
+- `middleware/auth.ts`: JWT authentication middleware
+- `routes/auth.ts`: challenge issuance and Freighter login
+- `routes/credit.ts`: score generation, score reads, pool info, metrics reads
+- `routes/loan.ts`: borrow, repay, status, and signed XDR submission flows
+- `scoring/engine.ts`: wallet metric collection and score computation
+- `stellar/client.ts`: Horizon/RPC clients and issuer keypair
+- `stellar/query.ts`: read-only contract simulation helper
+- `stellar/issuer.ts`: privileged registry updates
+- `stellar/feebump.ts`: sponsored transaction creation/submission
+- `utils/crypto.ts`: AES-256-GCM helpers for stored wallet secrets
 
-| Function                                                                            | Auth   | Description                             |
-| :---------------------------------------------------------------------------------- | :----- | :-------------------------------------- |
-| `initialize(issuer, tier1_limit, tier2_limit, tier3_limit)`                         | Issuer | One-time setup                          |
-| `update_metrics_raw(wallet, tx_count, repayment_count, avg_balance, default_count)` | Issuer | Write raw metrics and recompute score   |
-| `update_score(wallet)`                                                              | Issuer | Recompute score from stored metrics     |
-| `set_tier(wallet, tier)`                                                            | Issuer | Manually override tier                  |
-| `revoke_tier(wallet)`                                                               | Issuer | Reset wallet to Unrated                 |
-| `get_score(wallet)`                                                                 | Anyone | Read current score                      |
-| `get_tier(wallet)`                                                                  | Anyone | Read current tier                       |
-| `get_metrics(wallet)`                                                               | Anyone | Read raw metrics struct                 |
-| `get_tier_limit(tier)`                                                              | Anyone | Read borrow cap for a given tier        |
-| `compute_score(_env, metrics)`                                                      | Anyone | Pure score computation (no state write) |
+### 2.2 Frontend
 
----
+[`frontend/app`](/Users/infinite/Programming/kredito/frontend/app) is an App Router app with:
 
-### 2.2 `lending_pool`
+- `/`: landing page and Freighter login entry
+- `/dashboard`: score overview and pool snapshot
+- `/loan/borrow`: borrowing UX
+- `/loan/repay`: repayment UX
 
-**Address**: `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
+Supporting modules:
 
-Holds PHPC liquidity and manages the full borrow/repay/default lifecycle. It calls into `credit_registry` via `contractimport!` to validate tier eligibility on-chain.
+- `components/`: wallet controls, shell, network badge
+- `lib/api.ts`: Axios client plus external-wallet auto-sign/submit logic
+- `lib/freighter.ts`: Freighter connection, challenge signing, transaction signing
+- `store/auth.ts`: persisted JWT/user session store
+- `store/walletStore.ts`: wallet/network connection store
 
-**LoanRecord struct**:
+### 2.3 Contracts
 
-```rust
-pub struct LoanRecord {
-    pub principal:  i128,   // Amount borrowed (in stroops)
-    pub fee:        i128,   // Flat fee charged (in stroops)
-    pub due_ledger: u32,    // Ledger number at which loan expires
-    pub repaid:     bool,
-    pub defaulted:  bool,
-}
+[`contracts`](/Users/infinite/Programming/kredito/contracts) is a Rust workspace with three packages:
+
+- `credit_registry`
+- `lending_pool`
+- `phpc_token`
+
+It also includes:
+
+- `deploy.sh`: full deploy/bootstrap script
+- `redeploy.sh`: partial redeploy script for token + pool
+- `deployed.json`: currently tracked deployed addresses
+
+## 3. End-to-End Architecture
+
+### 3.1 Runtime interaction model
+
+```text
+User
+  -> connects Freighter
+  -> authenticates by signing backend challenge
+  -> receives JWT from backend
+  -> requests score / borrow / repay through frontend
+
+Frontend
+  -> calls backend REST endpoints
+  -> signs unsigned XDR in Freighter when backend requires it
+  -> sends signed XDR back to backend for fee sponsorship and submission
+
+Backend
+  -> verifies auth
+  -> reads Horizon and Soroban RPC data
+  -> computes score off-chain
+  -> updates on-chain registry using issuer authority
+  -> sponsors contract calls with fee bumps
+  -> stores local session/history/cache data in SQLite
+
+Contracts
+  -> store tier, score, metrics, balances, allowance, and loans
+  -> enforce borrowing eligibility and repayment rules
 ```
 
-**Fee Schedule** (flat fee applied at borrow time):
+### 3.2 Why both off-chain and on-chain logic exist
 
-- Gold (Tier 3): 1% (100 bps)
-- Silver (Tier 2): 3% (300 bps)
-- Bronze (Tier 1): 5% (500 bps)
+The system deliberately splits responsibility:
 
-**Key Functions**:
+- Off-chain metric aggregation is easier for Horizon account history and event scanning.
+- On-chain state is needed for transparent eligibility checks and enforceable lending rules.
+- The backend acts as the bridge that converts observed wallet activity into contract state.
 
-| Function                                                                      | Auth   | Description                            |
-| :---------------------------------------------------------------------------- | :----- | :------------------------------------- |
-| `initialize(admin, registry_id, phpc_token, flat_fee_bps, loan_term_ledgers)` | Admin  | One-time setup                         |
-| `deposit(amount)`                                                             | Admin  | Fund the pool with PHPC                |
-| `borrow(wallet, amount)`                                                      | Wallet | Validate tier, lock fee, disburse PHPC |
-| `repay(wallet)`                                                               | Wallet | Accept principal + fee, mark repaid    |
-| `mark_default(wallet)`                                                        | Anyone | Mark overdue loan as defaulted         |
-| `get_loan(wallet)`                                                            | Anyone | Read LoanRecord for a wallet           |
-| `get_pool_balance()`                                                          | Anyone | Read total PHPC in pool                |
+This means the score formula exists twice:
 
-**Loan State Machine**:
+- in Rust inside `credit_registry`
+- in TypeScript inside `backend/src/scoring/engine.ts`
 
-```
-           borrow()
-  None ─────────────► Active
-                          │
-               repay() ◄──┼──► Overdue (past due_ledger)
-                  │                │
-               Repaid         mark_default()
-                                   │
-                               Defaulted
-```
+That duplication is intentional and necessary for local previews plus authoritative on-chain writes, but it also creates a drift risk if only one side changes.
 
----
+## 4. Smart Contract Architecture
 
-### 2.3 `phpc_token`
+## 4.1 `credit_registry`
 
-**Address**: `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
+Source: [`contracts/credit_registry/src/lib.rs`](/Users/infinite/Programming/kredito/contracts/credit_registry/src/lib.rs)
 
-A fully SEP-41 compliant token contract representing the Philippine Peso Coin (PHPC), 7 decimal places. Implements the standard Stellar token interface (`transfer`, `approve`, `allowance`, `mint`, `burn`). The issuer keypair controls minting.
+Purpose:
 
----
+- stores wallet credit metrics
+- computes and stores a numeric score
+- stores wallet tier
+- stores tier borrow limits
 
-### 2.4 Contract Interactions
+### Responsibilities
 
-```
-lending_pool.borrow()
-    └── credit_registry.get_tier()          (cross-contract read)
-    └── credit_registry.get_tier_limit()    (cross-contract read)
-    └── phpc_token.transfer()               (token client call)
+- one-time initialization with issuer and tier limits
+- issuer-only mutation of metrics and tier state
+- public read access to score, tier, and metrics
+- non-transferable behavior to prevent treating the registry like a token
 
-lending_pool.repay()
-    └── phpc_token.transfer_from()          (requires prior approve())
-```
+### Storage model
 
----
+Instance storage:
 
-## 3. Backend Service
+- `Issuer`
+- `Tier1Limit`
+- `Tier2Limit`
+- `Tier3Limit`
 
-**Stack**: Express 5, TypeScript, `better-sqlite3`, `@stellar/stellar-sdk`
+Persistent per-wallet storage:
 
-**Location**: `backend/src/`
+- `Metrics(Address)`
+- `Score(Address)`
+- `CreditTier(Address)`
+- `TierTimestamp(Address)`
 
-### 3.1 Module Layout
+### Metrics shape
 
-```
-backend/src/
-├── index.ts          # Server bootstrap, middleware, route mounting
-├── config.ts         # Environment variable validation
-├── db.ts             # SQLite init and schema migrations
-├── errors.ts         # AppError class, asyncRoute wrapper
-├── cron.ts           # Scheduled default-monitor job
-├── middleware/
-│   └── auth.ts       # JWT verification middleware
-├── routes/
-│   ├── auth.ts       # POST /challenge, POST /login
-│   ├── credit.ts     # POST /generate, GET /score, GET /pool, GET /metrics
-│   └── loan.ts       # POST /borrow, POST /repay, GET /status, POST /sign-and-submit
-├── scoring/
-│   └── engine.ts     # Off-chain score calculation, Horizon/RPC data fetching
-├── stellar/
-│   ├── client.ts     # RPC/Horizon server instances, issuer keypair
-│   ├── feebump.ts    # Fee-bump transaction builder and submitter
-│   ├── issuer.ts     # updateOnChainMetrics(), getOnChainCreditSnapshot()
-│   └── query.ts      # Generic read-only contract query helper
-├── utils/
-│   └── crypto.ts     # AES-256-GCM encrypt/decrypt for stored secrets
-└── types/
+```text
+tx_count
+repayment_count
+avg_balance
+default_count
 ```
 
-### 3.2 API Endpoints
+### Score formula
 
-#### Auth (`/api/auth`)
-
-| Method | Path     | Auth | Description                                                                                 |
-| :----- | :------- | :--- | :------------------------------------------------------------------------------------------ |
-| `POST` | `/challenge` | None | Build a short-lived Stellar WebAuth challenge for a wallet address                       |
-| `POST` | `/login`     | None | Verify the signed challenge, register or look up the wallet, return JWT                  |
-
-#### Credit (`/api/credit`)
-
-| Method | Path        | Auth | Description                                                                                                            |
-| :----- | :---------- | :--- | :--------------------------------------------------------------------------------------------------------------------- |
-| `POST` | `/generate` | JWT  | Fetch on-chain metrics, compute score, call `update_metrics_raw` + `update_score` as issuer, persist to `score_events` |
-| `GET`  | `/score`    | JWT  | Return latest score from DB merged with live on-chain snapshot                                                         |
-| `GET`  | `/pool`     | JWT  | Return current PHPC pool balance                                                                                       |
-| `GET`  | `/metrics`  | JWT  | Return raw `Metrics` struct from `credit_registry`                                                                     |
-
-#### Loan (`/api/loan`)
-
-| Method | Path               | Auth | Description                                                                                 |
-| :----- | :----------------- | :--- | :------------------------------------------------------------------------------------------ |
-| `POST` | `/borrow`          | JWT  | Validate tier/limit and return or submit the borrowing transaction flow                    |
-| `POST` | `/repay`           | JWT  | Two-step wallet flow (`approve` → `repay`) for PHPC repayment, with wallet balance validation |
-| `GET`  | `/status`          | JWT  | Return active loan state, wallet PHPC balance, due date, and pool balance                   |
-| `POST` | `/sign-and-submit` | JWT  | Accept signed inner XDR from Freighter, wrap in fee-bump, submit                            |
-
-### 3.3 Scoring Engine (`scoring/engine.ts`)
-
-The off-chain engine mirrors the on-chain Rust formula exactly:
-
-1. **`fetchTxCount(address)`**: Calls Horizon to count recent transactions (last 200).
-2. **`fetchAverageBalance(address)`**: Reads the native XLM balance from Horizon.
-3. **`fetchRepaymentMetrics(address)`**: Scans Soroban RPC events on `lending_pool` for `repaid` and `defaulted` events associated with the wallet, clamping to the available RPC ledger window and falling back to the latest loan outcome when retained event history is incomplete.
-4. **`buildWalletMetrics(address)`**: Combines all three sources in parallel.
-5. **`calculateScore(metrics)`**: Applies the deterministic formula.
-6. **`scoreToTier(score)`**: Maps score → tier (0–3).
-7. **`buildScoreSummary(address)`**: Full pipeline — returns a rich payload with score, tier, borrow limit, fee rate, and breakdown factors.
-
-### 3.4 Fee-Bump Transaction Flow (`stellar/feebump.ts`)
-
-Transactions that require wallet authorization are wrapped in an issuer-signed fee-bump after the user signs the inner transaction in Freighter. This keeps the UX gasless:
-
-```
-For wallet users (Freighter mode):
-  1. buildUnsignedContractCall() — build + prepare, return raw XDR
-  → Frontend passes to Freighter for signing
-  → POST /sign-and-submit with signedInnerXdr
-  2. submitSponsoredSignedXdr()  — issuer fee-bumps the pre-signed inner tx
+```text
+score =
+  (tx_count * 2) +
+  (repayment_count * 10) +
+  (min(avg_balance / 100, 10) * 5) -
+  (default_count * 25)
 ```
 
-### 3.5 Cron Job (`cron.ts`)
+Important details:
 
-Runs every 6 hours. Iterates all rows in `active_loans`:
+- score is saturating and never becomes negative
+- average balance contribution is capped at 10 units before multiplying by 5
+- defaults are the main negative factor
 
-- Queries `lending_pool.get_loan()` on-chain.
-- If the loan is repaid or defaulted, removes the cache row.
-- If the current ledger sequence exceeds `due_ledger`, refreshes the score snapshot on-chain (penalizing the default) and removes the row.
+### Tier thresholds
 
----
+- Tier 0: `< 40` -> `Unrated`
+- Tier 1: `>= 40` -> `Bronze`
+- Tier 2: `>= 80` -> `Silver`
+- Tier 3: `>= 120` -> `Gold`
 
-## 4. Frontend Client
+### Main contract methods
 
-**Stack**: Next.js 16 (App Router), React 19, TypeScript, Zustand, TanStack Query
+- `initialize`
+- `update_metrics`
+- `update_metrics_raw`
+- `update_score`
+- `set_tier`
+- `revoke_tier`
+- `compute_score`
+- `get_metrics`
+- `get_score`
+- `get_tier`
+- `get_tier_limit`
 
-**Location**: `frontend/`
+### Events
 
-### 4.1 Application Layout
+- `score_upd`
+- `revoked`
 
-```
-frontend/
-├── app/
-│   ├── layout.tsx          # Root layout with QueryClientProvider
-│   ├── page.tsx            # Landing page and wallet connect entry
-│   ├── dashboard/
-│   │   └── page.tsx        # Score overview, loan status, borrow/repay actions
-│   ├── loan/
-│   │   └── page.tsx        # Loan detail and repayment flow
-│   ├── providers.tsx        # TanStack Query provider wrapper
-│   ├── error.tsx            # Route-level error boundary
-│   └── globals.css          # Design system tokens and base styles
-├── components/              # Shared UI components (cards, buttons, etc.)
-├── lib/
-│   ├── api.ts               # Typed fetch wrappers for all backend endpoints
-│   ├── freighter.ts         # Freighter wallet detection and signing
-│   └── errors.ts            # Client-side error handling utilities
-└── store/
-    └── auth.ts              # Zustand store: JWT token, wallet address, isExternal flag
-```
+## 4.2 `lending_pool`
 
-### 4.2 Authentication Flows
+Source: [`contracts/lending_pool/src/lib.rs`](/Users/infinite/Programming/kredito/contracts/lending_pool/src/lib.rs)
 
-1. User clicks `Connect Wallet`.
-2. Frontend requests Freighter access and gets the public key.
-3. Frontend calls `POST /api/auth/challenge`.
-4. Backend returns a short-lived Stellar WebAuth challenge XDR.
-5. Frontend signs the challenge in Freighter.
-6. Frontend calls `POST /api/auth/login` with the signed challenge.
-7. Backend verifies the signature, looks up or creates the user record, and returns a JWT.
-8. All subsequent requests include `Authorization: Bearer <token>`.
+Purpose:
 
-### 4.3 Transaction Signing (Freighter)
+- holds PHPC liquidity
+- validates tier-based loan eligibility
+- creates and tracks a single active loan per borrower
+- accepts repayment and marks defaults
 
-The repayment flow is two steps because PHPC requires a prior `approve` allowance:
+### Responsibilities
 
-```
-1. POST /api/loan/repay → { requiresSignature: true, step: "approve", unsignedXdr }
-   └─ Freighter.signTransaction(unsignedXdr)
-   └─ POST /api/tx/sign-and-submit { signedInnerXdr: approveXdr }
+- admin initialization
+- admin deposit of liquidity
+- borrower-authenticated borrow
+- borrower-authenticated repay
+- public default marking for overdue loans
+- cross-contract reads into `credit_registry`
+- token transfers via `phpc_token`
 
-2. POST /api/loan/repay (again) → { requiresSignature: true, step: "repay", unsignedXdr }
-   └─ Freighter.signTransaction(unsignedXdr)
-   └─ POST /api/tx/sign-and-submit { signedInnerXdr: repayXdr }
-```
+### Storage model
 
-Repayment also requires the connected wallet to already hold `principal + fee`. The backend now checks the wallet's PHPC balance before building the repay flow and returns an explicit shortfall if the balance is insufficient.
+Instance storage:
 
----
+- `Admin`
+- `RegistryId`
+- `TokenId`
+- `FlatFeeBps`
+- `LoanTermLedgers`
+- `PoolBalance`
 
-## 5. Data Flows
+Persistent per-wallet storage:
 
-### 5.1 Credit Score Generation
+- `Loan(Address)` -> `LoanRecord`
 
-```
-User: "Generate my score"
-  │
-  ▼
-Frontend: POST /api/credit/generate
-  │
-  ▼
-Backend - buildScoreSummary(walletAddress):
-  ├── Horizon: fetch tx_count (last 200 txs)
-  ├── Horizon: fetch native XLM balance → avg_balance
-  └── Soroban RPC: scan lending_pool events → repayment_count, default_count
-  │
-  ▼
-calculateScore(metrics) → score, tier
-  │
-  ▼
-Backend - updateOnChainMetrics(wallet, metrics):
-  ├── Issuer signs → credit_registry.update_metrics_raw(wallet, ...)
-  └── Issuer signs → credit_registry.update_score(wallet)
-  │
-  ▼
-DB: INSERT INTO score_events (user_id, tier, score, ...)
-  │
-  ▼
-Frontend: display score, tier, borrow limit, factor breakdown
+### `LoanRecord`
+
+```text
+principal
+fee
+due_ledger
+repaid
+defaulted
 ```
 
-### 5.2 Loan Borrow
+### Business rules
 
-```
-User: "Borrow 1,000 PHPC"
-  │
-  ▼
-Frontend: POST /api/loan/borrow { amount: 1000 }
-  │
-  ▼
-Backend:
-  ├── Validate amount > 0
-  ├── buildScoreSummary() → check tier ≥ 1
-  ├── Check no active loan on-chain
-  ├── Check amount ≤ tier limit
-  ├── Calculate fee (500 bps for Bronze)
-  └── build unsigned contract call for lending_pool.borrow(...)
-        ├── lending_pool.borrow() calls credit_registry.get_tier() on-chain
-        └── lending_pool transfers PHPC to wallet
-  │
-  ▼
-Frontend signs in Freighter
-  │
-  ▼
-Backend fee-bumps and submits signed XDR
-  │
-  ▼
-DB: INSERT INTO active_loans (user_id, stellar_pub)
-  │
-  ▼
-Frontend: display txHash, amount, fee, due date
-```
+- only one non-settled loan per borrower
+- borrower must have tier `>= 1`
+- amount must be `> 0`
+- amount must be within the wallet's tier limit
+- amount must not exceed pool liquidity
+- repay must happen before `due_ledger`
+- overdue loans cannot be repaid; they must first become defaulted
 
-The borrowed PHPC is disbursed into the actual connected wallet. There is no separate in-app balance.
+### Fee model
 
-### 5.3 Loan Repay
+Initialization stores a base fee in basis points. The effective fee varies by tier:
 
-```
-User: "Repay loan"
-  │
-  ▼
-Frontend: POST /api/loan/repay
-  │
-  ▼
-Backend:
-  ├── getLoanRecord(wallet) → validate not repaid/defaulted
-  ├── Calculate totalOwed = principal + fee
-  ├── Query PHPC wallet balance → reject early if walletBalance < totalOwed
-  ├── build unsigned approve transaction
-  ├── Frontend signs in Freighter
-  ├── Backend fee-bumps and submits approve
-  ├── build unsigned repay transaction
-  ├── Frontend signs in Freighter
-  ├── Backend fee-bumps and submits repay
-  ├── DB: DELETE FROM active_loans WHERE user_id = ?
-  ├── buildScoreSummary(wallet) → refreshed metrics (repaymentCount +1)
-  └── updateOnChainMetrics(wallet, refreshed.metrics)
-  │
-  ▼
-DB: INSERT INTO score_events (tier, score, ...) — new improved score
-  │
-  ▼
-Frontend: display newScore, newTier, newBorrowLimit
-```
+- Bronze: base fee, currently `500 bps` -> `5%`
+- Silver: base fee minus `200 bps` -> `3%`
+- Gold: base fee minus `350 bps` -> `1.5%`
 
-If the wallet only holds the borrowed principal and not the extra fee amount, repayment fails until the wallet is topped up with additional PHPC.
+Important nuance:
 
----
+- The frontend/backend display logic currently uses `1% / 3% / 5%`.
+- The contract currently computes `1.5% / 3% / 5%` from `500 - 350`.
 
-## 6. Database Schema
+This is an architectural mismatch between display/business logic and on-chain enforcement that should be treated as a known inconsistency.
 
-SQLite database at `backend/kredito.db` (path configurable via `DATABASE_PATH` env var).
+### Main contract methods
 
-### `users`
+- `initialize`
+- `deposit`
+- `borrow`
+- `repay`
+- `mark_default`
+- `get_loan`
+- `get_pool_balance`
 
-| Column               | Type          | Description                                              |
-| :------------------- | :------------ | :------------------------------------------------------- |
-| `id`                 | `INTEGER PK`  | Auto-increment                                           |
-| `email`              | `TEXT UNIQUE` | Synthetic internal identifier for the wallet user record |
-| `stellar_pub`        | `TEXT UNIQUE` | Stellar wallet public key (G...)                         |
-| `stellar_enc_secret` | `TEXT`        | Reserved/nullable field; unused in the Freighter-first flow |
-| `is_external`        | `BOOLEAN`     | `1` for wallet-authenticated users                       |
-| `email_verified`     | `BOOLEAN`     | Always `1` in the current wallet-login flow              |
+### Events
 
-### `auth_challenges`
+- `disburse`
+- `repaid`
+- `defaulted`
 
-| Column           | Type         | Description                                              |
-| :--------------- | :----------- | :------------------------------------------------------- |
-| `id`             | `INTEGER PK` |                                                            |
-| `stellar_pub`    | `TEXT`       | Wallet address requesting authentication                 |
-| `challenge_hash` | `TEXT UNIQUE`| Hash of the issued login challenge transaction           |
-| `expires_at`     | `DATETIME`   | Challenge expiration timestamp                           |
+## 4.3 `phpc_token`
 
-### `score_events`
+Source: [`contracts/phpc_token/src/lib.rs`](/Users/infinite/Programming/kredito/contracts/phpc_token/src/lib.rs)
 
-| Column        | Type         | Description                                  |
-| :------------ | :----------- | :------------------------------------------- |
-| `id`          | `INTEGER PK` |                                              |
-| `user_id`     | `INTEGER FK` | References `users`                           |
-| `tier`        | `INTEGER`    | 0–3                                          |
-| `score`       | `INTEGER`    | Total score at time of event                 |
-| `score_json`  | `TEXT`       | Full JSON payload from `buildScorePayload()` |
-| `sbt_minted`  | `BOOLEAN`    | Whether an on-chain update was submitted     |
-| `sbt_tx_hash` | `TEXT`       | Hash of the `update_metrics_raw` transaction |
+Purpose:
 
-### `active_loans`
+- acts as the demo stable-value loan asset
+- supports minting, allowances, transfers, burns, and balance reads
 
-| Column        | Type                | Description                        |
-| :------------ | :------------------ | :--------------------------------- |
-| `id`          | `INTEGER PK`        |                                    |
-| `user_id`     | `INTEGER FK UNIQUE` | One active loan per user           |
-| `stellar_pub` | `TEXT UNIQUE`       | Wallet address for on-chain lookup |
+### Storage model
 
-### `bootstrap_assessments`
+Instance storage:
 
-| Column                | Type         | Description                               |
-| :-------------------- | :----------- | :---------------------------------------- |
-| `id`                  | `INTEGER PK` |                                           |
-| `user_id`             | `INTEGER FK` |                                           |
-| `monthly_income_band` | `TEXT`       | Income range category                     |
-| `employment_type`     | `TEXT`       | Self-employed, employee, etc.             |
-| `bootstrap_score`     | `INTEGER`    | Preliminary score from self-reported data |
+- `Admin`
+- `Name`
+- `Symbol`
+- `Decimals`
 
----
+Persistent storage:
 
-## 7. Security Model
+- `Balance(Address)`
+- `Allowance(Address, Address)`
 
-### Wallet Authentication
+### Main contract methods
 
-Wallet login is challenge-based. The backend issues a short-lived Stellar WebAuth transaction, the user signs it in Freighter, and the backend verifies the signature before issuing a JWT. Issued challenges are hashed and stored briefly in `auth_challenges` to prevent replay.
+- `initialize`
+- `mint`
+- `allowance`
+- `approve`
+- `balance`
+- `transfer`
+- `transfer_from`
+- `burn`
+- `burn_from`
+- `decimals`
+- `name`
+- `symbol`
 
-### Secret Handling
+### Token semantics
 
-The Freighter-first flow does not require the backend to store user wallet secrets. `ENCRYPTION_KEY` remains part of the backend configuration surface for encrypted internal secrets and backward-compatible schema handling.
+- decimals are initialized to `7`
+- mint authority is centralized under the admin/issuer
+- `transfer_from` enforces allowance and source-balance checks
+- allowance expiration is ledger based
 
-```typescript
-// auth.ts
-challenge -> Freighter signature -> verified JWT session
+## 4.4 Contract dependency graph
+
+```text
+credit_registry   <- standalone source of credit state
+phpc_token        <- standalone token contract
+lending_pool      <- depends on both
 ```
 
-### JWT Authentication
+More specifically:
 
-All protected routes require a `Bearer` JWT issued after successful wallet login. Tokens expire after 24 hours. The `JWT_SECRET` must be a strong random value set in the environment.
+- `lending_pool.borrow` reads `credit_registry.get_tier`
+- `lending_pool.borrow` reads `credit_registry.get_tier_limit`
+- `lending_pool.deposit` uses `phpc_token.transfer_from`
+- `lending_pool.borrow` uses `phpc_token.transfer`
+- `lending_pool.repay` uses `phpc_token.transfer_from`
 
-### Issuer Keypair
+## 5. Backend Architecture
 
-The issuer acts as the `credit_registry` admin and fee-bump sponsor. Its secret (`ISSUER_SECRET_KEY`) must never be committed to version control and should be stored as a Railway secret. The issuer can:
+## 5.1 Server bootstrap
 
-- Write to `credit_registry` (update metrics and scores).
-- Sponsor fee-bump transactions for any user.
-- Mint PHPC tokens.
+Source: [`backend/src/index.ts`](/Users/infinite/Programming/kredito/backend/src/index.ts)
 
-### External Wallet Trust Model
+Startup sequence:
 
-For Freighter users, the backend never sees the private key. The flow is:
+1. load environment
+2. initialize SQLite schema
+3. start cron jobs
+4. configure CORS and JSON parsing
+5. log requests
+6. mount routes
+7. expose `/health`
+8. attach centralized error handler
 
-1. Backend builds and simulates the transaction, returning raw XDR.
-2. The user signs with Freighter in the browser.
-3. Backend wraps the signed inner transaction in a fee-bump (issuer only adds fees, cannot change the inner transaction's logic).
+Mounted routes:
 
----
+- `/api/auth`
+- `/api/credit`
+- `/api/loan`
+- `/api/tx`
 
-## 8. Infrastructure & Deployment
+Note:
 
-### Production Environment
+- `/api/tx` is mounted using the same router as `/api/loan`, which is why `POST /api/tx/sign-and-submit` works even though the handler lives in `routes/loan.ts`.
 
-| Component | Platform                | URL                                         |
-| :-------- | :---------------------- | :------------------------------------------ |
-| Frontend  | Vercel                  | `https://kredito-iota.vercel.app`           |
-| Backend   | Railway                 | `https://kredito-production.up.railway.app` |
-| Database  | Railway Volume (SQLite) | Mounted at `/data/kredito.db`               |
-| Contracts | Stellar Testnet         | (see deployed.json)                         |
+## 5.2 Configuration model
 
-### Backend Environment Variables
+Source: [`backend/src/config.ts`](/Users/infinite/Programming/kredito/backend/src/config.ts)
 
-| Variable             | Required | Description                            |
-| :------------------- | :------- | :------------------------------------- |
-| `JWT_SECRET`         | Yes      | Signing key for JWTs                   |
-| `ENCRYPTION_KEY`     | Yes      | 64 hex chars for AES-256-GCM           |
-| `ISSUER_SECRET_KEY`  | Yes      | Soroban issuer/admin keypair           |
-| `WEB_AUTH_SECRET_KEY`| Yes      | Signing key for wallet login challenges |
-| `HOME_DOMAIN`        | Yes      | Home domain embedded in login challenges |
-| `WEB_AUTH_DOMAIN`    | Yes      | Web auth domain embedded in login challenges |
-| `PHPC_ID`            | Yes      | PHPC token contract address            |
-| `REGISTRY_ID`        | Yes      | credit_registry contract address       |
-| `LENDING_POOL_ID`    | Yes      | lending_pool contract address          |
-| `HORIZON_URL`        | No       | Defaults to testnet Horizon            |
-| `SOROBAN_RPC_URL`    | No       | Defaults to testnet RPC                |
-| `NETWORK_PASSPHRASE` | No       | Defaults to Stellar testnet passphrase |
-| `CORS_ORIGIN`        | No       | Comma-separated allowed origins        |
-| `DATABASE_PATH`      | No       | SQLite file path (Railway volume)      |
+Required or effectively required values:
 
-### Frontend Environment Variables
+- `JWT_SECRET`
+- `ENCRYPTION_KEY`
+- `ISSUER_SECRET_KEY`
+- `WEB_AUTH_SECRET_KEY` or fallback to issuer key
+- `PHPC_ID`
+- `REGISTRY_ID`
+- `LENDING_POOL_ID`
 
-| Variable                   | Required | Description                                         |
-| :------------------------- | :------- | :-------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`      | Yes      | Backend API base URL                                |
-| `NEXT_PUBLIC_NETWORK`      | No       | `testnet` or `mainnet` (defaults to `testnet`)      |
-| `NEXT_PUBLIC_EXPLORER_URL` | No       | Stellar Expert base URL for on-chain explorer links |
+Optional with defaults:
 
----
+- `PORT`
+- `HORIZON_URL`
+- `SOROBAN_RPC_URL`
+- `NETWORK_PASSPHRASE`
+- `HOME_DOMAIN`
+- `WEB_AUTH_DOMAIN`
+- `CORS_ORIGIN`
+- `DATABASE_PATH`
 
-## 9. CI/CD Pipeline
+Important constants:
 
-Defined in `.github/workflows/ci.yml`. Runs on every push and pull request to `main`/`master`.
+- `LEDGERS_PER_DAY = 17_280`
+- `STROOPS_PER_UNIT = 10_000_000`
 
-### Jobs
+## 5.3 Persistence model
 
-#### `contracts` (Smart Contracts / Rust)
+Source: [`backend/src/db.ts`](/Users/infinite/Programming/kredito/backend/src/db.ts)
 
-1. Install Rust stable with `rustfmt`, `clippy`, and `wasm32v1-none` target.
-2. Cache Cargo dependencies.
-3. Install Stellar CLI.
-4. `cargo fmt --all -- --check` — format check.
-5. `stellar contract build` — compile WASM artifacts (**must precede tests** because `lending_pool` imports `credit_registry.wasm` via `contractimport!`).
-6. `cargo clippy --all-targets --all-features -- -D warnings` — lint with zero warnings.
-7. `cargo test --workspace` — run all unit tests.
+Database: SQLite through `better-sqlite3`
 
-#### `backend` (Node.js)
+Default location:
 
-1. Install pnpm 10 + Node.js 18.
-2. `pnpm install --frozen-lockfile`.
-3. `pnpm run lint` — ESLint with `@typescript-eslint` rules.
-4. `pnpm run build` — TypeScript compile check.
+- `backend/kredito.db` unless `DATABASE_PATH` is set
 
-#### `frontend` (Next.js)
+### Tables
 
-1. Install pnpm 10 + Node.js 20.
-2. `pnpm install --frozen-lockfile`.
-3. `pnpm run lint` — Next.js ESLint.
-4. `pnpm exec tsc --noEmit` — type check.
-5. `pnpm run build` — production build.
+#### `users`
+
+Fields support both the current external-wallet flow and a legacy/dormant custodial flow:
+
+- identity: `id`, `email`, `stellar_pub`
+- optional secret storage: `stellar_enc_secret`
+- wallet type: `is_external`
+- verification/login fields: `email_verified`, `last_login_at`
+- OTP-related legacy fields: `otp_hash`, `otp_expires_at`, `otp_attempt_count`, `otp_locked_until`
+- timestamps: `created_at`
+
+Important current-state observation:
+
+- the active Freighter login path creates users with `is_external = 1`
+- no current frontend path creates custodial users
+- OTP fields and encrypted-secret support exist in schema, but are not used by the current UI
+
+#### `otp_requests`
+
+- historical/legacy support for OTP throttling
+- not part of the current Freighter-first flow
+
+#### `auth_challenges`
+
+- stores issued wallet login challenges
+- used to prevent challenge replay
+
+Fields:
+
+- `stellar_pub`
+- `challenge_hash`
+- `expires_at`
+- `created_at`
+
+#### `bootstrap_assessments`
+
+- intended for off-chain bootstrap scoring inputs such as income/employment/business documentation
+- not currently wired into the active frontend or score generation route
+
+#### `score_events`
+
+- append-only score history
+- records tier, score, payload JSON, and optional tx metadata
+
+Used for:
+
+- retrieving latest score payload quickly
+- preserving scoring history independent of current on-chain state
+
+#### `active_loans`
+
+- local cache of loans believed to be active
+- used by cron to scan for overdue/default candidates
+
+This is explicitly a convenience/cache table, not the canonical loan source of truth. The canonical loan state remains the lending pool contract.
+
+## 5.4 Authentication architecture
+
+Source: [`backend/src/routes/auth.ts`](/Users/infinite/Programming/kredito/backend/src/routes/auth.ts)
+
+### Flow
+
+1. client posts wallet address to `POST /api/auth/challenge`
+2. backend validates the Stellar public key
+3. backend builds a Stellar WebAuth challenge XDR
+4. backend hashes and stores the challenge in `auth_challenges`
+5. user signs the challenge in Freighter
+6. client posts signed XDR to `POST /api/auth/login`
+7. backend verifies the signed challenge and signer
+8. backend consumes the stored challenge to prevent replay
+9. backend finds or creates the user
+10. backend issues a JWT valid for 24 hours
+
+### Security properties
+
+- short-lived challenge: 5 minutes
+- one-time consumption of stored challenge hash
+- wallet ownership proven by signature
+- no private key custody in the normal frontend flow
+
+### Session model
+
+- JWT payload: `{ userId }`
+- all protected routes use Bearer token auth
+- frontend clears session on `401`
+
+## 5.5 Credit scoring architecture
+
+Sources:
+
+- [`backend/src/scoring/engine.ts`](/Users/infinite/Programming/kredito/backend/src/scoring/engine.ts)
+- [`backend/src/routes/credit.ts`](/Users/infinite/Programming/kredito/backend/src/routes/credit.ts)
+- [`backend/src/stellar/issuer.ts`](/Users/infinite/Programming/kredito/backend/src/stellar/issuer.ts)
+
+### Data sources for metrics
+
+- Horizon transaction history for transaction count
+- Horizon account balances for average balance proxy
+- Soroban event scanning for repayments/defaults
+- a fallback `get_loan` query if event retention is insufficient
+
+### Important implementation detail
+
+`avg_balance` is not a historical rolling average. It is currently derived from the current native XLM balance returned by Horizon and then floored to an integer.
+
+So "average balance" is effectively a current-balance proxy in the present implementation.
+
+### Score generation path
+
+`POST /api/credit/generate`
+
+1. load authenticated user
+2. derive wallet metrics off-chain
+3. compute score and tier off-chain
+4. query on-chain tier limit for the derived tier
+5. submit issuer-authenticated `update_metrics_raw` and `update_score`
+6. insert a `score_events` history row
+7. return score payload plus transaction hashes
+
+### Score read path
+
+`GET /api/credit/score`
+
+1. read latest cached `score_json` from SQLite
+2. query live on-chain score/tier/metrics
+3. merge results and return `source: "onchain"`
+
+This combines local history with current chain data.
+
+### Pool and metrics reads
+
+- `GET /api/credit/pool` returns lending pool balance
+- `GET /api/credit/metrics` reads raw registry metrics directly from chain
+
+## 5.6 Borrow and repay architecture
+
+Source: [`backend/src/routes/loan.ts`](/Users/infinite/Programming/kredito/backend/src/routes/loan.ts)
+
+The loan route contains the most important application orchestration logic.
+
+### Borrow path
+
+`POST /api/loan/borrow`
+
+1. validate requested amount
+2. rebuild current score summary for the wallet
+3. check current on-chain loan status
+4. reject if active loan exists
+5. reject if tier is unrated
+6. reject if amount exceeds derived borrow limit
+7. build contract arguments for `lending_pool.borrow`
+8. branch based on wallet type:
+   - external wallet: return unsigned XDR
+   - custodial wallet: sign and submit server-side
+9. cache the active loan in SQLite after successful submission
+
+Returned metadata includes:
+
+- amount
+- fee
+- fee bps
+- total owed
+- explorer URL
+
+### Repay path
+
+`POST /api/loan/repay`
+
+1. load on-chain loan record
+2. reject missing/repaid/defaulted loans
+3. check wallet PHPC balance before attempting contract execution
+4. compute `approve` call args for the token contract
+5. compute `repay` call args for the lending pool
+6. branch based on wallet type
+
+For external wallets the flow is two-step:
+
+1. if token allowance is insufficient, return unsigned `approve` XDR
+2. once approved, return unsigned `repay` XDR
+
+For custodial wallets the backend submits both sequentially.
+
+After successful repayment:
+
+- local `active_loans` cache row is deleted
+- score is rebuilt
+- issuer writes updated metrics to chain
+- a new `score_events` row is inserted
+
+### Loan status path
+
+`GET /api/loan/status`
+
+Returns:
+
+- `hasActiveLoan`
+- wallet PHPC balance
+- pool balance
+- loan state if active or overdue
+
+Computed loan UI fields include:
+
+- principal
+- fee
+- total owed
+- shortfall
+- current ledger
+- due ledger
+- due date estimate
+- days remaining
+- status
+
+### Signed XDR submission paths
+
+- `POST /api/loan/submit`
+- `POST /api/loan/sign-and-submit`
+
+`sign-and-submit` is the richer path used by the frontend interceptor. It:
+
+- submits one or more already-signed inner XDRs
+- fee-sponsors them with the issuer key
+- optionally performs post-submit bookkeeping depending on flow metadata
+
+For example:
+
+- borrow flow inserts/updates `active_loans`
+- repay flow refreshes score state and clears the loan cache
+
+## 5.7 Stellar integration layer
+
+### Clients
+
+Source: [`backend/src/stellar/client.ts`](/Users/infinite/Programming/kredito/backend/src/stellar/client.ts)
+
+Constructs:
+
+- `Horizon.Server`
+- `rpc.Server`
+- issuer `Keypair`
+
+### Read-only contract queries
+
+Source: [`backend/src/stellar/query.ts`](/Users/infinite/Programming/kredito/backend/src/stellar/query.ts)
+
+Technique:
+
+- build a simulated contract invocation
+- call `simulateTransaction`
+- convert result `ScVal` to native JS values
+
+This is used throughout the backend for:
+
+- token balances
+- allowances
+- score/tier reads
+- tier limits
+- pool balance
+- loan records
+
+### Issuer-authenticated writes
+
+Source: [`backend/src/stellar/issuer.ts`](/Users/infinite/Programming/kredito/backend/src/stellar/issuer.ts)
+
+Used for registry mutation:
+
+- `update_metrics_raw`
+- `update_score`
+
+These are packed into a single prepared transaction signed by the issuer.
+
+### Fee sponsorship
+
+Source: [`backend/src/stellar/feebump.ts`](/Users/infinite/Programming/kredito/backend/src/stellar/feebump.ts)
+
+Capabilities:
+
+- create user accounts from issuer if missing
+- build unsigned prepared contract calls for external wallets
+- sign and submit sponsored contract calls for custodial wallets
+- wrap signed inner transactions in fee bump transactions
+- poll Soroban RPC until success/failure
+
+This layer is what gives the app its "gasless" user experience on testnet.
+
+## 5.8 Cron and default monitoring
+
+Source: [`backend/src/cron.ts`](/Users/infinite/Programming/kredito/backend/src/cron.ts)
+
+Schedule:
+
+- every 6 hours
+
+Behavior:
+
+1. read local `active_loans`
+2. query each loan from chain
+3. if repaid/defaulted, delete local cache row
+4. if overdue, rebuild metrics and update registry state
+5. insert a score event describing the refresh
+6. delete local cache row
+
+Important limitation:
+
+- the cron job does not call `lending_pool.mark_default`
+- it only refreshes score state when it detects an overdue loan
+
+That means local score history can reflect a default-style refresh even if the on-chain loan has not yet been explicitly marked defaulted by a contract call.
+
+## 5.9 Error handling
+
+Source: [`backend/src/errors.ts`](/Users/infinite/Programming/kredito/backend/src/errors.ts)
+
+The error layer maps common Soroban panic/error signatures into user-facing messages, including:
+
+- active loan exists
+- no tier
+- over limit
+- insufficient liquidity
+- missing loan
+- already repaid/defaulted
+- overdue
+- insufficient balance
+- insufficient allowance
+- confirmation timeout
+
+This is important because raw Soroban simulation/runtime errors are not user-friendly.
+
+## 6. Frontend Architecture
+
+## 6.1 Framework and libraries
+
+Source: [`frontend/package.json`](/Users/infinite/Programming/kredito/frontend/package.json)
+
+Key stack:
+
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS v4
+- Zustand
+- TanStack Query
+- Axios
+- Sonner
+- Lucide icons
+
+## 6.2 App shell and route protection
+
+Sources:
+
+- [`frontend/app/layout.tsx`](/Users/infinite/Programming/kredito/frontend/app/layout.tsx)
+- [`frontend/app/dashboard/layout.tsx`](/Users/infinite/Programming/kredito/frontend/app/dashboard/layout.tsx)
+- [`frontend/app/loan/layout.tsx`](/Users/infinite/Programming/kredito/frontend/app/loan/layout.tsx)
+- [`frontend/components/app-shell.tsx`](/Users/infinite/Programming/kredito/frontend/components/app-shell.tsx)
+
+Behavior:
+
+- global providers wrap the entire app
+- wallet session restore runs on mount
+- dashboard and loan areas redirect to `/` if JWT session is missing
+- authenticated screens share a sidebar/topbar shell
+
+The frontend route protection is client-side only. The actual secure boundary remains backend JWT enforcement.
+
+## 6.3 State management
+
+### Auth store
+
+Source: [`frontend/store/auth.ts`](/Users/infinite/Programming/kredito/frontend/store/auth.ts)
+
+Persists:
+
+- `token`
+- `user.wallet`
+- `user.isExternal`
+
+Persistence key:
+
+- `kredito-auth`
+
+### Wallet store
+
+Source: [`frontend/store/walletStore.ts`](/Users/infinite/Programming/kredito/frontend/store/walletStore.ts)
+
+Tracks:
+
+- connection status
+- public key
+- network
+- network passphrase
+- connection error
+- connect/disconnect/restoreSession actions
+
+Persistence behavior:
+
+- uses `localStorage` flag `kredito_wallet_connected`
+- reconnects by re-requesting address and network details from Freighter
+
+## 6.4 Freighter integration
+
+Source: [`frontend/lib/freighter.ts`](/Users/infinite/Programming/kredito/frontend/lib/freighter.ts)
+
+Capabilities:
+
+- check whether Freighter is installed
+- request wallet access
+- retrieve current address
+- retrieve wallet network
+- sign transaction XDR
+- execute login challenge flow
+
+Important design decision:
+
+- the frontend uses Freighter for both authentication signing and contract transaction signing
+- private keys never pass through the browser app code beyond extension-mediated signing
+
+## 6.5 API client and automatic signing
+
+Source: [`frontend/lib/api.ts`](/Users/infinite/Programming/kredito/frontend/lib/api.ts)
+
+This file is the core frontend orchestration layer.
+
+### Request behavior
+
+- injects Bearer token from Zustand auth store
+
+### Response behavior
+
+If a borrow/repay response contains:
+
+- `requiresSignature: true`
+
+then the client automatically:
+
+1. signs returned XDR with Freighter
+2. posts it to `/api/tx/sign-and-submit`
+3. for repay approval, immediately calls `/api/loan/repay` again to fetch the final repay XDR
+4. returns a normalized response shape to the page component
+
+This is a major architecture choice because it keeps page-level borrow/repay components simple. They call the API once, while the interceptor quietly executes the multi-step wallet flow.
+
+### Session expiry behavior
+
+On `401`:
+
+- auth state is cleared
+- browser is redirected to `/?session=expired`
+
+## 6.6 Page-level responsibilities
+
+### Landing page
+
+Source: [`frontend/app/page.tsx`](/Users/infinite/Programming/kredito/frontend/app/page.tsx)
+
+Responsibilities:
+
+- detect Freighter installation
+- trigger wallet connect
+- perform backend login challenge flow
+- persist JWT/user session
+- redirect authenticated users to dashboard
+
+### Dashboard
+
+Source: [`frontend/app/dashboard/page.tsx`](/Users/infinite/Programming/kredito/frontend/app/dashboard/page.tsx)
+
+Responsibilities:
+
+- fetch latest score
+- auto-generate score if none exists yet
+- fetch pool balance
+- fetch active loan status
+- display formula breakdown and raw metrics
+- allow manual score refresh
+- route user toward borrow or repay based on loan state
+
+Interesting implementation detail:
+
+- it first tries `GET /credit/score`
+- if that fails and no score exists yet, it automatically calls `POST /credit/generate`
+
+### Borrow page
+
+Source: [`frontend/app/loan/borrow/page.tsx`](/Users/infinite/Programming/kredito/frontend/app/loan/borrow/page.tsx)
+
+Responsibilities:
+
+- load score and loan state
+- redirect to repay if a loan is already active
+- display approved amount based on `borrowLimit`
+- require user acknowledgement before borrowing
+- submit borrow action
+
+Important limitation:
+
+- the page derives `borrowAmount` as the full borrow limit from the score response
+- it does not currently expose arbitrary user-entered loan amounts
+
+### Repay page
+
+Source: [`frontend/app/loan/repay/page.tsx`](/Users/infinite/Programming/kredito/frontend/app/loan/repay/page.tsx)
+
+Responsibilities:
+
+- load active loan status
+- redirect back to dashboard if there is no active loan
+- display principal, fee, total due, shortfall, due date, and days remaining
+- submit repayment
+- show updated score result on success
+
+## 6.7 Network enforcement
+
+Sources:
+
+- [`frontend/lib/constants.ts`](/Users/infinite/Programming/kredito/frontend/lib/constants.ts)
+- [`frontend/components/NetworkBadge.tsx`](/Users/infinite/Programming/kredito/frontend/components/NetworkBadge.tsx)
+
+The frontend assumes:
+
+- required network label: `TESTNET`
+- required signing passphrase: Stellar testnet passphrase
+
+Wallet UI warns when the wallet is on the wrong network and disables transactional flows.
+
+## 7. Primary User Flows
+
+## 7.1 Wallet login flow
+
+```text
+Landing page
+  -> connect Freighter
+  -> POST /api/auth/challenge
+  -> sign challenge in Freighter
+  -> POST /api/auth/login
+  -> receive JWT
+  -> persist JWT + wallet in Zustand
+  -> redirect /dashboard
+```
+
+## 7.2 Score generation flow
+
+```text
+Dashboard load
+  -> GET /api/credit/score
+  -> if none exists, POST /api/credit/generate
+  -> backend aggregates metrics from Horizon/RPC
+  -> backend computes score
+  -> backend updates credit_registry
+  -> backend stores score event
+  -> frontend renders on-chain score breakdown
+```
+
+## 7.3 Borrow flow
+
+```text
+Borrow page
+  -> POST /api/loan/borrow
+  -> backend validates amount, tier, current loan
+  -> backend returns unsigned XDR for external wallet
+  -> frontend interceptor signs in Freighter
+  -> frontend posts signed XDR to /api/tx/sign-and-submit
+  -> backend fee-sponsors and submits
+  -> backend caches active loan
+  -> frontend shows success state
+```
+
+## 7.4 Repay flow
+
+```text
+Repay page
+  -> POST /api/loan/repay
+  -> backend checks token balance and loan state
+  -> if no allowance, return approve XDR
+  -> frontend signs/submits approve
+  -> frontend calls /api/loan/repay again
+  -> backend returns repay XDR
+  -> frontend signs/submits repay
+  -> backend clears active loan cache
+  -> backend refreshes metrics and registry
+  -> frontend shows new score/tier
+```
+
+## 7.5 Overdue/default monitoring flow
+
+```text
+Cron job every 6 hours
+  -> iterate active_loans cache
+  -> query on-chain loan
+  -> if overdue, rebuild metrics
+  -> update registry via issuer
+  -> insert score event
+  -> clear local active loan cache entry
+```
+
+## 8. Data Model and State Boundaries
+
+## 8.1 Canonical data locations
+
+On-chain:
+
+- wallet metrics
+- score
+- tier
+- tier limits
+- token balances
+- token allowances
+- active loan records
+- pool balance
+
+Backend SQLite:
+
+- user identity rows
+- auth challenge replay protection
+- score history snapshots
+- local active-loan cache
+- legacy OTP/bootstrap tables
+
+Frontend local state:
+
+- JWT session
+- wallet connection/session state
+- TanStack Query caches
+
+## 8.2 What is cached vs authoritative
+
+Authoritative:
+
+- contracts for financial state
+- wallet signature for identity proof
+
+Cached or derived:
+
+- `score_events`
+- `active_loans`
+- query caches in the frontend
+- loan due date estimates derived from current wall-clock time and ledger deltas
+
+## 9. Security Model
+
+## 9.1 Strong points
+
+- Wallet-based authentication instead of password auth
+- Short-lived, one-time-use login challenges
+- Contract state controls borrow eligibility
+- Fee sponsorship avoids requiring end-user XLM for demo usage
+- Private key material is not stored for the active external-wallet flow
+- Encryption support exists for any stored wallet secret path
+
+## 9.2 Centralized trust points
+
+The system is not trustless. It relies on a privileged issuer/admin identity for:
+
+- minting PHPC
+- funding and controlling the pool
+- sponsoring user transactions
+- creating missing Stellar accounts
+- updating credit registry metrics
+
+This is an acceptable architecture for the project's current demo/prototype stage, but it is a major centralization boundary.
+
+## 9.3 Security gaps and caveats
+
+- Score generation trusts backend metric aggregation completely.
+- The registry is issuer-writable, so users do not independently submit or verify metric writes.
+- The backend can create accounts with issuer funds.
+- The frontend route guard is UX-only; backend JWT remains the real protection layer.
+- Legacy custodial-wallet and OTP schema exists, which increases conceptual surface area even though the current UI does not expose it.
+
+## 10. Deployment and Operations
+
+## 10.1 Contracts
+
+Deployment scripts:
+
+- [`contracts/deploy.sh`](/Users/infinite/Programming/kredito/contracts/deploy.sh)
+- [`contracts/redeploy.sh`](/Users/infinite/Programming/kredito/contracts/redeploy.sh)
+
+Bootstrap steps handled by scripts:
+
+1. deploy token
+2. initialize token
+3. deploy registry
+4. initialize registry with tier limits
+5. deploy or redeploy lending pool
+6. initialize pool
+7. mint PHPC to issuer
+8. approve pool spending
+9. deposit liquidity into pool
+
+Tracked deployed addresses:
+
+- see [`contracts/deployed.json`](/Users/infinite/Programming/kredito/contracts/deployed.json)
+
+## 10.2 Backend
+
+The backend is a single-process Express app with:
+
+- local SQLite file storage
+- outbound calls to Horizon and Soroban RPC
+- in-process cron job scheduling
+
+Operational implications:
+
+- horizontal scaling is not straightforward with local SQLite plus in-process cron
+- multiple backend instances could duplicate cron work without coordination
+- filesystem persistence must be managed explicitly outside local development
+
+## 10.3 Frontend
+
+The frontend is a standard Next.js deployment with:
+
+- browser-only wallet integration
+- no server-side wallet custody
+- environment-driven API base URL
+
+## 10.4 Environment variables
+
+### Backend
+
+From [`backend/.env.example`](/Users/infinite/Programming/kredito/backend/.env.example):
+
+- `NODE_ENV`
+- `PORT`
+- `JWT_SECRET`
+- `ENCRYPTION_KEY`
+- `ISSUER_SECRET_KEY`
+- `PHPC_ID`
+- `REGISTRY_ID`
+- `LENDING_POOL_ID`
+- `HORIZON_URL`
+- `SOROBAN_RPC_URL`
+- `NETWORK_PASSPHRASE`
+- `CORS_ORIGIN`
+- optional `DATABASE_PATH`
+
+The code also supports:
+
+- `WEB_AUTH_SECRET_KEY`
+- `HOME_DOMAIN`
+- `WEB_AUTH_DOMAIN`
+
+### Frontend
+
+From [`frontend/.env.example`](/Users/infinite/Programming/kredito/frontend/.env.example):
+
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_NETWORK`
+- `NEXT_PUBLIC_EXPLORER_URL`
+
+Note:
+
+- the frontend code actively uses `NEXT_PUBLIC_API_URL`
+- network behavior is actually enforced by hardcoded constants in `frontend/lib/constants.ts`, not by `NEXT_PUBLIC_NETWORK`
+
+That means the frontend env example is broader than what the runtime currently reads.
+
+## 11. Testing and Verification Surface
+
+## 11.1 Smart contracts
+
+- unit tests exist under each contract package
+- snapshot artifacts are checked into `test_snapshots/`
+
+## 11.2 Backend
+
+- there is no real automated backend test suite
+- `pnpm test` currently prints `"No backend tests configured"`
+
+## 11.3 Frontend
+
+- linting is configured
+- no dedicated component or E2E browser tests are present in the repo
+
+## 11.4 Manual system verification
+
+The project relies heavily on documented manual verification:
+
+- [`docs/SETUP.md`](/Users/infinite/Programming/kredito/docs/SETUP.md)
+- [`docs/TESTING.md`](/Users/infinite/Programming/kredito/docs/TESTING.md)
+- [`DEMO.md`](/Users/infinite/Programming/kredito/DEMO.md)
+
+## 12. Current Architectural Mismatches and Risks
+
+These are the most important things to understand if you plan to extend the system.
+
+### 12.1 Fee-rate mismatch
+
+The contract fee schedule and the backend/frontend display schedule do not fully match for Gold tier.
+
+- Contract: Gold is effectively `1.5%`
+- Backend/frontend presentation: Gold is treated as `1%`
+
+This can create user-facing inconsistencies and should be resolved before production use.
+
+### 12.2 "Average balance" is not truly historical
+
+The score model describes an average balance metric, but the implementation currently uses the current native XLM balance as a proxy.
+
+### 12.3 External-wallet path is primary, custodial path is partial
+
+The backend still contains code for encrypted wallet secrets and server-side transaction submission, but the current frontend login path always creates external-wallet users.
+
+This means the codebase contains two identity models, but only one is really active.
+
+### 12.4 Cron does not write on-chain defaults
+
+Overdue monitoring refreshes score state and cache rows, but it does not invoke `mark_default` on the lending pool contract.
+
+### 12.5 Local cache can drift from chain state
+
+`active_loans` and `score_events` can become stale if:
+
+- contracts are redeployed
+- manual chain mutations occur
+- submissions partially fail
+
+The docs already note that clearing cache tables may be needed after redeployments.
+
+### 12.6 SQLite and in-process cron constrain scale
+
+The current backend architecture is appropriate for local development and demo deployment, but not yet for multi-instance production scaling.
+
+## 13. Practical Mental Model
+
+The simplest correct way to think about Kredito is:
+
+- the frontend is a wallet-driven control panel
+- the backend is a privileged orchestration service
+- the contracts are the enforceable financial state machine
+
+The critical boundary is not "frontend vs backend". It is:
+
+- off-chain observation and orchestration on one side
+- on-chain enforcement and state on the other
+
+Almost every important feature crosses that boundary:
+
+- login starts in wallet, ends in backend session state
+- score starts from off-chain observation, ends in on-chain registry state
+- borrow starts as an API request, ends as a sponsored contract invocation
+- repay starts as a UI action, passes through token allowance management, and ends with registry refresh
+
+## 14. Recommended Reading Order
+
+For someone new to the codebase, the fastest accurate reading order is:
+
+1. [`README.md`](/Users/infinite/Programming/kredito/README.md)
+2. [`contracts/credit_registry/src/lib.rs`](/Users/infinite/Programming/kredito/contracts/credit_registry/src/lib.rs)
+3. [`contracts/lending_pool/src/lib.rs`](/Users/infinite/Programming/kredito/contracts/lending_pool/src/lib.rs)
+4. [`backend/src/routes/auth.ts`](/Users/infinite/Programming/kredito/backend/src/routes/auth.ts)
+5. [`backend/src/scoring/engine.ts`](/Users/infinite/Programming/kredito/backend/src/scoring/engine.ts)
+6. [`backend/src/routes/loan.ts`](/Users/infinite/Programming/kredito/backend/src/routes/loan.ts)
+7. [`frontend/lib/api.ts`](/Users/infinite/Programming/kredito/frontend/lib/api.ts)
+8. [`frontend/app/dashboard/page.tsx`](/Users/infinite/Programming/kredito/frontend/app/dashboard/page.tsx)
+
+That sequence explains the protocol, the backend control plane, and the frontend transaction UX in the order they actually matter.

@@ -1,3 +1,5 @@
+// frontend/lib/api.ts
+
 import axios from 'axios';
 import { useAuthStore } from '../store/auth';
 import { useWalletStore } from '../store/walletStore';
@@ -51,10 +53,10 @@ api.interceptors.response.use(
     if (
       user?.isExternal &&
       response.data?.requiresSignature &&
-      (url.endsWith('loan/borrow') || url.endsWith('loan/repay'))
+      (url.includes('/loan/borrow') || url.includes('/loan/repay'))
     ) {
       toast.info('Signature required in Freighter');
-      const action: LoanAction = url.endsWith('loan/borrow') ? 'borrow' : 'repay';
+      const action: LoanAction = url.includes('/loan/borrow') ? 'borrow' : 'repay';
 
       if (action === 'repay' && response.data.step === 'approve') {
         await signAndSubmitWithFreighter(response.data.unsignedXdr, 'repay', 'approve');

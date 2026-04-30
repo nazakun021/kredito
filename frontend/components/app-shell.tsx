@@ -1,3 +1,5 @@
+// frontend/components/app-shell.tsx
+
 'use client';
 
 import Link from 'next/link';
@@ -36,6 +38,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace('/');
   };
 
+  const currentRouteName = navItems.find((n) => pathname.startsWith(n.href))?.label ?? 'Kredito';
+
   return (
     <div className="flex min-h-dvh">
       <aside
@@ -61,16 +65,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               borderRight: '1px solid var(--color-border)',
             }}
           >
-            <div className="flex items-center justify-end p-4">
-              <button
-                onClick={() => setMobileOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer"
-                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-                aria-label="Close menu"
-              >
-                <X size={16} style={{ color: 'var(--color-text-muted)' }} />
-              </button>
-            </div>
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="absolute top-4 right-4 flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer z-50"
+              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
+              aria-label="Close menu"
+            >
+              <X size={16} style={{ color: 'var(--color-text-muted)' }} />
+            </button>
             <SidebarContent
               pathname={pathname}
               onLogout={handleLogout}
@@ -99,26 +101,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={16} style={{ color: 'var(--color-text-secondary)' }} />
           </button>
 
-          <div className="flex items-center gap-2 lg:hidden">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-lg"
-              style={{ background: 'var(--color-accent-glow)', border: '1px solid var(--color-border-accent)' }}
-            >
+          <div className="flex flex-col lg:hidden">
+            <div className="flex items-center gap-2">
               <ShieldCheck size={14} style={{ color: 'var(--color-accent)' }} />
+              <span className="text-xs font-bold">Kredito</span>
             </div>
-            <span className="text-sm font-bold">Kredito</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
+              {currentRouteName}
+            </span>
           </div>
 
           <div className="flex-1" />
 
           <h1 className="hidden text-sm font-semibold lg:block" style={{ color: 'var(--color-text-secondary)' }}>
-            {navItems.find((n) => pathname.startsWith(n.href))?.label ?? 'Kredito'}
+            {currentRouteName}
           </h1>
 
           <div className="flex-1" />
 
           <div className="flex items-center gap-4">
-            <NetworkBadge />
+            <div className="hidden sm:block">
+              <NetworkBadge />
+            </div>
             <ConnectWalletButton />
           </div>
 

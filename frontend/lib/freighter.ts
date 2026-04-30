@@ -1,3 +1,5 @@
+// frontend/lib/freighter.ts
+
 'use client';
 
 import axios from 'axios';
