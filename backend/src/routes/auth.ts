@@ -166,7 +166,11 @@ router.post(
   '/refresh',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    res.json({ token: issueToken(req.userId) });
+    const userId = req.userId;
+    if (typeof userId !== 'number') {
+      throw unauthorized('User context missing');
+    }
+    res.json({ token: issueToken(userId) });
   }),
 );
 

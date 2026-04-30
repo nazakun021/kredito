@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, Loader2, TrendingUp, Wallet, Info } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, TrendingUp, Info } from 'lucide-react';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
@@ -55,7 +55,7 @@ export default function RepayPage() {
   const canRepay = walletConnected && isCorrectNetwork;
 
   const { data: status, isLoading: isStatusLoading } = useQuery({
-    queryKey: QUERY_KEYS.loanStatus,
+    queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
     enabled: !!user,
   });
@@ -130,7 +130,7 @@ export default function RepayPage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.score(user?.wallet ?? '') });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Repayment failed. Please try again.'));
@@ -336,17 +336,13 @@ function TransactionStepper({ currentStep, label }: { currentStep: number, label
 }
 
 function CelebrationParticles() {
-  const [particles, setParticles] = useState<{ left: string; animationDelay: string; duration: string }[]>([]);
-
-  useEffect(() => {
-    setParticles(
-      Array.from({ length: 20 }).map(() => ({
-        left: `${Math.random() * 100}%`,
-        animationDelay: `${Math.random() * 2}s`,
-        duration: `${2 + Math.random() * 3}s`,
-      }))
-    );
-  }, []);
+  const [particles] = useState<{ left: string; animationDelay: string; duration: string }[]>(() =>
+    Array.from({ length: 20 }).map(() => ({
+      left: `${Math.random() * 100}%`,
+      animationDelay: `${Math.random() * 2}s`,
+      duration: `${2 + Math.random() * 3}s`,
+    }))
+  );
 
   return (
     <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">

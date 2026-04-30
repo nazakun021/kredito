@@ -88,7 +88,7 @@ Items are grouped by severity and layer. Each has a concrete fix description.
 
 ### [x] M-2 · JWT stored in `localStorage` (XSS attack surface)
 
-*Deferred for Phase 2: Cookies.*
+_Deferred for Phase 2: Cookies._
 
 ---
 
@@ -199,4 +199,3 @@ Items are grouped by severity and layer. Each has a concrete fix description.
 ### [x] L-10 · `contracts/deploy.sh` writes `deployed.json` with a different schema than `contracts/redeploy.sh`
 
 **Fix:** Standardized to use the nested schema.
-

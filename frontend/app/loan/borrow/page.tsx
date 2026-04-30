@@ -60,7 +60,7 @@ export default function BorrowPage() {
   });
 
   const { data: loanStatus, isLoading: isLoanStatusLoading } = useQuery({
-    queryKey: QUERY_KEYS.loanStatus,
+    queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
     enabled: !!user,
   });
@@ -74,7 +74,7 @@ export default function BorrowPage() {
     if (!isLoanStatusLoading && loanStatus?.hasActiveLoan && !success) {
       router.replace('/loan/repay');
     }
-  }, [loanStatus, isLoanStatusLoading, router, user]);
+  }, [loanStatus, isLoanStatusLoading, router, user, success]);
 
   const borrowAmount = Number(score?.borrowLimit || 0);
   const fee = borrowAmount * ((score?.feeBps || 0) / 10_000);
@@ -104,7 +104,7 @@ export default function BorrowPage() {
         setSuccess(data);
       }
 
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Borrowing failed. Please try again.'));
@@ -208,7 +208,7 @@ export default function BorrowPage() {
               </button>
               {score?.tier === 0 && (
                 <p className="mt-2 text-[11px] text-center" style={{ color: 'var(--color-text-muted)' }}>
-                  Your current tier doesn't qualify for borrowing.
+                  Your current tier doesn&apos;t qualify for borrowing.
                 </p>
               )}
             </div>
@@ -342,17 +342,13 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
 }
 
 function CelebrationParticles() {
-  const [particles, setParticles] = useState<{ left: string; animationDelay: string; duration: string }[]>([]);
-
-  useEffect(() => {
-    setParticles(
-      Array.from({ length: 20 }).map(() => ({
-        left: `${Math.random() * 100}%`,
-        animationDelay: `${Math.random() * 2}s`,
-        duration: `${2 + Math.random() * 3}s`,
-      }))
-    );
-  }, []);
+  const [particles] = useState<{ left: string; animationDelay: string; duration: string }[]>(() =>
+    Array.from({ length: 20 }).map(() => ({
+      left: `${Math.random() * 100}%`,
+      animationDelay: `${Math.random() * 2}s`,
+      duration: `${2 + Math.random() * 3}s`,
+    }))
+  );
 
   return (
     <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
