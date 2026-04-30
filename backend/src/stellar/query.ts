@@ -14,11 +14,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  backoffMs = 1000,
-): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000): Promise<T> {
   for (let i = 0; i < retries; i++) {
     try {
       return await fn();
@@ -27,7 +23,7 @@ async function withRetry<T>(
       await sleep(backoffMs * 2 ** i);
     }
   }
-  throw new Error("unreachable");
+  throw new Error('unreachable');
 }
 
 export async function queryContract(

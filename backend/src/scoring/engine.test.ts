@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import {
-  calculateScore,
-  scoreToTier,
-  tierFeeBps,
-} from './engine';
+import { calculateScore, scoreToTier, tierFeeBps } from './engine';
 
 describe('Scoring Engine', () => {
   it('should calculate score correctly', () => {
     const metrics = {
       txCount: 10,
       repaymentCount: 2,
-      avgBalance: 500, 
+      avgBalance: 500,
       defaultCount: 0,
     };
     expect(calculateScore(metrics)).toBe(65);

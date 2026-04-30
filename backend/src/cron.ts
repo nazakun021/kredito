@@ -67,7 +67,10 @@ export function startCronJobs() {
           Address.fromString(u.stellar_pub).toScVal(),
         ]);
         if (loan && !loan.repaid && !loan.defaulted) {
-          db.prepare('INSERT OR IGNORE INTO active_loans (user_id, stellar_pub) VALUES (?, ?)').run(u.id, u.stellar_pub);
+          db.prepare('INSERT OR IGNORE INTO active_loans (user_id, stellar_pub) VALUES (?, ?)').run(
+            u.id,
+            u.stellar_pub,
+          );
         }
       } catch (e) {
         console.error(`Reconciliation error for ${u.stellar_pub}:`, e);

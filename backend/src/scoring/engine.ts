@@ -188,11 +188,11 @@ export async function fetchTxCount(address: string): Promise<number> {
         .call();
 
       txCount += page.records.length;
-      
+
       if (page.records.length < 200 || txCount >= 1000) {
         break;
       }
-      
+
       cursor = page.records[page.records.length - 1].paging_token;
     }
     return Math.min(txCount, 1000);

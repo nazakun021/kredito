@@ -32,15 +32,17 @@ app.use(
   }),
 );
 app.use(express.json());
-app.use(pinoHttp({
-  customProps: (req, res) => ({
-    // Log path instead of full url to avoid leaking query params
-    path: req.url.split('?')[0]
+app.use(
+  pinoHttp({
+    customProps: (req, _res) => ({
+      // Log path instead of full url to avoid leaking query params
+      path: req.url.split('?')[0],
+    }),
+    autoLogging: {
+      ignore: (req) => req.url.startsWith('/health'),
+    },
   }),
-  autoLogging: {
-    ignore: (req) => req.url.startsWith('/health')
-  }
-}));
+);
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/credit/generate', scoreLimiter);
@@ -58,9 +60,9 @@ async function verifyConnectivity() {
   try {
     await rpcServer.getLatestLedger();
     await horizonServer.loadAccount(issuerKeypair.publicKey());
-    console.log("✅ Stellar RPC and Horizon reachable");
+    console.log('✅ Stellar RPC and Horizon reachable');
   } catch (error) {
-    console.error("❌ Stellar connectivity probe failed:", error);
+    console.error('❌ Stellar connectivity probe failed:', error);
     process.exit(1);
   }
 }
