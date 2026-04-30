@@ -15,6 +15,7 @@ import { buildUnsignedContractCall } from '../stellar/feebump';
 import { queryContract, getLoanFromChain, hasActiveLoan } from '../stellar/query';
 import { contractIds, rpcServer } from '../stellar/client';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -78,11 +79,26 @@ router.post(
       args,
     );
 
-    return res.json({
+    type BorrowResponse = {
+      requiresSignature: true;
+      unsignedXdr: string;
+      preview: {
+        amount: string;
+        fee: string;
+        feeBps: number;
+        totalOwed: string;
+        tier: number;
+        tierLabel: string;
+      };
+    };
+
+    logger.info({ wallet, amount, feeBps: preview.feeBps }, 'Borrow transaction prepared');
+    const response: BorrowResponse = {
       requiresSignature: true,
       unsignedXdr,
       preview,
-    });
+    };
+    return res.json(response);
   }),
 );
 
@@ -141,7 +157,30 @@ router.post(
       repayArgs,
     );
 
-    return res.json({
+    const summary = {
+      principal: toPhpAmount(loan.principal),
+      fee: toPhpAmount(loan.fee),
+      totalOwed: toPhpAmount(totalOwedStroops),
+      walletPhpcBalance: toPhpAmount(walletBalanceStroops),
+    };
+
+    type RepayResponse = {
+      requiresSignature: true;
+      transactions: Array<{
+        type: 'approve' | 'repay';
+        unsignedXdr: string;
+        description: string;
+      }>;
+      summary: {
+        principal: string;
+        fee: string;
+        totalOwed: string;
+        walletPhpcBalance: string;
+      };
+    };
+
+    logger.info({ wallet, totalOwed: summary.totalOwed }, 'Repay transactions prepared');
+    const response: RepayResponse = {
       requiresSignature: true,
       transactions: [
         {
@@ -155,13 +194,9 @@ router.post(
           description: 'Repay loan principal + fee',
         },
       ],
-      summary: {
-        principal: toPhpAmount(loan.principal),
-        fee: toPhpAmount(loan.fee),
-        totalOwed: toPhpAmount(totalOwedStroops),
-        walletPhpcBalance: toPhpAmount(walletBalanceStroops),
-      },
-    });
+      summary,
+    };
+    return res.json(response);
   }),
 );
 
@@ -198,27 +233,50 @@ router.get(
 
     const hasActiveLoan = status === 'active' || status === 'overdue';
 
-    return res.json({
+    type LoanStatusResponse = {
+      hasActiveLoan: boolean;
+      poolBalance: string;
+      loan: {
+        principal: string;
+        fee: string;
+        totalOwed: string;
+        walletBalance: string;
+        shortfall: string;
+        dueLedger: number;
+        currentLedger: number;
+        dueDate: string;
+        daysRemaining: number;
+        status: 'repaid' | 'defaulted' | 'overdue' | 'active';
+        repaid: boolean;
+        defaulted: boolean;
+      } | null;
+    };
+
+    const response: LoanStatusResponse = {
       hasActiveLoan,
       poolBalance: poolSnapshot.poolBalance,
-      loan: {
-        principal: toPhpAmount(loan.principal),
-        fee: toPhpAmount(loan.fee),
-        totalOwed: toPhpAmount(loan.principal + loan.fee),
-        walletBalance: toPhpAmount(walletBalanceStroops),
-        shortfall:
-          walletBalanceStroops < loan.principal + loan.fee
-            ? toPhpAmount(loan.principal + loan.fee - walletBalanceStroops)
-            : '0.00',
-        dueLedger,
-        currentLedger,
-        dueDate: estimateDueDateFromLedgers(daysRemaining),
-        daysRemaining,
-        status,
-        repaid: loan.repaid,
-        defaulted: loan.defaulted,
-      },
-    });
+      loan: loan
+        ? {
+            principal: toPhpAmount(loan.principal),
+            fee: toPhpAmount(loan.fee),
+            totalOwed: toPhpAmount(loan.principal + loan.fee),
+            walletBalance: toPhpAmount(walletBalanceStroops),
+            shortfall:
+              walletBalanceStroops < loan.principal + loan.fee
+                ? toPhpAmount(loan.principal + loan.fee - walletBalanceStroops)
+                : '0.00',
+            dueLedger,
+            currentLedger,
+            dueDate: estimateDueDateFromLedgers(daysRemaining),
+            daysRemaining,
+            status,
+            repaid: loan.repaid,
+            defaulted: loan.defaulted,
+          }
+        : null,
+    };
+
+    return res.json(response);
   }),
 );
 

@@ -10,6 +10,8 @@ import {
 } from '@stellar/stellar-sdk';
 import { rpcServer, networkPassphrase, issuerKeypair, contractIds } from './client';
 import { config } from '../config';
+import { logger } from '../utils/logger';
+import pLimit from 'p-limit';
 
 export interface LoanState {
   principal: bigint;
@@ -135,17 +137,17 @@ export async function discoverBorrowersFromChain(): Promise<{
     }
   }
 
-  let usedDevFallback = false;
-  for (const wallet of config.devKnownBorrowers) {
-    usedDevFallback = true;
-    borrowers.add(wallet);
+  if (config.devKnownBorrowers && config.devKnownBorrowers.length > 0) {
+    logger.warn(
+      'devKnownBorrowers is set in config but being ignored to ensure strict chain-as-truth discovery',
+    );
   }
 
   return {
     borrowers: [...borrowers],
     latestLedger,
     oldestLedger,
-    usedDevFallback,
+    usedDevFallback: false,
   };
 }
 
@@ -214,11 +216,14 @@ export async function getAllLoansFromChain(): Promise<{
 }> {
   const { borrowers, latestLedger, oldestLedger, usedDevFallback } =
     await discoverBorrowersFromChain();
+  const limit = pLimit(5);
   const loans = await Promise.all(
-    borrowers.map(async (walletAddress) => {
-      const loan = await getLoanFromChain(walletAddress);
-      return loan ? { walletAddress, ...loan } : null;
-    }),
+    borrowers.map((walletAddress) =>
+      limit(async () => {
+        const loan = await getLoanFromChain(walletAddress);
+        return loan ? { walletAddress, ...loan } : null;
+      }),
+    ),
   );
 
   return {

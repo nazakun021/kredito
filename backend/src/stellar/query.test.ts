@@ -80,9 +80,7 @@ vi.mock('./client', async (importOriginal) => {
             txHash: 'tx-1',
             topic: [
               xdr.ScVal.scvSymbol('disburse'),
-              xdr.ScVal.scvString(
-                'GBCOYLF2WO33E7PH3F6COHDNWSO2VG5C4SUIYCYY26RV45UON7U73VYF',
-              ),
+              xdr.ScVal.scvString('GBCOYLF2WO33E7PH3F6COHDNWSO2VG5C4SUIYCYY26RV45UON7U73VYF'),
             ],
             value: xdr.ScVal.scvVoid(),
           },
@@ -97,9 +95,7 @@ vi.mock('./client', async (importOriginal) => {
             txHash: 'tx-2',
             topic: [
               xdr.ScVal.scvSymbol('repaid'),
-              xdr.ScVal.scvString(
-                'GDCMAY7XILWXKTJ7K5IJICJD2GFAKCIFPNGJB2HMNLUGIZUMVXT2VJRL',
-              ),
+              xdr.ScVal.scvString('GDCMAY7XILWXKTJ7K5IJICJD2GFAKCIFPNGJB2HMNLUGIZUMVXT2VJRL'),
             ],
             value: xdr.ScVal.scvVoid(),
           },

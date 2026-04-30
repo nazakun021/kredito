@@ -12,6 +12,7 @@ import {
   xdr,
 } from '@stellar/stellar-sdk';
 import { horizonServer, issuerKeypair, networkPassphrase, rpcServer } from './client';
+import { logger } from '../utils/logger';
 
 const CLASSIC_BASE_FEE = '100';
 const SPONSORED_BASE_FEE = '1000000';
@@ -20,7 +21,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function pollTransaction(hash: string, timeoutMs = 60_000) {
+export async function pollTransaction(hash: string, timeoutMs = 30_000) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -42,9 +43,9 @@ export async function pollTransaction(hash: string, timeoutMs = 60_000) {
         throw error;
       }
       // Otherwise, assume it's a transient RPC error and retry
-      console.warn(
-        `Polling attempt failed for ${hash}:`,
-        error instanceof Error ? error.message : error,
+      logger.warn(
+        { txHash: hash, message: error instanceof Error ? error.message : error },
+        'Polling attempt failed, retrying...',
       );
     }
 
@@ -132,7 +133,7 @@ export async function buildUnsignedContractCall(
   return prepared.toXDR();
 }
 
-export async function submitSponsoredSignedXdr(signedInnerXdr: string) {
+export async function submitSponsoredSignedXdr(signedInnerXdr: string, retries = 2) {
   const innerTx = TransactionBuilder.fromXDR(signedInnerXdr, networkPassphrase) as Transaction;
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     issuerKeypair,
@@ -143,15 +144,28 @@ export async function submitSponsoredSignedXdr(signedInnerXdr: string) {
 
   feeBump.sign(issuerKeypair);
 
-  const response = await rpcServer.sendTransaction(feeBump);
-  if (response.status !== 'PENDING') {
-    throw new Error(
-      `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
-    );
-  }
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await rpcServer.sendTransaction(feeBump);
+      if (response.status !== 'PENDING') {
+        throw new Error(
+          `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
+        );
+      }
 
-  await pollTransaction(response.hash);
-  return response.hash;
+      logger.info({ txHash: response.hash, attempt }, 'Transaction submitted, polling...');
+      await pollTransaction(response.hash);
+      return response.hash;
+    } catch (error) {
+      if (attempt === retries) {
+        logger.error({ err: error, attempt }, 'All submission attempts failed');
+        throw error;
+      }
+      logger.warn({ err: error, attempt }, 'Submission attempt failed, retrying...');
+      await sleep(1000 * Math.pow(2, attempt));
+    }
+  }
+  throw new Error('Unreachable');
 }
 
 export async function buildAndSubmitFeeBump(
@@ -159,6 +173,7 @@ export async function buildAndSubmitFeeBump(
   contractId: string,
   functionName: string,
   args: xdr.ScVal[],
+  retries = 2,
 ): Promise<string> {
   const userAccount = await ensureUserAccount(userKeypair);
   const tx = buildInvokeTransaction(userAccount, contractId, functionName, args);
@@ -173,14 +188,31 @@ export async function buildAndSubmitFeeBump(
   );
 
   feeBump.sign(issuerKeypair);
-  const response = await rpcServer.sendTransaction(feeBump as FeeBumpTransaction);
 
-  if (response.status !== 'PENDING') {
-    throw new Error(
-      `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
-    );
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await rpcServer.sendTransaction(feeBump as FeeBumpTransaction);
+
+      if (response.status !== 'PENDING') {
+        throw new Error(
+          `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
+        );
+      }
+
+      logger.info(
+        { txHash: response.hash, attempt, functionName },
+        'Transaction submitted, polling...',
+      );
+      await pollTransaction(response.hash);
+      return response.hash;
+    } catch (error) {
+      if (attempt === retries) {
+        logger.error({ err: error, attempt, functionName }, 'All submission attempts failed');
+        throw error;
+      }
+      logger.warn({ err: error, attempt, functionName }, 'Submission attempt failed, retrying...');
+      await sleep(1000 * Math.pow(2, attempt));
+    }
   }
-
-  await pollTransaction(response.hash);
-  return response.hash;
+  throw new Error('Unreachable');
 }

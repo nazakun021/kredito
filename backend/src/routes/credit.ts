@@ -6,6 +6,7 @@ import { buildScoreSummary, getPoolSnapshot } from '../scoring/engine';
 import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
 import { queryContract } from '../stellar/query';
 import { contractIds } from '../stellar/client';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.post(
       txHashes,
     };
 
+    logger.info({ wallet: req.wallet, score: summary.score }, 'Generated new credit score');
     res.json(payload);
   }),
 );
@@ -34,6 +36,10 @@ router.get(
         throw notFound('No score on-chain yet. Call generate first.');
       }
 
+      logger.info(
+        { wallet: req.wallet, score: payload.score },
+        'Retrieved on-chain credit snapshot',
+      );
       res.json(payload);
     } catch (e) {
       if (e instanceof Error && e.message.includes('No score on-chain yet')) {
