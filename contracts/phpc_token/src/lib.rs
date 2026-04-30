@@ -80,7 +80,9 @@ impl Token {
         let total_supply = Self::total_supply(env.clone())
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(&env, Error::BalanceOverflow));
-        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &total_supply);
 
         env.events().publish((symbol_short!("mint"), to), amount);
     }
@@ -223,7 +225,9 @@ impl Token {
         let total_supply = Self::total_supply(env.clone())
             .checked_sub(amount)
             .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
-        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &total_supply);
         env.events().publish((symbol_short!("burn"), from), amount);
     }
 
@@ -259,7 +263,9 @@ impl Token {
         let total_supply = Self::total_supply(env.clone())
             .checked_sub(amount)
             .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
-        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &total_supply);
         env.events().publish((symbol_short!("burn"), from), amount);
     }
 
@@ -285,7 +291,10 @@ impl Token {
     }
 
     pub fn total_supply(env: Env) -> i128 {
-        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::TotalSupply)
+            .unwrap_or(0)
     }
 
     pub fn authorized(env: Env, id: Address) -> bool {

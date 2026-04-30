@@ -196,16 +196,12 @@ impl CreditRegistry {
 
     pub fn get_metrics(env: Env, wallet: Address) -> Metrics {
         let key = DataKey::Metrics(wallet.clone());
-        let metrics = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or(Metrics {
-                tx_count: 0,
-                repayment_count: 0,
-                avg_balance: 0,
-                default_count: 0,
-            });
+        let metrics = env.storage().persistent().get(&key).unwrap_or(Metrics {
+            tx_count: 0,
+            repayment_count: 0,
+            avg_balance: 0,
+            default_count: 0,
+        });
         maybe_extend_persistent_ttl(&env, &key);
         metrics
     }
@@ -248,7 +244,11 @@ impl CreditRegistry {
 
     pub fn is_tier_current(env: Env, wallet: Address) -> bool {
         let expiry_key = DataKey::TierExpiry(wallet);
-        let expiry = env.storage().persistent().get::<_, u32>(&expiry_key).unwrap_or(0);
+        let expiry = env
+            .storage()
+            .persistent()
+            .get::<_, u32>(&expiry_key)
+            .unwrap_or(0);
         maybe_extend_persistent_ttl(&env, &expiry_key);
         expiry > env.ledger().sequence()
     }

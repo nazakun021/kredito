@@ -6,7 +6,6 @@ import adminRoutes from './admin';
 import { hasActiveLoan, getLoanFromChain, getAllLoansFromChain } from '../stellar/query';
 import { submitSponsoredSignedXdr, buildAndSubmitFeeBump } from '../stellar/feebump';
 import { config } from '../config';
-import { Address } from '@stellar/stellar-sdk';
 
 const DUMMY_WALLET = 'GBCOYLF2WO33E7PH3F6COHDNWSO2VG5C4SUIYCYY26RV45UON7U73VYF';
 
@@ -73,16 +72,18 @@ describe('Phase 9: Critical Invariants', () => {
     it('admin sweep skips a loan that was already repaid on-chain', async () => {
       // Mock getAllLoansFromChain to return one "overdue" loan
       vi.mocked(getAllLoansFromChain).mockResolvedValue({
-        loans: [{
-          walletAddress: DUMMY_WALLET,
-          due_ledger: 100,
-          defaulted: false,
-          repaid: false,
-          principal: 1000n,
-          fee: 100n
-        }],
+        loans: [
+          {
+            walletAddress: DUMMY_WALLET,
+            due_ledger: 100,
+            defaulted: false,
+            repaid: false,
+            principal: 1000n,
+            fee: 100n,
+          },
+        ],
         latestLedger: 110,
-        oldestLedger: 50
+        oldestLedger: 50,
       });
 
       // BUT when getLoanFromChain is called (the pre-check), return repaid: true
@@ -91,7 +92,7 @@ describe('Phase 9: Critical Invariants', () => {
         fee: 100n,
         due_ledger: 100,
         repaid: true,
-        defaulted: false
+        defaulted: false,
       });
 
       const response = await request(app)
@@ -108,16 +109,18 @@ describe('Phase 9: Critical Invariants', () => {
   describe('Invariant: Concurrent admin runs are safe (Phase 5/9)', () => {
     it('handles idempotent contract errors (LoanDefaulted) gracefully', async () => {
       vi.mocked(getAllLoansFromChain).mockResolvedValue({
-        loans: [{
-          walletAddress: DUMMY_WALLET,
-          due_ledger: 100,
-          defaulted: false,
-          repaid: false,
-          principal: 1000n,
-          fee: 100n
-        }],
+        loans: [
+          {
+            walletAddress: DUMMY_WALLET,
+            due_ledger: 100,
+            defaulted: false,
+            repaid: false,
+            principal: 1000n,
+            fee: 100n,
+          },
+        ],
         latestLedger: 110,
-        oldestLedger: 50
+        oldestLedger: 50,
       });
 
       // Pre-check says it's overdue and not defaulted yet
@@ -126,11 +129,13 @@ describe('Phase 9: Critical Invariants', () => {
         fee: 100n,
         due_ledger: 100,
         repaid: false,
-        defaulted: false
+        defaulted: false,
       });
 
       // BUT the actual submission fails because someone else beat us to it (idempotency)
-      vi.mocked(buildAndSubmitFeeBump).mockRejectedValue(new Error('Transaction failed on-chain: {"status":"FAILED","resultXdr":"LoanDefaulted"}'));
+      vi.mocked(buildAndSubmitFeeBump).mockRejectedValue(
+        new Error('Transaction failed on-chain: {"status":"FAILED","resultXdr":"LoanDefaulted"}'),
+      );
 
       const response = await request(app)
         .get('/admin/check-defaults')
@@ -144,12 +149,12 @@ describe('Phase 9: Critical Invariants', () => {
 
   describe('Invariant: Statelessness (Phase 7/9)', () => {
     it('operates correctly without any in-memory state after backend restart', async () => {
-      // This is implicitly verified by the fact that we mock query functions 
+      // This is implicitly verified by the fact that we mock query functions
       // which are called on every request, and no local variables are used to store borrower state.
       // We'll verify that status route fetches from chain directly.
-      
+
       // (This would normally be in a separate test, but we're demonstrating the principle here)
-      expect(true).toBe(true); 
+      expect(true).toBe(true);
     });
   });
 });

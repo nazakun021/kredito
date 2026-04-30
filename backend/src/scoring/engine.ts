@@ -352,8 +352,11 @@ export async function buildScoreSummary(address: string) {
 
 export async function getPoolSnapshot() {
   const poolBalanceRaw = BigInt(
-    (await queryContract<bigint | number | string>(contractIds.lendingPool, 'get_pool_balance', [])) ??
-      0,
+    (await queryContract<bigint | number | string>(
+      contractIds.lendingPool,
+      'get_pool_balance',
+      [],
+    )) ?? 0,
   );
   return {
     poolBalance: toPhpAmount(poolBalanceRaw),
