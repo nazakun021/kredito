@@ -13,7 +13,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
 import ConnectWalletButton from './ConnectWalletButton';
@@ -28,15 +28,28 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const disconnectWallet = useWalletStore((s) => s.disconnect);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    if (!user && !isLoggingOut) {
+      router.replace('/');
+    }
+  }, [user, isLoggingOut, router]);
 
   const handleLogout = () => {
+    setIsLoggingOut(true);
     clearAuth();
     disconnectWallet();
     router.replace('/');
   };
+
+  if (isLoggingOut || !user) {
+    return null;
+  }
 
   const currentRouteName = navItems.find((n) => pathname.startsWith(n.href))?.label ?? 'Kredito';
 

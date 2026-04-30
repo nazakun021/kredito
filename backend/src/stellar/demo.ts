@@ -1,3 +1,5 @@
+// backend/src/stellar/demo.ts
+
 import { Keypair } from '@stellar/stellar-sdk';
 import { networkPassphrase } from './client';
 

@@ -1,1 +1,3 @@
+// backend/src/types/cors.d.ts
+
 declare module 'cors';

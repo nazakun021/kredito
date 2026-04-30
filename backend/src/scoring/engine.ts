@@ -1,3 +1,5 @@
+// backend/src/scoring/engine.ts
+
 import { Address, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { LEDGERS_PER_DAY, STROOPS_PER_UNIT } from '../config';
 import { contractIds, horizonServer, rpcServer } from '../stellar/client';
@@ -54,7 +56,7 @@ export function tierLabel(tier: number) {
 export function tierFeeBps(tier: number) {
   switch (tier) {
     case 3:
-      return 100;
+      return 150;
     case 2:
       return 300;
     case 1:
@@ -174,13 +176,26 @@ export function buildScorePayload(
 
 export async function fetchTxCount(address: string): Promise<number> {
   try {
-    const txs = await horizonServer
-      .transactions()
-      .forAccount(address)
-      .limit(200)
-      .order('desc')
-      .call();
-    return txs.records.length;
+    let txCount = 0;
+    let cursor = '';
+    while (true) {
+      const page = await horizonServer
+        .transactions()
+        .forAccount(address)
+        .limit(200)
+        .order('desc')
+        .cursor(cursor)
+        .call();
+
+      txCount += page.records.length;
+      
+      if (page.records.length < 200 || txCount >= 1000) {
+        break;
+      }
+      
+      cursor = page.records[page.records.length - 1].paging_token;
+    }
+    return Math.min(txCount, 1000);
   } catch {
     return 0;
   }

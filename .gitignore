@@ -30,6 +30,9 @@ target/
 **/*.rs.bk
 .stellar/
 
+# Repomix
+repomix-output.txt
+
 # --- IDEs ---
 .vscode/
 !.vscode/extensions.json

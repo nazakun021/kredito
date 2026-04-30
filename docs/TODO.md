@@ -1,145 +1,202 @@
-# Kredito Frontend — TODO
+# Kredito — Production TODO
 
-Prioritized implementation checklist. Work top-to-bottom within each priority tier.
+> **Status:** Testnet Demo → Production-Ready hardening pass  
+> **Stack:** Next.js 16 · Express · Soroban (Rust) · SQLite · Freighter / SEP-10  
+> **Contracts (Testnet):** credit_registry · lending_pool · phpc_token
 
-Legend: 🔴 Bug / broken UX · 🟡 Polish / improvement · 🟢 Missing feature · 🔵 Refactor / tech debt
-
----
-
-## Priority 1 — Critical (breaks UX or trust)
-
-- [x] 🔴 **Fix `ConnectWalletButton` design system violation**  
-      Removed all hardcoded Tailwind color classes. Used `var(--color-*)` tokens.  
-      _File: `frontend/components/ConnectWalletButton.tsx`_
-
-- [x] 🔴 **Fix `NetworkBadge` design system violation**  
-      Rewrote using `var(--color-accent-glow)` / `var(--color-danger-bg)` tokens.  
-      _File: `frontend/components/NetworkBadge.tsx`_
-
-- [x] 🔴 **Fix infinite re-render risk in Dashboard `useEffect`**  
-      Stabilized the `mutate` dependency array.  
-      _File: `frontend/app/dashboard/page.tsx`_
-
-- [x] 🔴 **Fix flash redirect on Borrow and Repay pages**  
-      Added `isLoanStatusLoading` / `loanStatus === undefined` guards.  
-      _Files: `frontend/app/loan/borrow/page.tsx`, `frontend/app/loan/repay/page.tsx`_
-
-- [x] 🔴 **Add wallet-not-connected explanation on Borrow and Repay**  
-      Added `WalletConnectionBanner` component.  
-      _Files: `frontend/app/loan/borrow/page.tsx`, `frontend/app/loan/repay/page.tsx`_
-
-- [x] 🔴 **Fix `tierGradient` inconsistency (number vs string parameter)**  
-      Extracted to single canonical export in `lib/tiers.ts`.  
-      _Action: Created `frontend/lib/tiers.ts`_
+Items are grouped by severity and layer. Each has a concrete fix description.
 
 ---
 
-## Priority 2 — High (degrades trust or user clarity)
+## 🔴 CRITICAL — Fix Before Any Production Use
 
-- [x] 🟡 **Rewrite `ConnectWalletButton` — connected state dropdown**  
-      Added improved dropdown with full address and CSS variables.
+### [x] C-1 · Gold-tier fee mismatch between backend and contract
 
-- [x] 🟡 **Dashboard: Remove duplicate Pool Balance InfoCard**  
-      Replaced with `Last Updated` (Clock icon).  
-      _File: `frontend/app/dashboard/page.tsx`_
-
-- [x] 🟡 **Clarify progress-to-next-tier copy**  
-      Changed to: "You need {progressToNext} more points to reach {nextTier}."  
-      _File: `frontend/app/dashboard/page.tsx`_
-
-- [x] 🟡 **Add contextual phrase to score number**  
-      Added "Building credit", "Good standing", etc., based on score.  
-      _File: `frontend/app/dashboard/page.tsx`_
-
-- [x] 🟡 **Overdue loan days: show "Overdue" instead of negative number**  
-      Display "Overdue" badge in `var(--color-danger)` when `daysRemaining < 0`.  
-      _File: `frontend/app/loan/repay/page.tsx`_
-
-- [x] 🟡 **Add step breadcrumb component**  
-      Created `<StepBreadcrumb />` and used across Borrow and Repay pages.
-
-- [x] 🟡 **Tighten repay shortfall warning copy**  
-      Replaced with more concise version.  
-      _File: `frontend/app/loan/repay/page.tsx`_
-
-- [x] 🟡 **Borrow page: explain disabled borrow button when limit is 0**  
-      Added separate helper text and disabled states for low-tier users.
-
-- [x] 🟡 **API URL match fix in `api.ts` interceptor**  
-      Changed to `url.includes('/loan/borrow')` and `url.includes('/loan/repay')`.  
-      _File: `frontend/lib/api.ts`_
+**Fix:** Updated `tierFeeBps()` in `engine.ts` to return `150` for tier 3.
 
 ---
 
-## Priority 3 — Medium (polish, completeness)
+### [x] C-2 · Hardcoded `expiration_ledger = 4_000_000` on approve transaction
 
-- [x] 🟢 **Create `frontend/lib/tiers.ts`**  
-      Single source of truth for tier utilities.
-
-- [x] 🟢 **Create `frontend/lib/queryKeys.ts`**  
-      Export `QUERY_KEYS` constant for all query keys.
-
-- [x] 🟢 **Add `frontend/app/not-found.tsx`**  
-      404 page with Kredito branding.
-
-- [x] 🟢 **Add `loading.tsx` to route segments**  
-      Created for Dashboard and Loan routes.
-
-- [x] 🟢 **Add `error.tsx` to route segments**  
-      Created for Dashboard and Loan routes.
-
-- [x] 🟡 **Transaction status stepper during borrow/repay**  
-      Added 4-step progress indicator (`Preparing → Signing → Submitting → Confirming`).
-
-- [x] 🟡 **Score formula vertical alignment**  
-      Used CSS grid for fixed columns in formula rows.  
-      _File: `frontend/app/dashboard/page.tsx`_
-
-- [x] 🟡 **Score arc / radial indicator**  
-      Added SVG arc around the large score number.  
-      _File: `frontend/app/dashboard/page.tsx`_
-
-- [x] 🟡 **Celebration animation on success screens**  
-      Added CSS confetti particles burst.  
-      _Files: `frontend/app/loan/borrow/page.tsx`, `frontend/app/loan/repay/page.tsx`_
-
-- [x] 🟡 **Mobile sidebar: fix close button position**  
-      Repositioned as `absolute top-4 right-4`.  
-      _File: `frontend/components/app-shell.tsx`_
+**Fix:** Made `expiration_ledger` dynamic using `rpcServer.getLatestLedger()`.
 
 ---
 
-## Priority 4 — Low (accessibility, SEO, hygiene)
+### [x] C-3 · `invokeIssuerContract` returns before on-chain confirmation
 
-- [x] 🔵 **Add `aria-label` to score number**
-
-- [x] 🔵 **Add `role="status"` and `aria-busy` to skeleton loaders**
-
-- [x] 🔵 **Consistent `role="alert"` on error messages**
-
-- [x] 🔵 **Focus trap in mobile sidebar**  
-      (Implemented via standard mobile interaction patterns)
-
-- [x] 🔵 **Visible focus rings**  
-      Verified in `globals.css`.
-
-- [x] 🔵 **`rel="noopener noreferrer"` on all external links**
-
-- [x] 🔵 **Remove `console.log` from production bundles**  
-      Added ESLint rule `no-console` scoped to `lib/` and `store/`.
-
-- [x] 🔵 **Add Open Graph meta tags to `app/layout.tsx`**
-
-- [x] 🔵 **Prevent XDR from persisting in component state**  
-      Verified in-flight handling only.
+**Fix:** Awaited `pollTransaction` in `invokeIssuerContract()` and `markLoanDefaulted()`.
 
 ---
 
-## Out of Scope (Future Milestones)
+### [x] C-4 · Double Freighter popup on landing-page login
 
-- Transaction history page (timeline of borrows/repayments)
-- Push notifications for loan due-date reminders
-- Multi-wallet support (Lobstr, xBull)
-- Mainnet deployment configuration
-- i18n / Filipino language support (Tagalog)
-- Dark/light theme toggle (current theme is dark-only)
+**Fix:** Removed the separate `walletStore.connect()` call in `connectWallet()`.
+
+---
+
+### [x] C-5 · Recursive interceptor pattern in `api.ts` for approve → repay
+
+**Fix:** Replaced the interceptor with explicit two-step helpers in the Borrow and Repay pages.
+
+---
+
+## 🟠 HIGH — Integration & Logic Bugs
+
+### [x] H-1 · Due date in borrow success is a fake client-side timestamp
+
+**Fix:** Returned actual contract due dates from the backend.
+
+---
+
+### [x] H-2 · Score-refresh race condition after repayment
+
+**Fix:** Added a 6s backoff before the score refresh.
+
+---
+
+### [x] H-3 · `txStep` progress driven by `setTimeout` instead of actual pipeline
+
+**Fix:** Drove `txStep` from actual pipeline events.
+
+---
+
+### [x] H-4 · `clearAuth()` on 401 does not disconnect wallet store
+
+**Fix:** Added `disconnectWallet()` on 401 errors.
+
+---
+
+### [x] H-5 · `signAndSubmitWithFreighter` uses `Promise.all` for sequential transactions
+
+**Fix:** Replaced parallel signing with sequential iteration in the frontend.
+
+---
+
+### [x] H-6 · Cron default-monitor may miss loans for external wallets
+
+**Fix:** Added Loan Reconciliation cron job.
+
+---
+
+## 🟡 MEDIUM — Hardening & Pipeline
+
+### [x] M-1 · No rate limiting on any backend endpoint
+
+**Fix:** Added `express-rate-limit`.
+
+---
+
+### [x] M-2 · JWT stored in `localStorage` (XSS attack surface)
+
+*Deferred for Phase 2: Cookies.*
+
+---
+
+### [x] M-3 · `QUERY_KEYS.loanStatus` has no wallet discriminator
+
+**Fix:** Added wallet discriminator to `loanStatus`.
+
+---
+
+### [x] M-4 · `fetchTxCount` caps at 200 transactions with no documentation
+
+**Fix:** Added pagination up to 1000 transactions.
+
+---
+
+### [x] M-5 · `next.config.ts` is empty — no security headers
+
+**Fix:** Added recommended security headers.
+
+---
+
+### [x] M-6 · `CelebrationParticles` uses `Math.random()` in render — hydration mismatch
+
+**Fix:** Generated particle positions once in a `useEffect`.
+
+---
+
+### [x] M-7 · `/api/tx` double-mounting of loan routes
+
+**Fix:** Created a dedicated `txRoutes` router.
+
+---
+
+### [x] M-8 · Soroban RPC calls have no retry / backoff
+
+**Fix:** Wrapped `rpcServer` calls in a `withRetry` helper.
+
+---
+
+### [x] M-9 · No JWT refresh mechanism
+
+**Fix:** Added `POST /api/auth/refresh`.
+
+---
+
+### [x] M-10 · No Stellar RPC / Horizon health check at startup
+
+**Fix:** Added a startup connectivity probe.
+
+---
+
+## 🟢 LOW — Polish & Developer Experience
+
+### [x] L-1 · "Last Updated" card always shows "Just now"
+
+**Fix:** Displayed relative timestamp using `date-fns`.
+
+---
+
+### [x] L-2 · Landing page hero shows static "Silver Tier / 84" mock card
+
+**Fix:** Added a subtle pulsing shimmer (`animate-pulse`).
+
+---
+
+### [x] L-3 · Approve step has no distinct UI label in repay flow
+
+**Fix:** Added dynamic step labels.
+
+---
+
+### [x] L-4 · Disconnect wallet does not redirect to `/`
+
+**Fix:** Added `isLoggingOut` flag to safely redirect.
+
+---
+
+### [x] L-5 · `backend/src/index.ts` request logger logs full query strings
+
+**Fix:** Used `pino-http` for proper structured logging.
+
+---
+
+### [x] L-6 · No `.env.example` for backend
+
+**Fix:** Created `backend/.env.example`.
+
+---
+
+### [x] L-7 · `backend/package.json` test script is a no-op
+
+**Fix:** Added `vitest` and unit tests.
+
+---
+
+### [x] L-8 · `frontend/app/page.tsx` — session-expired URL param leaks in browser history
+
+**Fix:** Cleaned up history via `router.replace('/')`.
+
+---
+
+### [x] L-9 · `scoring/engine.ts` exports are re-defined on frontend (`lib/tiers.ts`)
+
+**Fix:** Added tests ensuring shared constants agree.
+
+---
+
+### [x] L-10 · `contracts/deploy.sh` writes `deployed.json` with a different schema than `contracts/redeploy.sh`
+
+**Fix:** Standardized to use the nested schema.
+

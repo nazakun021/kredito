@@ -2,6 +2,7 @@ import { Address, Operation, TransactionBuilder, nativeToScVal, xdr } from '@ste
 import { WalletMetrics, buildScorePayload, tierLabel } from '../scoring/engine';
 import { contractIds, issuerKeypair, networkPassphrase, rpcServer } from './client';
 import { queryContract } from './query';
+import { pollTransaction } from './feebump';
 
 async function invokeIssuerContract(operations: { functionName: string; args: xdr.ScVal[] }[]) {
   const issuerAccount = await rpcServer.getAccount(issuerKeypair.publicKey());
@@ -36,6 +37,7 @@ async function invokeIssuerContract(operations: { functionName: string; args: xd
     );
   }
 
+  await pollTransaction(response.hash);
   return response.hash;
 }
 
@@ -60,6 +62,39 @@ export async function updateOnChainMetrics(walletAddress: string, metrics: Walle
   ]);
 
   return { metricsTxHash: hash, scoreTxHash: hash };
+}
+
+export async function markLoanDefaulted(borrowerAddress: string) {
+  const issuerAccount = await rpcServer.getAccount(issuerKeypair.publicKey());
+  const builder = new TransactionBuilder(issuerAccount, {
+    fee: '1000',
+    networkPassphrase,
+  }).addOperation(
+    Operation.invokeHostFunction({
+      func: xdr.HostFunction.hostFunctionTypeInvokeContract(
+        new xdr.InvokeContractArgs({
+          contractAddress: Address.fromString(contractIds.lendingPool).toScAddress(),
+          functionName: 'mark_default',
+          args: [Address.fromString(borrowerAddress).toScVal()],
+        }),
+      ),
+      auth: [],
+    }),
+  );
+
+  const tx = builder.setTimeout(180).build();
+  const prepared = await rpcServer.prepareTransaction(tx);
+  prepared.sign(issuerKeypair);
+
+  const response = await rpcServer.sendTransaction(prepared);
+  if (response.status !== 'PENDING') {
+    throw new Error(
+      `Mark default transaction failed: ${JSON.stringify(response.errorResult ?? response)}`,
+    );
+  }
+
+  await pollTransaction(response.hash);
+  return response.hash;
 }
 
 export async function queryCreditRegistry(functionName: string, args: xdr.ScVal[]) {

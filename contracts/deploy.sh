@@ -80,9 +80,11 @@ echo "Saving to deployed.json..."
 cat > deployed.json << EOF
 {
   "network": "$NETWORK",
-  "phpc_token": "$PHPC_ID",
-  "credit_registry": "$REGISTRY_ID",
-  "lending_pool": "$LENDING_POOL_ID",
+  "contracts": {
+    "credit_registry": "$REGISTRY_ID",
+    "lending_pool": "$LENDING_POOL_ID",
+    "phpc_token": "$PHPC_ID"
+  },
   "issuer_public": "$ISSUER_PUB",
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }

@@ -1,3 +1,5 @@
+// backend/src/errors.ts
+
 import type { NextFunction, Request, Response } from 'express';
 
 export class AppError extends Error {

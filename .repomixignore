@@ -1,0 +1,29 @@
+# Dependencies & Build Artifacts
+node_modules/
+dist/
+.next/
+target/
+*.tsbuildinfo
+
+# Lock Files (Usually noise for AI context)
+*-lock.yaml
+*-lock.json
+Cargo.lock
+
+# Environment & Local Databases
+.env*
+*.db
+*.sqlite
+
+# Version Control & Tooling
+.git/
+.github/
+.agents/
+.vscode/
+
+# Assets & Documentation (Optional exclusions)
+images/
+docs/
+*.png
+*.jpg
+*.svg

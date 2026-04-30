@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { config } from '../config';
 import db from '../db';
 import { asyncRoute, badRequest, unauthorized } from '../errors';
+import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const webAuthKeypair = Keypair.fromSecret(config.webAuthSecretKey);
@@ -158,6 +159,14 @@ router.post(
       isNew: true,
       isExternal: true,
     });
+  }),
+);
+
+router.post(
+  '/refresh',
+  authMiddleware,
+  asyncRoute(async (req: AuthRequest, res) => {
+    res.json({ token: issueToken(req.userId) });
   }),
 );
 

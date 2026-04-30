@@ -1,3 +1,5 @@
+// backend/src/stellar/client.ts
+
 import { Horizon, rpc, Keypair, Networks } from '@stellar/stellar-sdk';
 import dotenv from 'dotenv';
 import { config } from '../config';

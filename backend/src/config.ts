@@ -1,3 +1,5 @@
+// backend/src/config.ts
+
 import { Networks } from '@stellar/stellar-sdk';
 
 function required(name: string, fallback?: string) {

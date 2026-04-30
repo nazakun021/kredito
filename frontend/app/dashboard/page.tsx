@@ -2,9 +2,10 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { formatDistanceToNow } from 'date-fns';
 import {
   ArrowRight,
   ChartColumn,
@@ -58,11 +59,21 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // 1. Primary: Get the latest cached score (fast)
   const scoreQuery = useQuery({
     queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
-    queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
+    queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => {
+      setLastUpdated(new Date());
+      return res.data;
+    }),
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
     retry: false,
@@ -72,9 +83,10 @@ export default function DashboardPage() {
   const generateMutation = useMutation({
     mutationFn: () => api.post<ScoreResponse>('/credit/generate').then((res) => res.data),
     onSuccess: async (data) => {
+      setLastUpdated(new Date());
       queryClient.setQueryData(QUERY_KEYS.score(user?.wallet ?? ''), data);
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
     },
   });
 
@@ -99,7 +111,7 @@ export default function DashboardPage() {
   });
 
   const loanStatusQuery = useQuery({
-    queryKey: QUERY_KEYS.loanStatus,
+    queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
     enabled: !!user,
     staleTime: 30 * 1000,
@@ -258,7 +270,7 @@ export default function DashboardPage() {
           </section>
 
           <div className="grid grid-cols-2 gap-4 animate-fade-up">
-            <InfoCard icon={Clock} title="Last Updated" value={score ? "Just now" : "--"} isLoading={isLoading} />
+            <InfoCard icon={Clock} title="Last Updated" value={lastUpdated ? formatDistanceToNow(lastUpdated, { addSuffix: true }) : "--"} isLoading={isLoading} />
             <InfoCard icon={Wallet} title="Wallet" value={`${user.wallet.slice(0, 4)}…${user.wallet.slice(-4)}`} isLoading={false} />
           </div>
         </div>

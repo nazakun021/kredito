@@ -14,6 +14,7 @@ import { REQUIRED_NETWORK } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
+import { signTx } from '@/lib/freighter';
 
 interface ScoreResponse {
   tier: number;
@@ -70,7 +71,7 @@ export default function BorrowPage() {
       return;
     }
 
-    if (!isLoanStatusLoading && loanStatus?.hasActiveLoan) {
+    if (!isLoanStatusLoading && loanStatus?.hasActiveLoan && !success) {
       router.replace('/loan/repay');
     }
   }, [loanStatus, isLoanStatusLoading, router, user]);
@@ -83,16 +84,26 @@ export default function BorrowPage() {
     setError('');
     setTxStep(1); // Preparing
     try {
-      // Note: The api interceptor handles the multi-step signing flow
-      // We simulate the step changes here for the UI
-      setTimeout(() => setTxStep(2), 500); // Signing
-      
-      const { data } = await api.post('loan/borrow', { amount: borrowAmount });
-      
-      setTxStep(3); // Submitting
-      setTimeout(() => setTxStep(4), 1000); // Confirming
-      
-      setSuccess(data);
+      const { data } = await api.post('/loan/borrow', { amount: borrowAmount });
+
+      if (data.requiresSignature) {
+        setTxStep(2); // Signing
+        const signResult = await signTx(data.unsignedXdr, user!.wallet!);
+        if ('error' in signResult) throw new Error(signResult.error);
+
+        setTxStep(3); // Submitting
+        const result = await api.post('/loan/sign-and-submit', {
+          signedInnerXdr: [signResult.signedXdr],
+          flow: { action: 'borrow' },
+        });
+
+        setTxStep(4); // Confirming
+        setSuccess(result.data);
+      } else {
+        setTxStep(4); // Confirming
+        setSuccess(data);
+      }
+
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
     } catch (err: unknown) {
@@ -331,18 +342,30 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
 }
 
 function CelebrationParticles() {
+  const [particles, setParticles] = useState<{ left: string; animationDelay: string; duration: string }[]>([]);
+
+  useEffect(() => {
+    setParticles(
+      Array.from({ length: 20 }).map(() => ({
+        left: `${Math.random() * 100}%`,
+        animationDelay: `${Math.random() * 2}s`,
+        duration: `${2 + Math.random() * 3}s`,
+      }))
+    );
+  }, []);
+
   return (
     <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
-      {Array.from({ length: 20 }).map((_, i) => (
+      {particles.map((p, i) => (
         <div
           key={i}
           className="absolute h-2 w-2 rounded-full"
           style={{
             background: i % 2 === 0 ? 'var(--color-accent)' : 'var(--color-amber)',
             top: '-20px',
-            left: `${Math.random() * 100}%`,
-            animation: `fall ${2 + Math.random() * 3}s linear infinite`,
-            animationDelay: `${Math.random() * 2}s`,
+            left: p.left,
+            animation: `fall ${p.duration} linear infinite`,
+            animationDelay: p.animationDelay,
             opacity: 0.6,
           }}
         />

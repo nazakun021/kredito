@@ -1,0 +1,44 @@
+{
+  "output": {
+    "filePath": "repomix-output.txt",
+    "style": "plain",
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "topFilesLength": 5
+  },
+  "include": [
+    "backend/**/*",
+    "frontend/**/*",
+    "contracts/**/*",
+    "README.md",
+    "DEMO.md",
+    "package.json",
+    ".gitignore"
+  ],
+  "ignore": {
+    "customPatterns": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+      "**/target/**",
+      "**/*.lock",
+      "**/pnpm-lock.yaml",
+      "**/*.db*",
+      "**/*.sqlite*",
+      "**/*.log",
+      "**/.env*",
+      "**/*.tsbuildinfo",
+      "**/images/**",
+      "**/*.{png,jpg,jpeg,gif,svg,ico,webp,pdf,zip}",
+      "**/.git/**",
+      "**/.github/**",
+      "**/.agents/**",
+      "**/.DS_Store",
+      "**/test_snapshots/**",
+      "**/__snapshots__/**",
+      "**/*.test.ts.snap",
+      "repomix-output.txt"
+    ]
+  }
+}

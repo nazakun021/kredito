@@ -56,6 +56,7 @@ export default function Page() {
         new URLSearchParams(window.location.search).get('session') === 'expired'
       ) {
         setError('Session expired. Please connect again.');
+        router.replace('/');
       }
     })();
 
@@ -69,18 +70,11 @@ export default function Page() {
     setError('');
 
     try {
-      // 1. Ensure wallet store is connected and synchronized
-      await useWalletStore.getState().connect();
-      
-      const { isConnected, connectionError } = useWalletStore.getState();
-      if (!isConnected || connectionError) {
-        throw new Error(connectionError || 'Failed to connect wallet');
-      }
-
-      // 2. Perform backend login (SEP-10 challenge)
+      // Perform backend login (SEP-10 challenge)
       const data = await loginWithFreighter();
 
       if (data) {
+        useWalletStore.setState({ isConnected: true, publicKey: data.wallet });
         setAuth(data.token, { wallet: data.wallet, isExternal: true });
         router.push('/dashboard');
       }
@@ -249,7 +243,7 @@ export default function Page() {
           {/* ─── Hero Visual (Score Preview) ─── */}
           <div className="w-full max-w-sm lg:max-w-none lg:flex-1 animate-fade-up" style={{ animationDelay: '150ms' }}>
             <div
-              className="rounded-3xl p-8"
+              className="rounded-3xl p-8 animate-pulse"
               style={{
                 background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--color-border)',

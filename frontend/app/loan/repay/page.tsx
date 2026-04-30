@@ -1,5 +1,3 @@
-// frontend/app/loan/repay/page.tsx
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -15,6 +13,7 @@ import { QUERY_KEYS } from '@/lib/queryKeys';
 import { tierGradient } from '@/lib/tiers';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
+import { signTx } from '@/lib/freighter';
 
 interface LoanStatusResponse {
   hasActiveLoan: boolean;
@@ -47,6 +46,7 @@ export default function RepayPage() {
   const user = useAuthStore((state) => state.user);
   const [loading, setLoading] = useState(false);
   const [txStep, setTxStep] = useState<number>(0);
+  const [txStepLabel, setTxStepLabel] = useState<'Approving PHPC spend…' | 'Submitting repayment…' | 'Processing...'>('Processing...');
   const [success, setSuccess] = useState<RepaySuccess | null>(null);
   const [error, setError] = useState('');
 
@@ -66,23 +66,70 @@ export default function RepayPage() {
       return;
     }
 
-    if (!isStatusLoading && status && !status.hasActiveLoan) {
+    if (!isStatusLoading && status && !status.hasActiveLoan && !success) {
       router.replace('/dashboard');
     }
-  }, [isStatusLoading, router, status, user]);
+  }, [isStatusLoading, router, status, user, success]);
 
   const handleRepay = async () => {
     setLoading(true);
     setError('');
-    setTxStep(1);
+    
     try {
-      setTimeout(() => setTxStep(2), 500);
-      const { data } = await api.post('loan/repay');
-      setTxStep(3);
-      setTimeout(() => setTxStep(4), 1000);
-      
-      setSuccess(data);
-      await queryClient.invalidateQueries({ queryKey: ['score'] });
+      setTxStepLabel('Processing...');
+      setTxStep(1); // Preparing (Check if approve needed)
+      const { data } = await api.post('/loan/repay');
+
+      if (data.requiresSignature) {
+        if (data.step === 'approve') {
+          setTxStepLabel('Approving PHPC spend…');
+          setTxStep(2); // Signing (Approve)
+          const approveResult = await signTx(data.unsignedXdr, user!.wallet!);
+          if ('error' in approveResult) throw new Error(approveResult.error);
+
+          setTxStep(3); // Submitting (Approve)
+          await api.post('/loan/sign-and-submit', {
+            signedInnerXdr: [approveResult.signedXdr],
+            flow: { action: 'repay', step: 'approve' },
+          });
+
+          // Phase 2: Repay
+          setTxStepLabel('Submitting repayment…');
+          setTxStep(1); // Preparing (Repay)
+          const repayData = await api.post('/loan/repay').then(res => res.data);
+          
+          setTxStep(2); // Signing (Repay)
+          const repayResult = await signTx(repayData.unsignedXdr, user!.wallet!);
+          if ('error' in repayResult) throw new Error(repayResult.error);
+
+          setTxStep(3); // Submitting (Repay)
+          const finalResult = await api.post('/loan/sign-and-submit', {
+            signedInnerXdr: [repayResult.signedXdr],
+            flow: { action: 'repay', step: 'repay' },
+          });
+          setTxStep(4); // Confirming
+          setSuccess(finalResult.data);
+        } else if (data.step === 'repay') {
+          setTxStepLabel('Submitting repayment…');
+          setTxStep(2); // Signing (Repay)
+          const repayResult = await signTx(data.unsignedXdr, user!.wallet!);
+          if ('error' in repayResult) throw new Error(repayResult.error);
+
+          setTxStep(3); // Submitting (Repay)
+          const result = await api.post('/loan/sign-and-submit', {
+            signedInnerXdr: [repayResult.signedXdr],
+            flow: { action: 'repay', step: 'repay' },
+          });
+          setTxStep(4); // Confirming
+          setSuccess(result.data);
+        }
+      } else {
+        // Internal wallet flow
+        setTxStep(4); // Confirming
+        setSuccess(data);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.score(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
     } catch (err: unknown) {
@@ -158,7 +205,7 @@ export default function RepayPage() {
   const isOverdue = (status?.loan?.daysRemaining ?? 0) < 0;
 
   return (
-    <div className="mx-auto max-lg">
+    <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
         <StepBreadcrumb step={4} total={4} />
         <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Active Loan</h1>
@@ -202,7 +249,7 @@ export default function RepayPage() {
         <div className="mt-6">
           {loading && (
             <div className="mb-4">
-              <TransactionStepper currentStep={txStep} />
+              <TransactionStepper currentStep={txStep} label={txStepLabel} />
             </div>
           )}
           <button 
@@ -213,7 +260,7 @@ export default function RepayPage() {
             {loading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Processing...
+                {txStepLabel}
               </>
             ) : (
               `Repay P${status?.loan?.totalOwed ?? '0.00'}`
@@ -256,7 +303,7 @@ function Row({
   );
 }
 
-function TransactionStepper({ currentStep }: { currentStep: number }) {
+function TransactionStepper({ currentStep, label }: { currentStep: number, label?: string }) {
   const steps = [
     { label: 'Preparing', id: 1 },
     { label: 'Signing', id: 2 },
@@ -265,7 +312,8 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
   ];
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      {label && <div className="text-sm font-semibold text-center text-slate-300">{label}</div>}
       <div className="flex justify-between">
         {steps.map((s) => (
           <div 
@@ -288,18 +336,30 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
 }
 
 function CelebrationParticles() {
+  const [particles, setParticles] = useState<{ left: string; animationDelay: string; duration: string }[]>([]);
+
+  useEffect(() => {
+    setParticles(
+      Array.from({ length: 20 }).map(() => ({
+        left: `${Math.random() * 100}%`,
+        animationDelay: `${Math.random() * 2}s`,
+        duration: `${2 + Math.random() * 3}s`,
+      }))
+    );
+  }, []);
+
   return (
     <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
-      {Array.from({ length: 20 }).map((_, i) => (
+      {particles.map((p, i) => (
         <div
           key={i}
           className="absolute h-2 w-2 rounded-full"
           style={{
             background: i % 2 === 0 ? 'var(--color-accent)' : 'var(--color-amber)',
             top: '-20px',
-            left: `${Math.random() * 100}%`,
-            animation: `fall ${2 + Math.random() * 3}s linear infinite`,
-            animationDelay: `${Math.random() * 2}s`,
+            left: p.left,
+            animation: `fall ${p.duration} linear infinite`,
+            animationDelay: p.animationDelay,
             opacity: 0.6,
           }}
         />

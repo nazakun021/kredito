@@ -4,7 +4,7 @@ import { Address } from '@stellar/stellar-sdk';
 import { rpcServer, contractIds } from './stellar/client';
 import { queryContract } from './stellar/query';
 import { buildScoreSummary } from './scoring/engine';
-import { updateOnChainMetrics } from './stellar/issuer';
+import { markLoanDefaulted, updateOnChainMetrics } from './stellar/issuer';
 
 export function startCronJobs() {
   cron.schedule('0 */6 * * *', async () => {
@@ -26,7 +26,13 @@ export function startCronJobs() {
 
         const latestLedger = await rpcServer.getLatestLedger();
         if (latestLedger.sequence > loan.due_ledger) {
-          console.log(`Loan for ${loanCache.stellar_pub} is overdue. Refreshing score snapshot...`);
+          console.log(
+            `Loan for ${loanCache.stellar_pub} is overdue. Marking defaulted and refreshing score snapshot...`,
+          );
+
+          // Official mark on-chain
+          await markLoanDefaulted(loanCache.stellar_pub);
+
           const refreshed = await buildScoreSummary(loanCache.stellar_pub);
           await updateOnChainMetrics(loanCache.stellar_pub, refreshed.metrics);
 
@@ -48,6 +54,23 @@ export function startCronJobs() {
         }
       } catch (error) {
         console.error(`Error processing loan for ${loanCache.stellar_pub}:`, error);
+      }
+    }
+  });
+
+  cron.schedule('0 */2 * * *', async () => {
+    console.log('Running Loan Reconciliation cron job...');
+    const allWallets = db.prepare('SELECT id, stellar_pub FROM users').all() as any[];
+    for (const u of allWallets) {
+      try {
+        const loan = await queryContract(contractIds.lendingPool, 'get_loan', [
+          Address.fromString(u.stellar_pub).toScVal(),
+        ]);
+        if (loan && !loan.repaid && !loan.defaulted) {
+          db.prepare('INSERT OR IGNORE INTO active_loans (user_id, stellar_pub) VALUES (?, ?)').run(u.id, u.stellar_pub);
+        }
+      } catch (e) {
+        console.error(`Reconciliation error for ${u.stellar_pub}:`, e);
       }
     }
   });
