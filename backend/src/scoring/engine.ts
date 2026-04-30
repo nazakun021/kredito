@@ -10,7 +10,7 @@ const REPAYMENT_LOOKBACK_LEDGERS = 250_000;
 export interface WalletMetrics {
   txCount: number;
   repaymentCount: number;
-  avgBalance: number;
+  xlmBalance: number;
   defaultCount: number;
 }
 
@@ -23,12 +23,12 @@ export interface ScoreFactor {
 }
 
 export function calculateScore(metrics: WalletMetrics): number {
-  const avgBalanceFactor = Math.min(Math.floor(metrics.avgBalance / 100), 10);
+  const xlmBalanceFactor = Math.min(Math.floor(metrics.xlmBalance / 100), 10);
   return Math.max(
     0,
     metrics.txCount * 2 +
       metrics.repaymentCount * 10 +
-      avgBalanceFactor * 5 -
+      xlmBalanceFactor * 5 -
       metrics.defaultCount * 25,
   );
 }
@@ -77,7 +77,14 @@ export function toPhpAmount(value: bigint | number) {
   const amount = typeof value === 'bigint' ? value : BigInt(value);
   const whole = amount / STROOPS_PER_UNIT;
   const fraction = amount % STROOPS_PER_UNIT;
-  return `${whole.toString()}.${fraction.toString().padStart(7, '0').replace(/0+$/, '').padEnd(2, '0')}`;
+  const minimumDisplayFraction = STROOPS_PER_UNIT / 100n;
+
+  if (fraction === 0n || (whole === 0n && fraction < minimumDisplayFraction)) {
+    return `${whole.toString()}.00`;
+  }
+
+  const trimmedFraction = fraction.toString().padStart(7, '0').replace(/0+$/, '');
+  return `${whole.toString()}.${trimmedFraction.padEnd(2, '0')}`;
 }
 
 export function toPhpNumber(value: bigint | number) {
@@ -89,7 +96,7 @@ export function toStroops(amount: number) {
 }
 
 export function buildScoreFactors(metrics: WalletMetrics): ScoreFactor[] {
-  const avgBalanceFactor = Math.min(Math.floor(metrics.avgBalance / 100), 10);
+  const xlmBalanceFactor = Math.min(Math.floor(metrics.xlmBalance / 100), 10);
 
   return [
     {
@@ -107,11 +114,11 @@ export function buildScoreFactors(metrics: WalletMetrics): ScoreFactor[] {
       points: metrics.repaymentCount * 10,
     },
     {
-      key: 'avgBalanceFactor',
-      label: 'Average balance factor',
-      value: avgBalanceFactor,
-      weight: 'avg_balance_factor × 5',
-      points: avgBalanceFactor * 5,
+      key: 'xlmBalanceFactor',
+      label: 'XLM balance factor',
+      value: xlmBalanceFactor,
+      weight: 'xlm_balance_factor × 5',
+      points: xlmBalanceFactor * 5,
     },
     {
       key: 'defaultCount',
@@ -135,7 +142,7 @@ export function buildScorePayload(
     txHashes?: { metricsTxHash?: string; scoreTxHash?: string };
   },
 ) {
-  const avgBalanceFactor = Math.min(Math.floor(input.metrics.avgBalance / 100), 10);
+  const xlmBalanceFactor = Math.min(Math.floor(input.metrics.xlmBalance / 100), 10);
   const factors = buildScoreFactors(input.metrics);
   const upcomingTier = nextTier(input.score);
 
@@ -156,16 +163,16 @@ export function buildScorePayload(
     metrics: {
       txCount: input.metrics.txCount,
       repaymentCount: input.metrics.repaymentCount,
-      avgBalance: input.metrics.avgBalance,
-      avgBalanceFactor,
+      xlmBalance: input.metrics.xlmBalance,
+      xlmBalanceFactor,
       defaultCount: input.metrics.defaultCount,
     },
     formula: {
       expression:
-        'score = (tx_count × 2) + (repayment_count × 10) + (avg_balance_factor × 5) - (default_count × 25)',
+        'score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) - (default_count × 25)',
       txComponent: input.metrics.txCount * 2,
       repaymentComponent: input.metrics.repaymentCount * 10,
-      balanceComponent: avgBalanceFactor * 5,
+      balanceComponent: xlmBalanceFactor * 5,
       defaultPenalty: input.metrics.defaultCount * 25,
       total: input.score,
     },
@@ -205,7 +212,7 @@ export async function fetchTxCount(address: string): Promise<number> {
  * Returns the wallet's native XLM balance in whole units, not PHPC.
  * This remains the current scoring input so UI copy must label it as XLM.
  */
-export async function fetchAverageBalance(address: string): Promise<number> {
+export async function fetchXlmBalance(address: string): Promise<number> {
   try {
     const account = await horizonServer.accounts().accountId(address).call();
     const nativeBalance = account.balances.find((balance: any) => balance.asset_type === 'native');
@@ -297,15 +304,15 @@ export async function fetchRepaymentMetrics(
 }
 
 export async function buildWalletMetrics(address: string): Promise<WalletMetrics> {
-  const [txCount, avgBalance, repaymentData] = await Promise.all([
+  const [txCount, xlmBalance, repaymentData] = await Promise.all([
     fetchTxCount(address),
-    fetchAverageBalance(address),
+    fetchXlmBalance(address),
     fetchRepaymentMetrics(address),
   ]);
 
   return {
     txCount,
-    avgBalance,
+    xlmBalance,
     repaymentCount: repaymentData.repaymentCount,
     defaultCount: repaymentData.defaultCount,
   };

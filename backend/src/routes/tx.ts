@@ -1,13 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import db from '../db';
 import { asyncRoute, badRequest } from '../errors';
 import { buildScoreSummary, toPhpAmount } from '../scoring/engine';
 import { submitSponsoredSignedXdr } from '../stellar/feebump';
-import { updateOnChainMetrics } from '../stellar/issuer';
-import { getLoanRecord, waitForLoanRepayment } from '../loan-state';
-import { loadUserById } from '../users';
+import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
+import { getLoanFromChain, waitForLoanRepayment } from '../stellar/query';
 
 const router = Router();
 
@@ -34,7 +32,9 @@ router.post(
 
     const hashes: string[] = [];
     for (const xdr of signedInnerXdr) {
-      hashes.push(await submitSponsoredSignedXdr(xdr));
+      const hash = await submitSponsoredSignedXdr(xdr);
+      hashes.push(hash);
+      req.log?.info({ txHash: hash }, 'Submitted sponsored transaction');
     }
 
     const txHash = hashes[hashes.length - 1];
@@ -57,11 +57,13 @@ router.post(
     }
 
     const flow = submitFlowSchema.parse(req.body?.flow);
-    const user = loadUserById(req.userId);
+    const wallet = req.wallet;
 
     const hashes: string[] = [];
     for (const xdr of signedInnerXdr) {
-      hashes.push(await submitSponsoredSignedXdr(xdr));
+      const hash = await submitSponsoredSignedXdr(xdr);
+      hashes.push(hash);
+      req.log?.info({ txHash: hash, action: flow?.action }, 'Submitted sponsored transaction');
     }
 
     const txHash = hashes[hashes.length - 1];
@@ -72,15 +74,7 @@ router.post(
     };
 
     if (flow?.action === 'borrow') {
-      db.prepare(
-        `
-        INSERT INTO active_loans (user_id, stellar_pub)
-        VALUES (?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET stellar_pub = excluded.stellar_pub
-        `,
-      ).run(req.userId, user.stellar_pub);
-
-      const loan = await getLoanRecord(user.stellar_pub);
+      const loan = await getLoanFromChain(wallet);
       if (loan) {
         const principal = Number(toPhpAmount(loan.principal));
         const fee = Number(toPhpAmount(loan.fee));
@@ -91,43 +85,20 @@ router.post(
       }
     }
 
-    if (flow?.action === 'repay' && flow.step === 'repay') {
-      const settledLoan = await waitForLoanRepayment(user.stellar_pub);
-      const previousSnapshot = db
-        .prepare('SELECT score_json FROM score_events WHERE user_id = ? ORDER BY id DESC LIMIT 1')
-        .get(req.userId) as { score_json?: string } | undefined;
-      const previousScore = previousSnapshot?.score_json
-        ? ((JSON.parse(previousSnapshot.score_json).score as number | null | undefined) ?? null)
-        : null;
+    if (flow?.action === 'repay') {
+      const settledLoan = await waitForLoanRepayment(wallet);
+      req.log?.info({ wallet, txHash }, 'Repayment confirmed on-chain');
+      const previousSnapshot = await getOnChainCreditSnapshot(wallet).catch(() => null);
 
-      if (!settledLoan?.repaid) {
-        throw badRequest('Repayment confirmation did not settle in time. Please retry.');
-      }
+      // Refresh score after repayment
+      const refreshed = await buildScoreSummary(wallet);
+      await updateOnChainMetrics(wallet, refreshed.metrics);
 
-      db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
-
-      const refreshed = await buildScoreSummary(user.stellar_pub);
-      await updateOnChainMetrics(user.stellar_pub, refreshed.metrics);
-
-      db.prepare(
-        `
-        INSERT INTO score_events (user_id, tier, score, bootstrap_score, stellar_score, score_json, sbt_minted)
-        VALUES (?, ?, ?, 0, ?, ?, 1)
-      `,
-      ).run(
-        req.userId,
-        refreshed.tier,
-        refreshed.score,
-        refreshed.score,
-        JSON.stringify(refreshed),
-      );
-
-      responsePayload.amountRepaid = toPhpAmount(
-        settledLoan.principal + settledLoan.fee,
-      );
-      responsePayload.previousScore = previousScore;
+      responsePayload.amountRepaid = toPhpAmount(settledLoan.principal + settledLoan.fee);
+      responsePayload.previousScore = previousSnapshot?.score ?? null;
       responsePayload.newScore = refreshed.score;
       responsePayload.newTier = refreshed.tierLabel;
+      responsePayload.newTierNumeric = refreshed.tier;
       responsePayload.newBorrowLimit = refreshed.borrowLimit;
     }
 

@@ -14,7 +14,8 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react';
-import { loginWithFreighter, waitForFreighter } from '@/lib/freighter';
+import { getWalletNetwork, loginWithFreighter, waitForFreighter } from '@/lib/freighter';
+import { REQUIRED_NETWORK } from '@/lib/constants';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
@@ -26,18 +27,25 @@ export default function Page() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
   const user = useAuthStore((state) => state.user);
-  const { connectionError: walletError } = useWalletStore();
+  const token = useAuthStore((state) => state.token);
+  const hydrated = useAuthStore((state) => state.hydrated);
+  const { connectionError: walletError, network } = useWalletStore();
   const [walletLoading, setWalletLoading] = useState(false);
   const [error, setError] = useState('');
   const [freighterReady, setFreighterReady] = useState(false);
   const [checkingFreighter, setCheckingFreighter] = useState(true);
+  const [shouldRedirect, setShouldRedirect] = useState(false);
+  const isWrongNetwork = network !== null && network !== REQUIRED_NETWORK;
 
   useEffect(() => {
     let cancelled = false;
 
-    // 1. Auto-redirect if already authenticated
-    if (user) {
-      router.push('/dashboard');
+    if (!hydrated) {
+      return;
+    }
+
+    if (user && token && !shouldRedirect) {
+      router.replace('/dashboard');
       return;
     }
 
@@ -54,23 +62,50 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [router, user]);
+  }, [hydrated, router, shouldRedirect, token, user]);
 
   const connectWallet = async () => {
     setWalletLoading(true);
     setError('');
+    setCheckingFreighter(true);
 
     try {
-      // Perform backend login (SEP-10 challenge)
+      const installed = await waitForFreighter(5);
+      setFreighterReady(installed);
+
+      if (!installed) {
+        throw new Error('Please install the Freighter extension to continue.');
+      }
+
       const data = await loginWithFreighter();
 
       if (data) {
-        useWalletStore.setState({ isConnected: true, publicKey: data.wallet });
-        setAuth({ wallet: data.wallet, isExternal: data.isExternal });
-        router.push('/dashboard');
+        const networkDetails = await getWalletNetwork();
+        const networkError =
+          networkDetails?.network && networkDetails.network !== REQUIRED_NETWORK
+            ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.`
+            : null;
+
+        useWalletStore.setState({
+          isConnected: true,
+          publicKey: data.wallet,
+          network: networkDetails?.network ?? null,
+          networkPassphrase: networkDetails?.networkPassphrase ?? null,
+          connectionError: networkError,
+          isRestoring: false,
+          hasRestored: true,
+        });
+        setAuth({ wallet: data.wallet }, data.token);
+
+        if (networkError) {
+          setShouldRedirect(true);
+          setError(networkError);
+          return;
+        }
+
+        router.replace('/dashboard');
       }
     } catch (err: unknown) {
-      // Surface the specific error message (e.g. "Freighter not found", "User rejected", etc)
       const msg = getErrorMessage(err, 'Unable to connect to Freighter.');
       setError(msg);
       
@@ -79,9 +114,21 @@ export default function Page() {
         setFreighterReady(false);
       }
     } finally {
+      setCheckingFreighter(false);
       setWalletLoading(false);
     }
   };
+
+  const refreshFreighterDetection = async () => {
+    setCheckingFreighter(true);
+    const installed = await waitForFreighter(5);
+    setFreighterReady(installed);
+    setCheckingFreighter(false);
+  };
+
+  if (!hydrated) {
+    return null;
+  }
 
   return (
     <div className="min-h-dvh overflow-x-hidden">
@@ -179,16 +226,17 @@ export default function Page() {
               {user ? (
                 <button
                   onClick={() => router.push('/dashboard')}
+                  disabled={isWrongNetwork}
                   className="flex h-14 w-full items-center justify-center gap-3 rounded-xl px-8 text-base font-bold transition-all sm:w-auto"
                   style={{
-                    background: 'var(--color-accent)',
-                    color: '#020617',
-                    boxShadow: '0 12px 40px rgba(34,197,94,0.25)',
+                    background: isWrongNetwork ? 'rgba(148, 163, 184, 0.18)' : 'var(--color-accent)',
+                    color: isWrongNetwork ? 'var(--color-text-muted)' : '#020617',
+                    boxShadow: isWrongNetwork ? 'none' : '0 12px 40px rgba(34,197,94,0.25)',
                   }}
                 >
                   <TrendingUp size={20} />
-                  Go to Dashboard
-                  <ArrowRight size={20} />
+                  {isWrongNetwork ? 'Switch Freighter to Testnet' : 'Go to Dashboard'}
+                  {!isWrongNetwork && <ArrowRight size={20} />}
                 </button>
               ) : freighterReady || checkingFreighter ? (
                 <button
@@ -220,7 +268,7 @@ export default function Page() {
 
               {(!freighterReady && !checkingFreighter) && (
                 <button 
-                  onClick={() => { setCheckingFreighter(true); waitForFreighter().then(setFreighterReady).finally(() => setCheckingFreighter(false)); }}
+                  onClick={() => void refreshFreighterDetection()}
                   className="text-sm text-slate-500 underline hover:text-slate-300 transition-colors"
                 >
                   Just installed? Click here to refresh.

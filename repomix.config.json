@@ -1,9 +1,9 @@
 {
   "output": {
-    "filePath": "repomix-output.txt",
-    "style": "plain",
-    "removeComments": false,
-    "removeEmptyLines": false,
+    "filePath": "repomix-output.md",
+    "style": "markdown",
+    "removeComments": true,
+    "removeEmptyLines": true,
     "topFilesLength": 5
   },
   "include": [
@@ -44,7 +44,13 @@
       "**/test_snapshots/**",
       "**/__snapshots__/**",
       "**/*.test.ts.snap",
-      "repomix-output.txt"
+      "repomix-output.md",
+      "docs/SETUP.md",
+      "docs/SPEC.md",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "**/tests/**",
+      "**/__tests__/**"
     ]
   }
 }

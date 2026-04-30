@@ -14,14 +14,16 @@ export default function LoanLayout({
 }) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
+  const hydrated = useAuthStore((s) => s.hydrated);
 
   useEffect(() => {
-    if (!user) {
+    if (hydrated && (!user || !token)) {
       router.replace('/');
     }
-  }, [router, user]);
+  }, [hydrated, router, token, user]);
 
-  if (!user) return null;
+  if (!hydrated || !user || !token) return null;
 
   return <AppShell>{children}</AppShell>;
 }

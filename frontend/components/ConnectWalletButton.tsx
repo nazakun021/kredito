@@ -3,11 +3,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useWalletStore } from '../store/walletStore';
+import { useAuthStore } from '../store/auth';
 import { checkFreighterInstalled } from '../lib/freighter';
 import { Loader2, Wallet, LogOut, ChevronDown } from 'lucide-react';
 
 export default function ConnectWalletButton() {
+  const router = useRouter();
   const { 
     isConnected, 
     publicKey, 
@@ -71,8 +74,10 @@ export default function ConnectWalletButton() {
               </div>
               <button
                 onClick={() => {
+                  useAuthStore.getState().clearAuth();
                   disconnect();
                   setShowDropdown(false);
+                  router.replace('/');
                 }}
                 className="flex items-center gap-2 w-full px-4 py-3 text-sm transition-colors text-left hover:bg-slate-800/50"
                 style={{ color: 'var(--color-danger)' }}

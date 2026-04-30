@@ -3,12 +3,17 @@
 'use client';
 
 import { useWalletStore } from '../store/walletStore';
+import { REQUIRED_NETWORK } from '../lib/constants';
 import { AlertTriangle, Wallet } from 'lucide-react';
 
 export default function WalletConnectionBanner() {
-  const { isConnected, connect } = useWalletStore();
+  const { isConnected, network, connect } = useWalletStore();
 
-  if (isConnected) return null;
+  if (isConnected && network === REQUIRED_NETWORK) return null;
+
+  const message = !isConnected
+    ? 'Wallet not connected — connect Freighter to continue with this transaction.'
+    : `Wrong network — switch Freighter to ${REQUIRED_NETWORK} to continue.`;
 
   return (
     <div 
@@ -22,7 +27,7 @@ export default function WalletConnectionBanner() {
       <div className="flex items-center gap-3">
         <AlertTriangle size={20} />
         <p className="text-sm font-medium">
-          Wallet not connected — connect Freighter to continue with this transaction.
+          {message}
         </p>
       </div>
       <button

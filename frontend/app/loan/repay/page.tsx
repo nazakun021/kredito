@@ -17,16 +17,20 @@ import { signTx } from '@/lib/freighter';
 
 interface LoanStatusResponse {
   hasActiveLoan: boolean;
-  walletPhpBalance: string;
+  poolBalance: string;
   loan: null | {
     principal: string;
     fee: string;
     totalOwed: string;
     walletBalance: string;
     shortfall: string;
+    dueLedger: number;
+    currentLedger: number;
     dueDate: string;
     daysRemaining: number;
     status: string;
+    repaid: boolean;
+    defaulted: boolean;
   };
 }
 
@@ -36,6 +40,7 @@ interface RepaySuccess {
   previousScore: number | null;
   newScore: number;
   newTier: string;
+  newTierNumeric: number;
   newBorrowLimit: string;
   explorerUrl: string;
 }
@@ -44,11 +49,14 @@ export default function RepayPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = !!user && !!token;
   const [loading, setLoading] = useState(false);
   const [txStep, setTxStep] = useState<number>(0);
-  const [txStepLabel, setTxStepLabel] = useState<'Approving PHPC spend…' | 'Submitting repayment…' | 'Processing...'>('Processing...');
   const [success, setSuccess] = useState<RepaySuccess | null>(null);
   const [error, setError] = useState('');
+  const [repayUnsignedXdr, setRepayUnsignedXdr] = useState<string | null>(null);
+  const [approvalSubmitted, setApprovalSubmitted] = useState(false);
 
   const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
@@ -57,11 +65,11 @@ export default function RepayPage() {
   const { data: status, isLoading: isStatusLoading } = useQuery({
     queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
-    enabled: !!user,
+    enabled: isAuthenticated,
   });
 
   useEffect(() => {
-    if (!user) {
+    if (!isAuthenticated) {
       router.replace('/');
       return;
     }
@@ -69,80 +77,137 @@ export default function RepayPage() {
     if (!isStatusLoading && status && !status.hasActiveLoan && !success) {
       router.replace('/dashboard');
     }
-  }, [isStatusLoading, router, status, user, success]);
+  }, [isAuthenticated, isStatusLoading, router, status, success]);
 
   const handleRepay = async () => {
     setLoading(true);
     setError('');
+    let approvalCompleted = approvalSubmitted;
     
     try {
-      setTxStepLabel('Processing...');
-      setTxStep(1); // Preparing (Check if approve needed)
-      const { data } = await api.post('/loan/repay');
+      if (!user?.wallet) {
+        throw new Error('Wallet not connected.');
+      }
 
-      if (data.requiresSignature) {
-        if (data.step === 'approve') {
-          setTxStepLabel('Approving PHPC spend…');
-          setTxStep(2); // Signing (Approve)
-          const approveResult = await signTx(data.unsignedXdr, user!.wallet!);
-          if ('error' in approveResult) throw new Error(approveResult.error);
+      let nextRepayUnsignedXdr = repayUnsignedXdr;
 
-          setTxStep(3); // Submitting (Approve)
+      if (!approvalCompleted) {
+        setTxStep(1);
+        const { data } = await api.post('/loan/repay');
+
+        if (!data.requiresSignature || !data.transactions) {
+          setTxStep(6);
+          setSuccess(data);
+          return;
+        }
+
+        const txs = data.transactions as Array<{ type: string; unsignedXdr: string }>;
+        const approveTx = txs.find((t) => t.type === 'approve');
+        const repayTx = txs.find((t) => t.type === 'repay');
+
+        if (!approveTx || !repayTx) {
+          throw new Error('Repayment transactions not generated correctly.');
+        }
+
+        nextRepayUnsignedXdr = repayTx.unsignedXdr;
+        setRepayUnsignedXdr(repayTx.unsignedXdr);
+        setTxStep(2);
+        const approveResult = await signTx(approveTx.unsignedXdr, user.wallet);
+        if ('error' in approveResult) {
+          throw new Error(`APPROVAL_SIGN:${approveResult.error}`);
+        }
+
+        setTxStep(3);
+        try {
           await api.post('/tx/sign-and-submit', {
             signedInnerXdr: [approveResult.signedXdr],
-            flow: { action: 'repay', step: 'approve' },
+            flow: { action: 'repay' },
           });
-
-          // Phase 2: Repay
-          setTxStepLabel('Submitting repayment…');
-          setTxStep(1); // Preparing (Repay)
-          const repayData = await api.post('/loan/repay').then(res => res.data);
-          
-          setTxStep(2); // Signing (Repay)
-          const repayResult = await signTx(repayData.unsignedXdr, user!.wallet!);
-          if ('error' in repayResult) throw new Error(repayResult.error);
-
-          setTxStep(3); // Submitting (Repay)
-          const finalResult = await api.post('/tx/sign-and-submit', {
-            signedInnerXdr: [repayResult.signedXdr],
-            flow: { action: 'repay', step: 'repay' },
-          });
-          setTxStep(4); // Confirming
-          setSuccess(finalResult.data);
-        } else if (data.step === 'repay') {
-          setTxStepLabel('Submitting repayment…');
-          setTxStep(2); // Signing (Repay)
-          const repayResult = await signTx(data.unsignedXdr, user!.wallet!);
-          if ('error' in repayResult) throw new Error(repayResult.error);
-
-          setTxStep(3); // Submitting (Repay)
-          const result = await api.post('/tx/sign-and-submit', {
-            signedInnerXdr: [repayResult.signedXdr],
-            flow: { action: 'repay', step: 'repay' },
-          });
-          setTxStep(4); // Confirming
-          setSuccess(result.data);
+          approvalCompleted = true;
+          setApprovalSubmitted(true);
+        } catch (submitErr) {
+          approvalCompleted = false;
+          setApprovalSubmitted(false);
+          setRepayUnsignedXdr(null);
+          throw submitErr;
         }
-      } else {
-        // Internal wallet flow
-        setTxStep(4); // Confirming
-        setSuccess(data);
+      }
+
+      if (!nextRepayUnsignedXdr) {
+        throw new Error('Repayment transaction not prepared.');
+      }
+
+      setTxStep(4);
+      const repayResult = await signTx(nextRepayUnsignedXdr, user.wallet);
+      if ('error' in repayResult) {
+        throw new Error(`REPAY_SIGN:${repayResult.error}`);
+      }
+
+      setTxStep(5);
+      try {
+        const finalResult = await api.post('/tx/sign-and-submit', {
+          signedInnerXdr: [repayResult.signedXdr],
+          flow: { action: 'repay' },
+        });
+
+        setTxStep(6);
+        approvalCompleted = false;
+        setApprovalSubmitted(false);
+        setRepayUnsignedXdr(null);
+        setSuccess(finalResult.data);
+      } catch (submitErr) {
+        setTxStep(4);
+        throw submitErr;
       }
 
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.score(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
     } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Repayment failed. Please try again.'));
-      setTxStep(0);
+      const errorMessage = getErrorMessage(err, 'Repayment failed. Please try again.');
+
+      if (errorMessage.startsWith('APPROVAL_SIGN:')) {
+        approvalCompleted = false;
+        setApprovalSubmitted(false);
+        setRepayUnsignedXdr(null);
+        setError('Approval signing cancelled.');
+        setTxStep(0);
+        return;
+      }
+
+      if (errorMessage.startsWith('REPAY_SIGN:')) {
+        approvalCompleted = true;
+        setApprovalSubmitted(true);
+        setError('Repayment signing cancelled. Your PHPC approval is still valid — click Repay again to continue.');
+        setTxStep(4);
+        return;
+      }
+
+      if (err && typeof err === 'object' && 'response' in err) {
+        const resp = (err as { response: { status: number; data: { error: string; shortfall: string } } }).response;
+         if (resp?.status === 422 && resp?.data?.error === 'InsufficientBalance') {
+          setError(`Insufficient balance. Shortfall: P${resp.data.shortfall}`);
+          setTxStep(0);
+          setLoading(false);
+          return;
+        }
+        if (resp?.status === 400 && resp?.data?.error === 'This loan has been defaulted and cannot be repaid') {
+          setError('This loan has been defaulted.');
+          window.setTimeout(() => router.replace('/dashboard'), 3000);
+          setTxStep(0);
+          return;
+        }
+      }
+      setError(errorMessage);
+      if (!approvalCompleted) {
+        setTxStep(0);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   if (success) {
-    const tierValue = success.newTier === 'Gold' ? 3 : success.newTier === 'Silver' ? 2 : success.newTier === 'Bronze' ? 1 : 0;
-    
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative">
         <CelebrationParticles />
@@ -169,7 +234,7 @@ export default function RepayPage() {
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--color-text-muted)' }}>Updated score</p>
                 <p className="text-5xl font-extrabold tabular-nums">{success.newScore}</p>
               </div>
-              <div className="rounded-xl px-4 py-2 text-sm font-bold shadow-lg" style={{ background: tierGradient(tierValue), color: '#020617' }}>
+              <div className="rounded-xl px-4 py-2 text-sm font-bold shadow-lg" style={{ background: tierGradient(success.newTierNumeric), color: '#020617' }}>
                 {success.newTier}
               </div>
             </div>
@@ -207,7 +272,7 @@ export default function RepayPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-        <StepBreadcrumb step={loading ? Math.max(1, Math.min(txStep, 4)) : 3} total={4} />
+        <StepBreadcrumb step={3} total={4} />
         <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Active Loan</h1>
         <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           Timely repayment feeds into the next metrics refresh and upgrades your Credit Passport.
@@ -221,7 +286,7 @@ export default function RepayPage() {
           <Row label="Principal" value={`P${status?.loan?.principal ?? '0.00'}`} />
           <Row label="Fee owed" value={`P${status?.loan?.fee ?? '0.00'}`} />
           <Row label="Total due" value={`P${status?.loan?.totalOwed ?? '0.00'}`} strong />
-          <Row label="Wallet PHPC" value={`P${status?.loan?.walletBalance ?? status?.walletPhpBalance ?? '0.00'}`} />
+          <Row label="Wallet PHPC" value={`P${status?.loan?.walletBalance ?? '0.00'}`} />
           {status?.loan?.shortfall && status.loan.shortfall !== '0.00' ? (
             <Row label="Still needed" value={`P${status.loan.shortfall}`} tone="danger" />
           ) : null}
@@ -249,7 +314,7 @@ export default function RepayPage() {
         <div className="mt-6">
           {loading && (
             <div className="mb-4">
-              <TransactionStepper currentStep={txStep} label={txStepLabel} />
+              <TransactionStepper currentStep={txStep} />
             </div>
           )}
           <button 
@@ -260,7 +325,7 @@ export default function RepayPage() {
             {loading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                {txStepLabel}
+                {getTransactionStepLabel(txStep)}
               </>
             ) : (
               `Repay P${status?.loan?.totalOwed ?? '0.00'}`
@@ -303,17 +368,40 @@ function Row({
   );
 }
 
-function TransactionStepper({ currentStep, label }: { currentStep: number, label?: string }) {
+function getTransactionStepLabel(step: number) {
+  switch (step) {
+    case 1:
+      return 'Preparing repayment...';
+    case 2:
+      return 'Sign approval in Freighter...';
+    case 3:
+      return 'Submitting approval...';
+    case 4:
+      return 'Sign repayment in Freighter...';
+    case 5:
+      return 'Submitting repayment...';
+    case 6:
+      return 'Confirming settlement...';
+    default:
+      return 'Processing...';
+  }
+}
+
+function TransactionStepper({ currentStep }: { currentStep: number }) {
   const steps = [
     { label: 'Preparing', id: 1 },
-    { label: 'Signing', id: 2 },
-    { label: 'Submitting', id: 3 },
-    { label: 'Confirming', id: 4 },
+    { label: 'Sign Approval', id: 2 },
+    { label: 'Submit Approval', id: 3 },
+    { label: 'Sign Repayment', id: 4 },
+    { label: 'Submit Repayment', id: 5 },
+    { label: 'Confirm', id: 6 },
   ];
 
   return (
     <div className="space-y-4">
-      {label && <div className="text-sm font-semibold text-center text-slate-300">{label}</div>}
+      <div className="text-sm font-semibold text-center text-slate-300">
+        {getTransactionStepLabel(currentStep)}
+      </div>
       <div className="flex justify-between">
         {steps.map((s) => (
           <div 

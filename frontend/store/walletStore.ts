@@ -14,6 +14,8 @@ interface WalletState {
   network: string | null;
   networkPassphrase: string | null;
   isConnecting: boolean;
+  isRestoring: boolean;
+  hasRestored: boolean;
   connectionError: string | null;
 
   connect: () => Promise<void>;
@@ -27,6 +29,8 @@ export const useWalletStore = create<WalletState>((set) => ({
   network: null,
   networkPassphrase: null,
   isConnecting: false,
+  isRestoring: true,
+  hasRestored: false,
   connectionError: null,
 
   connect: async () => {
@@ -37,6 +41,7 @@ export const useWalletStore = create<WalletState>((set) => ({
       if (!installed) {
         const error = 'Please install the Freighter extension to connect.';
         set({ isConnecting: false, connectionError: error });
+        set({ hasRestored: true, isRestoring: false });
         toast.error(error);
         return;
       }
@@ -47,6 +52,7 @@ export const useWalletStore = create<WalletState>((set) => ({
           ? 'Connection cancelled. Please try again.' 
           : connection.error;
         set({ isConnecting: false, connectionError: error });
+        set({ hasRestored: true, isRestoring: false });
         toast.error(error);
         return;
       }
@@ -55,6 +61,7 @@ export const useWalletStore = create<WalletState>((set) => ({
       if (!networkDetails) {
         const error = 'Failed to retrieve network details.';
         set({ isConnecting: false, connectionError: error });
+        set({ hasRestored: true, isRestoring: false });
         toast.error(error);
         return;
       }
@@ -67,6 +74,8 @@ export const useWalletStore = create<WalletState>((set) => ({
           network: networkDetails.network,
           networkPassphrase: networkDetails.networkPassphrase,
           isConnecting: false,
+          isRestoring: false,
+          hasRestored: true,
           connectionError: error
         });
         toast.warning(error);
@@ -79,6 +88,8 @@ export const useWalletStore = create<WalletState>((set) => ({
         network: networkDetails.network,
         networkPassphrase: networkDetails.networkPassphrase,
         isConnecting: false,
+        isRestoring: false,
+        hasRestored: true,
         connectionError: null
       });
       localStorage.setItem('kredito_wallet_connected', 'true');
@@ -86,6 +97,8 @@ export const useWalletStore = create<WalletState>((set) => ({
     } catch (err: unknown) {
       set({ 
         isConnecting: false, 
+        isRestoring: false,
+        hasRestored: true,
         connectionError: err instanceof Error ? err.message : 'An unexpected error occurred.' 
       });
     }
@@ -98,6 +111,8 @@ export const useWalletStore = create<WalletState>((set) => ({
       network: null,
       networkPassphrase: null,
       isConnecting: false,
+      isRestoring: false,
+      hasRestored: true,
       connectionError: null
     });
     localStorage.removeItem('kredito_wallet_connected');
@@ -107,7 +122,10 @@ export const useWalletStore = create<WalletState>((set) => ({
     if (typeof window === 'undefined') return;
     
     const wasConnected = localStorage.getItem('kredito_wallet_connected');
-    if (!wasConnected) return;
+    if (!wasConnected) {
+      set({ isRestoring: false, hasRestored: true });
+      return;
+    }
 
     try {
       const address = await getConnectedAddress();
@@ -118,6 +136,8 @@ export const useWalletStore = create<WalletState>((set) => ({
           publicKey: address,
           network: networkDetails?.network || null,
           networkPassphrase: networkDetails?.networkPassphrase || null,
+          isRestoring: false,
+          hasRestored: true,
           connectionError: networkDetails?.network !== REQUIRED_NETWORK 
             ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.` 
             : null
@@ -125,10 +145,12 @@ export const useWalletStore = create<WalletState>((set) => ({
       } else {
         // If we thought we were connected but can't get address, clear it
         localStorage.removeItem('kredito_wallet_connected');
+        set({ isRestoring: false, hasRestored: true });
       }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to restore wallet session:', err);
+      set({ isRestoring: false, hasRestored: true });
     }
   }
 }));

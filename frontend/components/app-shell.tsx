@@ -29,16 +29,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
+  const hydrated = useAuthStore((s) => s.hydrated);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const disconnectWallet = useWalletStore((s) => s.disconnect);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
-    if (!user && !isLoggingOut) {
+    if (hydrated && (!user || !token) && !isLoggingOut) {
       router.replace('/');
     }
-  }, [user, isLoggingOut, router]);
+  }, [hydrated, user, token, isLoggingOut, router]);
 
   const handleLogout = () => {
     setIsLoggingOut(true);
@@ -47,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace('/');
   };
 
-  if (isLoggingOut || !user) {
+  if (!hydrated || isLoggingOut || !user || !token) {
     return null;
   }
 

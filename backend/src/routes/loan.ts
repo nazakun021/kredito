@@ -1,9 +1,7 @@
 import { Router } from 'express';
-import { Address, Keypair, nativeToScVal } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal } from '@stellar/stellar-sdk';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import db from '../db';
 import { asyncRoute, badRequest } from '../errors';
-import { decrypt } from '../utils/crypto';
 import {
   buildScoreSummary,
   computeDaysRemaining,
@@ -13,18 +11,12 @@ import {
   toPhpAmount,
   toStroops,
 } from '../scoring/engine';
-import { buildAndSubmitFeeBump, buildUnsignedContractCall } from '../stellar/feebump';
-import { queryContract } from '../stellar/query';
+import { buildUnsignedContractCall } from '../stellar/feebump';
+import { queryContract, getLoanFromChain, hasActiveLoan } from '../stellar/query';
 import { contractIds, rpcServer } from '../stellar/client';
-import { updateOnChainMetrics } from '../stellar/issuer';
-import { getLoanRecord, waitForLoanRepayment } from '../loan-state';
-import { loadUserById } from '../users';
+import { config } from '../config';
 
 const router = Router();
-
-function getExplorerUrl(txHash: string) {
-  return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
-}
 
 async function getWalletTokenBalance(walletAddress: string) {
   const result = await queryContract(contractIds.phpcToken, 'balance', [
@@ -42,15 +34,15 @@ router.post(
       throw badRequest('Invalid amount');
     }
 
-    const user = loadUserById(req.userId);
-    const score = await buildScoreSummary(user.stellar_pub);
-    const currentLoan = await getLoanRecord(user.stellar_pub);
-    if (currentLoan && !currentLoan.repaid && !currentLoan.defaulted) {
+    const wallet = req.wallet;
+
+    if (await hasActiveLoan(wallet)) {
       throw badRequest('Active loan already exists');
     }
 
+    const score = await buildScoreSummary(wallet);
     if (score.tier < 1) {
-      throw badRequest('No qualifying credit tier');
+      throw badRequest('No active credit tier');
     }
 
     const amountStroops = toStroops(amount);
@@ -58,60 +50,39 @@ router.post(
       throw badRequest('Amount exceeds tier limit');
     }
 
+    const poolSnapshot = await getPoolSnapshot();
+    if (BigInt(poolSnapshot.poolBalanceRaw) < amountStroops) {
+      throw badRequest('Insufficient pool liquidity');
+    }
+
     const args = [
-      Address.fromString(user.stellar_pub).toScVal(),
+      Address.fromString(wallet).toScVal(),
       nativeToScVal(amountStroops, { type: 'i128' }),
     ];
 
     const feeBps = tierFeeBps(score.tier);
     const feeAmount = amount * (feeBps / 10_000);
-    const meta = {
+    const preview = {
       amount: amount.toFixed(2),
       fee: feeAmount.toFixed(2),
       feeBps,
       totalOwed: (amount + feeAmount).toFixed(2),
+      tier: score.tier,
+      tierLabel: score.tierLabel,
     };
 
-    if (Boolean(user.is_external)) {
-      const unsignedXdr = await buildUnsignedContractCall(
-        user.stellar_pub,
-        contractIds.lendingPool,
-        'borrow',
-        args,
-      );
-      return res.json({
-        requiresSignature: true,
-        unsignedXdr,
-        meta,
-      });
-    }
+    const unsignedXdr = await buildUnsignedContractCall(
+      wallet,
+      contractIds.lendingPool,
+      'borrow',
+      args,
+    );
 
-    if (!user.stellar_enc_secret) {
-      throw badRequest('Internal wallet secret is missing for this account.');
-    }
-
-    const userSecret = decrypt(user.stellar_enc_secret);
-    try {
-      const userKeypair = Keypair.fromSecret(userSecret);
-      const txHash = await buildAndSubmitFeeBump(
-        userKeypair,
-        contractIds.lendingPool,
-        'borrow',
-        args,
-      );
-      db.prepare(
-        'INSERT INTO active_loans (user_id, stellar_pub) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET stellar_pub = excluded.stellar_pub',
-      ).run(req.userId, user.stellar_pub);
-
-      res.json({
-        txHash,
-        ...meta,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        explorerUrl: getExplorerUrl(txHash),
-      });
-    } finally {
-      userSecret.replace?.(/./g, '');
-    }
+    return res.json({
+      requiresSignature: true,
+      unsignedXdr,
+      preview,
+    });
   }),
 );
 
@@ -119,8 +90,8 @@ router.post(
   '/repay',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = loadUserById(req.userId);
-    const loan = await getLoanRecord(user.stellar_pub);
+    const wallet = req.wallet;
+    const loan = await getLoanFromChain(wallet);
 
     if (!loan) {
       throw badRequest('No active loan found');
@@ -129,135 +100,68 @@ router.post(
       throw badRequest('Loan already repaid');
     }
     if (loan.defaulted) {
-      throw badRequest('Loan already defaulted');
+      throw badRequest('This loan has been defaulted and cannot be repaid');
     }
 
-    const totalOwedStroops = BigInt(loan.principal) + BigInt(loan.fee);
-    const walletBalanceStroops = await getWalletTokenBalance(user.stellar_pub);
+    const totalOwedStroops = loan.principal + loan.fee;
+    const walletBalanceStroops = await getWalletTokenBalance(wallet);
     if (walletBalanceStroops < totalOwedStroops) {
       const shortfall = totalOwedStroops - walletBalanceStroops;
-      throw badRequest(
-        `Insufficient PHPC balance to repay. You owe P${toPhpAmount(totalOwedStroops)}, but your wallet only has P${toPhpAmount(walletBalanceStroops)}. Add P${toPhpAmount(shortfall)} more PHPC to this same wallet and try again.`,
-      );
+      return res.status(422).json({
+        error: 'InsufficientBalance',
+        shortfall: toPhpAmount(shortfall),
+        walletBalance: toPhpAmount(walletBalanceStroops),
+        totalOwed: toPhpAmount(totalOwedStroops),
+      });
     }
 
     const latestLedger = await rpcServer.getLatestLedger();
-    const expirationLedger = latestLedger.sequence + 500;
+    const expirationLedger = latestLedger.sequence + config.approvalLedgerWindow;
 
     const approveArgs = [
-      Address.fromString(user.stellar_pub).toScVal(),
+      Address.fromString(wallet).toScVal(),
       Address.fromString(contractIds.lendingPool).toScVal(),
       nativeToScVal(totalOwedStroops, { type: 'i128' }),
       nativeToScVal(expirationLedger, { type: 'u32' }),
     ];
 
-    const repayArgs = [Address.fromString(user.stellar_pub).toScVal()];
-    const previousScore = await buildScoreSummary(user.stellar_pub);
+    const repayArgs = [Address.fromString(wallet).toScVal()];
 
-    if (Boolean(user.is_external)) {
-      // Check if the approve has already been done on-chain.
-      // The PHPC token panics during simulation if there is no allowance set,
-      // so we must build the repay XDR only AFTER the approve is confirmed.
-      let existingAllowance = 0n;
-      try {
-        const allowanceResult = await queryContract(contractIds.phpcToken, 'allowance', [
-          Address.fromString(user.stellar_pub).toScVal(),
-          Address.fromString(contractIds.lendingPool).toScVal(),
-        ]);
-        existingAllowance = BigInt(allowanceResult ?? 0);
-      } catch {
-        existingAllowance = 0n;
-      }
+    const unsignedApproveXdr = await buildUnsignedContractCall(
+      wallet,
+      contractIds.phpcToken,
+      'approve',
+      approveArgs,
+    );
 
-      // Step 1: Allowance not set — return the approve XDR for the user to sign first.
-      if (existingAllowance < totalOwedStroops) {
-        const unsignedApproveXdr = await buildUnsignedContractCall(
-          user.stellar_pub,
-          contractIds.phpcToken,
-          'approve',
-          approveArgs,
-        );
-        return res.json({
-          requiresSignature: true,
-          step: 'approve',
+    const unsignedRepayXdr = await buildUnsignedContractCall(
+      wallet,
+      contractIds.lendingPool,
+      'repay',
+      repayArgs,
+    );
+
+    return res.json({
+      requiresSignature: true,
+      transactions: [
+        {
+          type: 'approve',
           unsignedXdr: unsignedApproveXdr,
-          meta: {
-            amountRepaid: toPhpAmount(totalOwedStroops),
-            instructions:
-              'Sign and submit this approve XDR first, then call /api/loan/repay again to get the repay XDR.',
-          },
-        });
-      }
-
-      // Step 2: Allowance is set — now we can safely simulate and return the repay XDR.
-      const unsignedRepayXdr = await buildUnsignedContractCall(
-        user.stellar_pub,
-        contractIds.lendingPool,
-        'repay',
-        repayArgs,
-      );
-
-      return res.json({
-        requiresSignature: true,
-        step: 'repay',
-        unsignedXdr: unsignedRepayXdr,
-        meta: {
-          amountRepaid: toPhpAmount(totalOwedStroops),
-          instructions: 'Sign and submit this repay XDR to complete the loan repayment.',
+          description: `Authorize pool to spend ${toPhpAmount(totalOwedStroops)} PHPC`,
         },
-      });
-    }
-
-    if (!user.stellar_enc_secret) {
-      throw badRequest('Internal wallet secret is missing for this account.');
-    }
-
-    const userSecret = decrypt(user.stellar_enc_secret);
-    try {
-      const userKeypair = Keypair.fromSecret(userSecret);
-      await buildAndSubmitFeeBump(userKeypair, contractIds.phpcToken, 'approve', approveArgs);
-      const txHash = await buildAndSubmitFeeBump(
-        userKeypair,
-        contractIds.lendingPool,
-        'repay',
-        repayArgs,
-      );
-
-      const settledLoan = await waitForLoanRepayment(user.stellar_pub);
-      if (!settledLoan?.repaid) {
-        throw badRequest('Repayment confirmation did not settle in time. Please retry.');
-      }
-
-      db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
-
-      const refreshed = await buildScoreSummary(user.stellar_pub);
-      await updateOnChainMetrics(user.stellar_pub, refreshed.metrics);
-
-      db.prepare(
-        `
-        INSERT INTO score_events (user_id, tier, score, bootstrap_score, stellar_score, score_json, sbt_minted)
-        VALUES (?, ?, ?, 0, ?, ?, 1)
-      `,
-      ).run(
-        req.userId,
-        refreshed.tier,
-        refreshed.score,
-        refreshed.score,
-        JSON.stringify(refreshed),
-      );
-
-      res.json({
-        txHash,
-        amountRepaid: toPhpAmount(totalOwedStroops),
-        previousScore: previousScore.score,
-        newScore: refreshed.score,
-        newTier: refreshed.tierLabel,
-        newBorrowLimit: refreshed.borrowLimit,
-        explorerUrl: getExplorerUrl(txHash),
-      });
-    } finally {
-      userSecret.replace?.(/./g, '');
-    }
+        {
+          type: 'repay',
+          unsignedXdr: unsignedRepayXdr,
+          description: 'Repay loan principal + fee',
+        },
+      ],
+      summary: {
+        principal: toPhpAmount(loan.principal),
+        fee: toPhpAmount(loan.fee),
+        totalOwed: toPhpAmount(totalOwedStroops),
+        walletPhpcBalance: toPhpAmount(walletBalanceStroops),
+      },
+    });
   }),
 );
 
@@ -265,20 +169,19 @@ router.get(
   '/status',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = loadUserById(req.userId);
+    const wallet = req.wallet;
     const [loan, poolSnapshot, latestLedger, walletBalanceStroops] = await Promise.all([
-      getLoanRecord(user.stellar_pub),
+      getLoanFromChain(wallet),
       getPoolSnapshot(),
       rpcServer.getLatestLedger(),
-      getWalletTokenBalance(user.stellar_pub),
+      getWalletTokenBalance(wallet),
     ]);
 
     if (!loan) {
       return res.json({
         hasActiveLoan: false,
+        poolBalance: poolSnapshot.poolBalance,
         loan: null,
-        walletPhpBalance: toPhpAmount(walletBalanceStroops),
-        ...poolSnapshot,
       });
     }
 
@@ -292,29 +195,29 @@ router.get(
         : currentLedger > dueLedger
           ? 'overdue'
           : 'active';
+
     const hasActiveLoan = status === 'active' || status === 'overdue';
 
     return res.json({
       hasActiveLoan,
-      walletPhpBalance: toPhpAmount(walletBalanceStroops),
-      ...poolSnapshot,
-      loan: hasActiveLoan
-        ? {
-            principal: toPhpAmount(loan.principal),
-            fee: toPhpAmount(loan.fee),
-            totalOwed: toPhpAmount(loan.principal + loan.fee),
-            walletBalance: toPhpAmount(walletBalanceStroops),
-            shortfall:
-              walletBalanceStroops < loan.principal + loan.fee
-                ? toPhpAmount(loan.principal + loan.fee - walletBalanceStroops)
-                : '0.00',
-            dueLedger,
-            currentLedger,
-            dueDate: estimateDueDateFromLedgers(daysRemaining),
-            daysRemaining,
-            status,
-          }
-        : null,
+      poolBalance: poolSnapshot.poolBalance,
+      loan: {
+        principal: toPhpAmount(loan.principal),
+        fee: toPhpAmount(loan.fee),
+        totalOwed: toPhpAmount(loan.principal + loan.fee),
+        walletBalance: toPhpAmount(walletBalanceStroops),
+        shortfall:
+          walletBalanceStroops < loan.principal + loan.fee
+            ? toPhpAmount(loan.principal + loan.fee - walletBalanceStroops)
+            : '0.00',
+        dueLedger,
+        currentLedger,
+        dueDate: estimateDueDateFromLedgers(daysRemaining),
+        daysRemaining,
+        status,
+        repaid: loan.repaid,
+        defaulted: loan.defaulted,
+      },
     });
   }),
 );

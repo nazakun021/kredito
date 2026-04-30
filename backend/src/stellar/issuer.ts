@@ -51,7 +51,7 @@ export async function updateOnChainMetrics(walletAddress: string, metrics: Walle
         wallet,
         nativeToScVal(metrics.txCount, { type: 'u32' }),
         nativeToScVal(metrics.repaymentCount, { type: 'u32' }),
-        nativeToScVal(metrics.avgBalance, { type: 'u32' }),
+        nativeToScVal(metrics.xlmBalance, { type: 'u32' }),
         nativeToScVal(metrics.defaultCount, { type: 'u32' }),
       ],
     },
@@ -119,7 +119,7 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
     metrics: {
       txCount: Number(metrics?.tx_count ?? 0),
       repaymentCount: Number(metrics?.repayment_count ?? 0),
-      avgBalance: Number(metrics?.avg_balance ?? 0),
+      xlmBalance: Number(metrics?.avg_balance ?? 0),
       defaultCount: Number(metrics?.default_count ?? 0),
     },
     source: 'onchain',

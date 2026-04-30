@@ -10,8 +10,10 @@ export const networkPassphrase = config.networkPassphrase || Networks.TESTNET;
 export const horizonUrl = config.horizonUrl;
 export const rpcUrl = config.sorobanRpcUrl;
 
-export const horizonServer = new Horizon.Server(horizonUrl);
-export const rpcServer = new rpc.Server(rpcUrl);
+export const horizonServer = new Horizon.Server(horizonUrl, {
+  allowHttp: horizonUrl.startsWith('http://'),
+});
+export const rpcServer = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
 
 export const issuerKeypair = Keypair.fromSecret(config.issuerSecretKey);
 

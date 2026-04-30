@@ -128,19 +128,18 @@ export async function loginWithFreighter() {
 
   const publicKey = connection.address;
 
-  const challengeRes = await authApi.post<{ challengeXdr: string }>('auth/challenge', {
-    stellarAddress: publicKey,
+  const challengeRes = await authApi.post<{ challenge: string }>('auth/challenge', {
+    wallet: publicKey,
   });
 
-  const signResult = await signTx(challengeRes.data.challengeXdr, publicKey);
+  const signResult = await signTx(challengeRes.data.challenge, publicKey);
   if ('error' in signResult) throw new Error(signResult.error);
 
   const loginRes = await authApi.post<{
     wallet: string;
-    isExternal: boolean;
-    isNew: boolean;
+    token: string;
   }>('auth/login', {
-    signedChallengeXdr: signResult.signedXdr,
+    signedChallenge: signResult.signedXdr,
   });
 
   return loginRes.data;

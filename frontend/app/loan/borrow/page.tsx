@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle2, Loader2, TimerReset, Info, Wallet } from 'lucide-react';
@@ -15,6 +15,7 @@ import { QUERY_KEYS } from '@/lib/queryKeys';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
 import { signTx } from '@/lib/freighter';
+import { toast } from 'sonner';
 
 interface ScoreResponse {
   tier: number;
@@ -42,6 +43,8 @@ export default function BorrowPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = !!user && !!token;
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'review' | 'confirm'>('review');
@@ -49,6 +52,9 @@ export default function BorrowPage() {
   const [success, setSuccess] = useState<BorrowSuccess | null>(null);
   const [error, setError] = useState('');
   const [borrowAmountInput, setBorrowAmountInput] = useState('');
+  const [debouncedBorrowAmountInput, setDebouncedBorrowAmountInput] = useState('');
+  const [hasEditedAmount, setHasEditedAmount] = useState(false);
+  const [hasAmountInteracted, setHasAmountInteracted] = useState(false);
 
   const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
@@ -57,39 +63,64 @@ export default function BorrowPage() {
   const { data: score } = useQuery({
     queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
     queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
-    enabled: !!user,
+    enabled: isAuthenticated,
   });
 
   const { data: loanStatus, isLoading: isLoanStatusLoading } = useQuery({
     queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
-    enabled: !!user,
+    enabled: isAuthenticated,
   });
 
   useEffect(() => {
-    if (!user) {
+    if (!isAuthenticated) {
       router.replace('/');
       return;
     }
 
     if (!isLoanStatusLoading && loanStatus?.hasActiveLoan && !success) {
+      toast.error('You already have an active loan.');
       router.replace('/loan/repay');
     }
-  }, [loanStatus, isLoanStatusLoading, router, user, success]);
+  }, [isAuthenticated, loanStatus, isLoanStatusLoading, router, success]);
 
   const borrowLimit = Number(score?.borrowLimit || 0);
+  const isScoreLoading = !score;
+  const effectiveBorrowAmountInput =
+    borrowAmountInput === '' && !hasEditedAmount && borrowLimit > 0
+      ? borrowLimit.toFixed(2)
+      : borrowAmountInput;
 
-  const displayedBorrowAmount = borrowAmountInput === '' && borrowLimit > 0
-    ? borrowLimit.toFixed(2)
-    : borrowAmountInput;
-  const parsedBorrowAmount = Number(displayedBorrowAmount);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedBorrowAmountInput(borrowAmountInput);
+    }, 150);
+
+    return () => window.clearTimeout(timeout);
+  }, [borrowAmountInput]);
+
+  const parsedBorrowAmount = Number(hasEditedAmount ? debouncedBorrowAmountInput : effectiveBorrowAmountInput);
   const borrowAmount =
     Number.isFinite(parsedBorrowAmount) && parsedBorrowAmount > 0 ? parsedBorrowAmount : 0;
   const fee = borrowAmount * ((score?.feeBps || 0) / 10_000);
   const isAmountValid = borrowAmount > 0 && borrowAmount <= borrowLimit;
+  const amountError =
+    hasAmountInteracted && borrowLimit > 0 && !isAmountValid
+      ? `Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`
+      : '';
+  const summaryRows = useMemo(
+    () => [
+      { label: 'Tier', value: score?.tierLabel || 'Unrated' },
+      { label: 'Fee', value: `${(score?.feeRate || 0).toFixed(2)}%` },
+      { label: 'Term', value: '30 days' },
+      { label: 'Repayment', value: `P${(borrowAmount + fee).toFixed(2)}`, strong: true },
+    ],
+    [borrowAmount, fee, score?.feeRate, score?.tierLabel],
+  );
 
   const handleBorrow = async () => {
     if (!isAmountValid) {
+      setHasAmountInteracted(true);
       setError(`Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`);
       return;
     }
@@ -121,7 +152,13 @@ export default function BorrowPage() {
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pool });
     } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Borrowing failed. Please try again.'));
+      const message = getBorrowErrorMessage(err, borrowLimit);
+      if (message === '__ACTIVE_LOAN__') {
+        toast.error('You already have an active loan.');
+        router.replace('/loan/repay');
+        return;
+      }
+      setError(message);
       setTxStep(0);
     } finally {
       setLoading(false);
@@ -185,15 +222,22 @@ export default function BorrowPage() {
           <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-accent)' }}>
             Approved amount
           </p>
-          <p className="mt-4 text-5xl font-extrabold tabular-nums">P{borrowAmount.toFixed(2)}</p>
+          {isScoreLoading ? (
+            <div className="skeleton mt-4 h-12 w-40" role="status" aria-busy="true" />
+          ) : (
+            <p className="mt-4 text-5xl font-extrabold tabular-nums">P{borrowAmount.toFixed(2)}</p>
+          )}
           <p className="mt-2 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
             Max available now: P{borrowLimit.toFixed(2)}
           </p>
           <div className="mt-6 space-y-3" style={{ color: 'var(--color-text-secondary)' }}>
-            <Row label="Tier" value={score?.tierLabel || 'Unrated'} />
-            <Row label="Fee" value={`${(score?.feeRate || 0).toFixed(2)}%`} />
-            <Row label="Term" value="30 days" />
-            <Row label="Repayment" value={`P${(borrowAmount + fee).toFixed(2)}`} strong />
+            {isScoreLoading
+              ? Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="skeleton h-6" role="status" aria-busy="true" />
+                ))
+              : summaryRows.map((row) => (
+                  <Row key={row.label} label={row.label} value={row.value} strong={row.strong} />
+                ))}
           </div>
         </div>
 
@@ -219,8 +263,14 @@ export default function BorrowPage() {
                     max={borrowLimit > 0 ? borrowLimit.toFixed(2) : undefined}
                     step="0.01"
                     inputMode="decimal"
-                    value={displayedBorrowAmount}
-                    onChange={(event) => setBorrowAmountInput(event.target.value)}
+                    value={borrowAmountInput}
+                    placeholder={borrowLimit > 0 ? borrowLimit.toFixed(2) : '0.00'}
+                    onBlur={() => setHasAmountInteracted(true)}
+                    onChange={(event) => {
+                      setHasEditedAmount(true);
+                      setHasAmountInteracted(true);
+                      setBorrowAmountInput(event.target.value);
+                    }}
                     className="w-full rounded-xl border px-4 py-3 text-base font-semibold outline-none transition-colors"
                     style={{
                       background: 'var(--color-bg-secondary)',
@@ -241,14 +291,14 @@ export default function BorrowPage() {
                   After borrowing P{borrowAmount.toFixed(2)}, you will need to top up at least P{fee.toFixed(2)} PHPC before repayment so your wallet can cover the fee.
                 </p>
               </div>
-              {!isAmountValid && borrowLimit > 0 && (
+              {amountError && (
                 <p className="mb-4 text-xs font-medium" style={{ color: 'var(--color-danger)' }}>
-                  Enter an amount between P0.01 and P{borrowLimit.toFixed(2)}.
+                  {amountError}
                 </p>
               )}
               <button 
                 onClick={() => setStep('confirm')}
-                disabled={!isAmountValid || score?.tier === 0}
+                disabled={!isAmountValid || score?.tier === 0 || isScoreLoading}
                 className="btn-primary btn-accent mt-auto"
               >
                 {!isAmountValid || score?.tier === 0 ? 'Not Eligible' : 'Review & Confirm'}
@@ -356,6 +406,28 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <span className="tabular-nums">{value}</span>
     </div>
   );
+}
+
+function getBorrowErrorMessage(err: unknown, borrowLimit: number) {
+  const message = getErrorMessage(err, 'Borrowing failed. Please try again.');
+
+  if (/user rejected|cancelled/i.test(message)) {
+    return 'Signing cancelled.';
+  }
+
+  if (message === 'Insufficient pool liquidity') {
+    return 'Pool has insufficient funds. Try a smaller amount.';
+  }
+
+  if (message === 'Amount exceeds tier limit') {
+    return `Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`;
+  }
+
+  if (message === 'Active loan already exists') {
+    return '__ACTIVE_LOAN__';
+  }
+
+  return message;
 }
 
 function TransactionStepper({ currentStep }: { currentStep: number }) {

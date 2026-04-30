@@ -1,0 +1,19 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    exclude: ['node_modules', 'dist'],
+    env: {
+      JWT_SECRET: 'test-secret',
+      ISSUER_SECRET_KEY: 'SDWBYH3UINDBEKD2PSE6GZVEKMHEBU6BUVIXWSEAXY2IRS42X325I3EH',
+      ADMIN_API_SECRET: 'test-admin-secret',
+      SOROBAN_RPC_URL: 'http://localhost',
+      HORIZON_URL: 'http://localhost',
+      NETWORK_PASSPHRASE: 'Test SDF Network ; September 2015',
+      REGISTRY_ID: 'CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ',
+      LENDING_POOL_ID: 'CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH',
+      PHPC_ID: 'CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR',
+    },
+  },
+});

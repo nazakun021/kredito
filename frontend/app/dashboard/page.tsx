@@ -15,6 +15,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { tierGradient, tierContextPhrase } from '@/lib/tiers';
 import { QUERY_KEYS } from '@/lib/queryKeys';
@@ -40,8 +41,8 @@ interface ScoreResponse {
   metrics: {
     txCount: number;
     repaymentCount: number;
-    avgBalance: number;
-    avgBalanceFactor: number;
+    xlmBalance: number;
+    xlmBalanceFactor: number;
     defaultCount: number;
   };
 }
@@ -59,15 +60,16 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
-
+  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = !!user && !!token;
 
   // 1. Primary: Get the latest cached score (fast)
   const scoreQuery = useQuery({
     queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
     queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
-    enabled: !!user,
+    enabled: isAuthenticated,
     staleTime: 5 * 60 * 1000,
-    retry: false,
+    retry: 1,
   });
 
   // 2. Secondary: Generate a new score if none exists or user clicks refresh
@@ -81,37 +83,57 @@ export default function DashboardPage() {
   });
 
   // 3. Auto-trigger generate only if score is missing
+  const scoreStatus = (
+    scoreQuery.error as { response?: { status?: number } } | null
+  )?.response?.status;
+  const shouldAutoGenerate = scoreStatus === 404;
   const mutate = generateMutation.mutate;
   useEffect(() => {
     if (
-      scoreQuery.isError && 
-      !generateMutation.isPending && 
-      !generateMutation.data && 
+      shouldAutoGenerate &&
+      !scoreQuery.data &&
+      !generateMutation.isPending &&
+      !generateMutation.data &&
       !generateMutation.isError
     ) {
       mutate();
     }
-  }, [scoreQuery.isError, generateMutation.isPending, generateMutation.data, generateMutation.isError, mutate]);
+  }, [
+    shouldAutoGenerate,
+    scoreQuery.data,
+    generateMutation.isPending,
+    generateMutation.data,
+    generateMutation.isError,
+    mutate,
+  ]);
 
   const poolQuery = useQuery({
     queryKey: QUERY_KEYS.pool,
     queryFn: () => api.get<{ poolBalance: string }>('/credit/pool').then((res) => res.data),
-    enabled: !!user,
+    enabled: isAuthenticated,
     staleTime: 30 * 1000,
   });
 
   const loanStatusQuery = useQuery({
     queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
     queryFn: () => api.get<LoanStatusResponse>('/loan/status').then((res) => res.data),
-    enabled: !!user,
+    enabled: isAuthenticated,
     staleTime: 30 * 1000,
   });
 
-  if (!user) return null;
+  if (!isAuthenticated) return null;
 
   const score = scoreQuery.data ?? generateMutation.data;
   const loanStatus = loanStatusQuery.data;
-  const isLoading = (scoreQuery.isLoading && !scoreQuery.data) || generateMutation.isPending;
+  const isLoading = !score && (scoreQuery.isLoading || generateMutation.isPending);
+  const scoreError =
+    scoreQuery.isError && !shouldAutoGenerate
+      ? 'Unable to load your score right now. Please try again.'
+      : generateMutation.isError
+        ? getErrorMessage(generateMutation.error, 'Unable to generate your on-chain score right now.')
+        : '';
+  const poolValue = poolQuery.isError ? 'Pool balance unavailable' : `P${poolQuery.data?.poolBalance ?? '0.00'}`;
+  const loanStatusUnavailable = loanStatusQuery.isError;
   
   const nextTierProgress = score?.nextTierThreshold
     ? Math.max(0, Math.min(100, (score.score / score.nextTierThreshold) * 100))
@@ -200,12 +222,17 @@ export default function DashboardPage() {
 
           <button
             onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending}
+            disabled={generateMutation.isPending || (!score && isLoading)}
             className="btn-primary btn-dark mt-6 relative z-10"
           >
             <RefreshCw size={16} className={generateMutation.isPending ? 'animate-spin' : ''} />
             {generateMutation.isPending ? 'Refreshing on-chain score...' : 'Refresh On-Chain Score'}
           </button>
+          {scoreError ? (
+            <p className="mt-3 text-sm font-medium" style={{ color: 'var(--color-danger)' }} role="alert">
+              {scoreError}
+            </p>
+          ) : null}
         </section>
 
         <div className="lg:col-span-2 flex flex-col gap-5">
@@ -215,7 +242,7 @@ export default function DashboardPage() {
                 <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
                   Pool status
                 </p>
-                <h2 className="mt-1 text-lg font-extrabold">P{poolQuery.data?.poolBalance ?? '0.00'}</h2>
+                <h2 className="mt-1 text-lg font-extrabold">{poolValue}</h2>
               </div>
               <div
                 className="rounded-lg px-3 py-1.5 text-xs font-bold"
@@ -229,10 +256,19 @@ export default function DashboardPage() {
               </div>
             </div>
             <p className="mt-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Funded by lenders, NGOs, and DAOs.
+              {poolQuery.isError ? 'Try refreshing again in a moment.' : 'Funded by lenders, NGOs, and DAOs.'}
             </p>
 
-            {loanStatus?.hasActiveLoan ? (
+            {loanStatusUnavailable ? (
+              <div className="mt-5">
+                <div className="rounded-xl p-3 text-sm" style={{ background: 'var(--color-bg-card)' }}>
+                  Loan status unavailable
+                </div>
+                <button className="btn-primary btn-accent mt-4" disabled>
+                  Loan status unavailable
+                </button>
+              </div>
+            ) : loanStatus?.hasActiveLoan ? (
               <div className="mt-5">
                 <div className="rounded-xl p-3 text-sm" style={{ background: 'var(--color-bg-card)' }}>
                   Outstanding: <span className="font-bold">P{loanStatus.loan?.totalOwed ?? '0.00'}</span>
@@ -245,7 +281,7 @@ export default function DashboardPage() {
             ) : (
               <button
                 onClick={() => router.push('/loan/borrow')}
-                disabled={!score || score.tier === 0}
+                disabled={!score || score.tier === 0 || isLoading}
                 className="btn-primary btn-accent mt-5"
               >
                 {score?.tier === 0 ? 'Tier too low to borrow' : `Borrow P${score?.borrowLimit ?? '0.00'}`}
@@ -260,7 +296,12 @@ export default function DashboardPage() {
           </section>
 
           <div className="grid grid-cols-2 gap-4 animate-fade-up">
-            <InfoCard icon={Clock} title="Last Updated" value={scoreQuery.dataUpdatedAt > 0 ? formatDistanceToNow(scoreQuery.dataUpdatedAt, { addSuffix: true }) : "--"} isLoading={isLoading} />
+            <InfoCard
+              icon={Clock}
+              title="Last Updated"
+              value={scoreQuery.dataUpdatedAt > 0 ? formatDistanceToNow(scoreQuery.dataUpdatedAt, { addSuffix: true }) : 'Not yet synced'}
+              isLoading={isLoading}
+            />
             <InfoCard icon={Wallet} title="Wallet" value={`${user.wallet.slice(0, 4)}…${user.wallet.slice(-4)}`} isLoading={false} />
           </div>
         </div>
@@ -291,7 +332,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-[1fr_auto_1fr] gap-x-4 max-w-sm">
                 <span>score</span> <span className="text-slate-500">=</span> <span className="text-right">({score.metrics.txCount} x 2) = {score.formula.txComponent}</span>
                 <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.repaymentCount} x 10) = {score.formula.repaymentComponent}</span>
-                <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.avgBalanceFactor} x 5) = {score.formula.balanceComponent}</span>
+                <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.xlmBalanceFactor} x 5) = {score.formula.balanceComponent}</span>
                 <span></span> <span className="text-slate-500">-</span> <span className="text-right">({score.metrics.defaultCount} x 25) = {score.formula.defaultPenalty}</span>
                 <div className="col-span-3 border-t my-2 border-slate-700"></div>
                 <span className="font-bold">Total</span> <span></span> <span className="text-right font-bold text-emerald-500">= {score.formula.total}</span>
@@ -317,8 +358,8 @@ export default function DashboardPage() {
             {isLoading
               ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-24" role="status" aria-busy="true" />)
               : [
-                  { label: 'Avg balance', value: `${score?.metrics.avgBalance ?? 0} XLM` },
-                  { label: 'Balance factor', value: `${score?.metrics.avgBalanceFactor ?? 0}` },
+                  { label: 'XLM balance', value: `${score?.metrics.xlmBalance ?? 0} XLM` },
+                  { label: 'Balance factor', value: `${score?.metrics.xlmBalanceFactor ?? 0}` },
                   { label: 'Defaults', value: `${score?.metrics.defaultCount ?? 0}` },
                   { label: 'Status', value: score?.tier === 0 ? 'Building' : 'Active' },
                 ].map((item) => (

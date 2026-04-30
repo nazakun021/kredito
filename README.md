@@ -44,7 +44,7 @@ Because the wallet receives only the borrowed principal, you must top up the ext
 ## Architecture
 
 - **Frontend (Next.js 16)**: Built with React 19, Zustand for state management, and TanStack Query for data fetching.
-- **Backend (Express)**: Handles wallet-auth sessions, score orchestration, fee sponsorship, and wallet identity records in SQLite.
+- **Backend (Express)**: Handles wallet-auth sessions, score orchestration, fee sponsorship, and fully stateless operation with the chain as the source of truth.
 - **Stellar (Soroban)**: Core financial logic running on the Stellar Testnet.
 - **Client SDK**: `@stellar/stellar-sdk` for transaction building, fee-sponsoring, and RPC interaction.
 
@@ -129,7 +129,7 @@ pnpm build
 pnpm dev
 ```
 
-_Requires `backend/.env` with `JWT_SECRET`, `ENCRYPTION_KEY`, `ISSUER_SECRET_KEY`, `WEB_AUTH_SECRET_KEY` (or reuse the issuer key), `HOME_DOMAIN`, `WEB_AUTH_DOMAIN`, and the deployed Stellar contract IDs._
+_Requires `backend/.env` with `JWT_SECRET`, `ISSUER_SECRET_KEY`, `ADMIN_API_SECRET`, `WEB_AUTH_SECRET_KEY`, `HOME_DOMAIN`, `WEB_AUTH_DOMAIN`, and the deployed Stellar contract IDs. Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
 
 ### Frontend
 
@@ -148,6 +148,7 @@ _Runs at `http://localhost:3000`. Freighter should be installed and pointed at S
 - [DEMO.md](./DEMO.md): presenter runbook and dashboard E2E demo flow
 - [docs/SETUP.md](./docs/SETUP.md): local setup
 - [docs/TESTING.md](./docs/TESTING.md): live E2E testing steps
+- [docs/ERROR_CODES.md](./docs/ERROR_CODES.md): system error codes and handling
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): system architecture
 
 ## Why Stellar?
