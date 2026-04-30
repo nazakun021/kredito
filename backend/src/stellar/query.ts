@@ -203,6 +203,8 @@ export async function getAllLoansFromChain(): Promise<{
   latestLedger: number;
   oldestLedger: number;
 }> {
+  // TODO: This is O(N) and not scalable.
+  // Replace with indexed event store or subgraph in production.
   const { borrowers, latestLedger, oldestLedger } = await discoverBorrowersFromChain();
   const limit = pLimit(5);
   const loans = await Promise.all(

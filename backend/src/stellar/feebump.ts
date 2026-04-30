@@ -21,6 +21,15 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('TX_TIMEOUT')), ms),
+    ),
+  ]);
+}
+
 export async function pollTransaction(hash: string, timeoutMs = 30_000) {
   const startedAt = Date.now();
 
@@ -156,7 +165,7 @@ export async function submitSponsoredSignedXdr(signedInnerXdr: string, retries =
       }
 
       logger.info({ txHash: response.hash, attempt }, 'Transaction submitted, polling...');
-      await pollTransaction(response.hash);
+      await withTimeout(pollTransaction(response.hash), 30000);
       return response.hash;
     } catch (error) {
       if (attempt === retries) {
@@ -205,21 +214,21 @@ export async function buildAndSubmitFeeBump(
       }
 
       logger.info(
-        { txHash: response.hash, attempt, functionName },
+        { txHash: response.hash, attempt, functionName, retry_count: attempt },
         'Transaction submitted, polling...',
       );
-      await pollTransaction(response.hash);
+      await withTimeout(pollTransaction(response.hash), 30000);
       return response.hash;
     } catch (error) {
       if (attempt === retries) {
         logger.error(
           { err: error, attempt, functionName, totalAttempts: attempt + 1 },
-          'All submission attempts failed',
+          'TX failed: all submission attempts exhausted',
         );
         throw error;
       }
       logger.warn(
-        { err: error, attempt, functionName, retry: true },
+        { err: error, attempt, functionName, retry: true, next_attempt: attempt + 1 },
         'Submission attempt failed, retrying...',
       );
       await sleep(1000 * Math.pow(2, attempt));

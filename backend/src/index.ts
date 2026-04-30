@@ -41,6 +41,17 @@ app.use((req, _res, next) => {
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Global request timeout: 60 seconds
+app.use((req, res, next) => {
+  res.setTimeout(60000, () => {
+    if (!res.headersSent) {
+      res.status(503).json({ error: 'REQUEST_TIMEOUT' });
+    }
+  });
+  next();
+});
+
 app.use(
   pinoHttp({
     customProps: (req, _res) => ({
