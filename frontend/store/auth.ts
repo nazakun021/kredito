@@ -1,26 +1,27 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+interface AuthUser {
+  wallet: string;
+  isExternal: boolean;
+}
 
 interface AuthState {
-  token: string | null;
-  user: {
-    wallet: string;
-    isExternal: boolean;
-  } | null;
-  setAuth: (token: string, user: { wallet: string; isExternal: boolean }) => void;
+  user: AuthUser | null;
+  setAuth: (user: AuthUser) => void;
   clearAuth: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      token: null,
       user: null,
-      setAuth: (token, user) => set({ token, user }),
-      clearAuth: () => set({ token: null, user: null }),
+      setAuth: (user) => set({ user }),
+      clearAuth: () => set({ user: null }),
     }),
     {
-      name: 'kredito-auth',
-    }
-  )
+      name: "kredito-auth",
+      partialize: (state) => ({ user: state.user }), // token never touches localStorage
+    },
+  ),
 );

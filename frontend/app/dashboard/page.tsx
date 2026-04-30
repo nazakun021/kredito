@@ -317,7 +317,7 @@ export default function DashboardPage() {
             {isLoading
               ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-24" role="status" aria-busy="true" />)
               : [
-                  { label: 'Avg balance', value: `${score?.metrics.avgBalance ?? 0} PHPC` },
+                  { label: 'Avg balance', value: `${score?.metrics.avgBalance ?? 0} XLM` },
                   { label: 'Balance factor', value: `${score?.metrics.avgBalanceFactor ?? 0}` },
                   { label: 'Defaults', value: `${score?.metrics.defaultCount ?? 0}` },
                   { label: 'Status', value: score?.tier === 0 ? 'Building' : 'Active' },
@@ -383,7 +383,7 @@ function InfoCard({
 }
 
 function ScoreArc({ score, isLoading }: { score: number; isLoading: boolean }) {
-  const maxScore = 850;
+  const maxScore = 200;
   const percentage = Math.min(100, Math.max(0, (score / maxScore) * 100));
   const radius = 58;
   const circumference = 2 * Math.PI * radius;

@@ -23,9 +23,9 @@ export function tierLabel(tier: number): string {
 }
 
 export function tierContextPhrase(score: number): string {
-  if (score >= 651) return 'Excellent';
-  if (score >= 401) return 'Good standing';
-  if (score >= 201) return 'On track';
+  if (score >= 120) return 'Excellent';
+  if (score >= 80) return 'Good standing';
+  if (score >= 40) return 'On track';
   return 'Building credit';
 }
 

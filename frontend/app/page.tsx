@@ -1,9 +1,7 @@
-// frontend/app/page.tsx
-
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   Eye,
@@ -22,11 +20,12 @@ import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import NetworkBadge from '@/components/NetworkBadge';
+import { toast } from 'sonner';
 
 export default function Page() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
-  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   const { connectionError: walletError } = useWalletStore();
   const [walletLoading, setWalletLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,7 +36,7 @@ export default function Page() {
     let cancelled = false;
 
     // 1. Auto-redirect if already authenticated
-    if (token) {
+    if (user) {
       router.push('/dashboard');
       return;
     }
@@ -50,20 +49,12 @@ export default function Page() {
         setCheckingFreighter(false);
       }
 
-      if (
-        !cancelled &&
-        typeof window !== 'undefined' &&
-        new URLSearchParams(window.location.search).get('session') === 'expired'
-      ) {
-        setError('Session expired. Please connect again.');
-        router.replace('/');
-      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [router, token]);
+  }, [router, user]);
 
   const connectWallet = async () => {
     setWalletLoading(true);
@@ -75,7 +66,7 @@ export default function Page() {
 
       if (data) {
         useWalletStore.setState({ isConnected: true, publicKey: data.wallet });
-        setAuth(data.token, { wallet: data.wallet, isExternal: true });
+        setAuth({ wallet: data.wallet, isExternal: data.isExternal });
         router.push('/dashboard');
       }
     } catch (err: unknown) {
@@ -94,6 +85,9 @@ export default function Page() {
 
   return (
     <div className="min-h-dvh overflow-x-hidden">
+      <Suspense fallback={null}>
+        <SessionExpiredToast setError={setError} />
+      </Suspense>
       {/* ─── Background Glows ─── */}
       <div
         className="pointer-events-none fixed left-0 top-0"
@@ -182,14 +176,14 @@ export default function Page() {
             ) : null}
 
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-              {token ? (
+              {user ? (
                 <button
                   onClick={() => router.push('/dashboard')}
                   className="flex h-14 w-full items-center justify-center gap-3 rounded-xl px-8 text-base font-bold transition-all sm:w-auto"
                   style={{
                     background: 'var(--color-accent)',
                     color: '#020617',
-                    boxShadow: '0 12px 40px rgba(34, 197, 94, 0.25)',
+                    boxShadow: '0 12px 40px rgba(34,197,94,0.25)',
                   }}
                 >
                   <TrendingUp size={20} />
@@ -204,7 +198,7 @@ export default function Page() {
                   style={{
                     background: 'var(--color-accent)',
                     color: '#020617',
-                    boxShadow: '0 12px 40px rgba(34, 197, 94, 0.25)',
+                    boxShadow: '0 12px 40px rgba(34,197,94,0.25)',
                   }}
                 >
                   {walletLoading ? <Loader2 size={20} className="animate-spin" /> : <Link2 size={20} />}
@@ -359,4 +353,22 @@ export default function Page() {
       </section>
     </div>
   );
+}
+
+function SessionExpiredToast({ setError }: { setError: (value: string) => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('session') !== 'expired') {
+      return;
+    }
+
+    const message = 'Session expired. Please connect again.';
+    setError(message);
+    toast.error(message);
+    router.replace('/');
+  }, [router, searchParams, setError]);
+
+  return null;
 }

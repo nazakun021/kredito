@@ -31,6 +31,9 @@ pub enum DataKey {
 #[contract]
 pub struct LendingPool;
 
+const MIN_TTL: u32 = 100_000;
+const MAX_TTL: u32 = 200_000;
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -91,6 +94,7 @@ impl LendingPool {
             .instance()
             .set(&DataKey::LoanTermLedgers, &loan_term_ledgers);
         env.storage().instance().set(&DataKey::PoolBalance, &0i128);
+        bump_instance_ttl(&env);
     }
 
     pub fn deposit(env: Env, amount: i128) {
@@ -121,6 +125,7 @@ impl LendingPool {
         env.storage()
             .instance()
             .set(&DataKey::PoolBalance, &new_balance);
+        bump_instance_ttl(&env);
     }
 
     pub fn borrow(env: Env, borrower: Address, amount: i128) {
@@ -157,7 +162,7 @@ impl LendingPool {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
 
-        let flat_fee_bps = tier_fee_bps(get_flat_fee_bps(&env), tier);
+        let flat_fee_bps = tier_fee_bps(read_flat_fee_bps(&env), tier);
         let fee = amount
             .checked_mul(flat_fee_bps as i128)
             .unwrap_or_else(|| panic_with_error!(&env, Error::FeeOverflow))
@@ -178,10 +183,14 @@ impl LendingPool {
         };
 
         env.storage().persistent().set(&loan_key, &loan);
+        env.storage()
+            .persistent()
+            .extend_ttl(&loan_key, MIN_TTL, MAX_TTL);
         balance -= amount;
         env.storage()
             .instance()
             .set(&DataKey::PoolBalance, &balance);
+        bump_instance_ttl(&env);
 
         let token_id = get_token_id(&env);
         let token_client = token::TokenClient::new(&env, &token_id);
@@ -229,6 +238,9 @@ impl LendingPool {
 
         loan.repaid = true;
         env.storage().persistent().set(&loan_key, &loan);
+        env.storage()
+            .persistent()
+            .extend_ttl(&loan_key, MIN_TTL, MAX_TTL);
 
         let mut balance: i128 = env
             .storage()
@@ -241,6 +253,7 @@ impl LendingPool {
         env.storage()
             .instance()
             .set(&DataKey::PoolBalance, &balance);
+        bump_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("repaid"), borrower),
@@ -268,20 +281,62 @@ impl LendingPool {
 
         loan.defaulted = true;
         env.storage().persistent().set(&loan_key, &loan);
+        env.storage()
+            .persistent()
+            .extend_ttl(&loan_key, MIN_TTL, MAX_TTL);
 
         env.events()
             .publish((symbol_short!("defaulted"), borrower), loan.principal);
     }
 
     pub fn get_loan(env: Env, borrower: Address) -> Option<LoanRecord> {
-        env.storage().persistent().get(&DataKey::Loan(borrower))
+        let key = DataKey::Loan(borrower);
+        let loan = env.storage().persistent().get(&key);
+        if env.storage().persistent().has(&key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, MIN_TTL, MAX_TTL);
+        }
+        loan
     }
 
     pub fn get_pool_balance(env: Env) -> i128 {
+        bump_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::PoolBalance)
             .unwrap_or(0)
+    }
+
+    pub fn get_flat_fee_bps(env: Env) -> u32 {
+        read_flat_fee_bps(&env)
+    }
+
+    pub fn admin_withdraw(env: Env, amount: i128) {
+        let admin = get_admin(&env);
+        admin.require_auth();
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+
+        let mut balance: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PoolBalance)
+            .unwrap_or(0);
+        if amount > balance {
+            panic_with_error!(&env, Error::InsufficientPoolLiquidity);
+        }
+
+        balance -= amount;
+        env.storage()
+            .instance()
+            .set(&DataKey::PoolBalance, &balance);
+        bump_instance_ttl(&env);
+
+        let token_id = get_token_id(&env);
+        let token_client = token::TokenClient::new(&env, &token_id);
+        token_client.transfer(&env.current_contract_address(), &admin, &amount);
     }
 }
 
@@ -298,22 +353,27 @@ fn get_instance_value<
 }
 
 fn get_admin(env: &Env) -> Address {
+    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::Admin)
 }
 
 fn get_registry_id(env: &Env) -> Address {
+    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::RegistryId)
 }
 
 fn get_token_id(env: &Env) -> Address {
+    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::TokenId)
 }
 
-fn get_flat_fee_bps(env: &Env) -> u32 {
+fn read_flat_fee_bps(env: &Env) -> u32 {
+    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::FlatFeeBps)
 }
 
 fn get_loan_term_ledgers(env: &Env) -> u32 {
+    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::LoanTermLedgers)
 }
 
@@ -323,4 +383,8 @@ fn tier_fee_bps(base_fee_bps: u32, tier: u32) -> u32 {
         2 => base_fee_bps.saturating_sub(200),
         _ => base_fee_bps,
     }
+}
+
+fn bump_instance_ttl(env: &Env) {
+    env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
 }

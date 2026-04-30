@@ -10,10 +10,14 @@
     "backend/**/*",
     "frontend/**/*",
     "contracts/**/*",
+    "docs/**/*",
     "README.md",
     "DEMO.md",
     "package.json",
-    ".gitignore"
+    ".gitignore",
+    ".repomixignore",
+    "repomix.config.json",
+    "skills-lock.json"
   ],
   "ignore": {
     "customPatterns": [

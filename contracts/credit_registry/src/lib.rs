@@ -12,6 +12,9 @@ const GOLD_MIN_SCORE: u32 = 120;
 const MAX_AVG_BALANCE_FACTOR: u32 = 10;
 const AVG_BALANCE_STEP: u32 = 100;
 const DEFAULT_PENALTY: u32 = 25;
+const MIN_TTL: u32 = 100_000;
+const MAX_TTL: u32 = 200_000;
+const TIER_EXPIRY_LEDGERS: u32 = 518_400;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -33,6 +36,7 @@ pub enum DataKey {
     Score(Address),
     CreditTier(Address),
     TierTimestamp(Address),
+    TierExpiry(Address),
 }
 
 #[contract]
@@ -79,6 +83,7 @@ impl CreditRegistry {
         env.storage()
             .instance()
             .set(&DataKey::Tier3Limit, &tier3_limit);
+        bump_instance_ttl(&env);
     }
 
     pub fn update_metrics(env: Env, wallet: Address, metrics: Metrics) -> u32 {
@@ -145,6 +150,12 @@ impl CreditRegistry {
             &DataKey::TierTimestamp(wallet.clone()),
             &env.ledger().timestamp(),
         );
+        env.storage().persistent().set(
+            &DataKey::TierExpiry(wallet.clone()),
+            &env.ledger().sequence().saturating_add(TIER_EXPIRY_LEDGERS),
+        );
+        bump_credit_state_ttl(&env, &wallet);
+        bump_instance_ttl(&env);
     }
 
     pub fn revoke_tier(env: Env, wallet: Address) {
@@ -160,6 +171,11 @@ impl CreditRegistry {
         env.storage()
             .persistent()
             .remove(&DataKey::TierTimestamp(wallet.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::TierExpiry(wallet.clone()));
+        bump_credit_state_ttl(&env, &wallet);
+        bump_instance_ttl(&env);
         env.events()
             .publish((symbol_short!("revoked"), wallet), env.ledger().timestamp());
     }
@@ -179,32 +195,37 @@ impl CreditRegistry {
     }
 
     pub fn get_metrics(env: Env, wallet: Address) -> Metrics {
-        env.storage()
+        let key = DataKey::Metrics(wallet.clone());
+        let metrics = env
+            .storage()
             .persistent()
-            .get(&DataKey::Metrics(wallet))
+            .get(&key)
             .unwrap_or(Metrics {
                 tx_count: 0,
                 repayment_count: 0,
                 avg_balance: 0,
                 default_count: 0,
-            })
+            });
+        maybe_extend_persistent_ttl(&env, &key);
+        metrics
     }
 
     pub fn get_score(env: Env, wallet: Address) -> u32 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Score(wallet))
-            .unwrap_or(0)
+        let key = DataKey::Score(wallet);
+        let score = env.storage().persistent().get(&key).unwrap_or(0);
+        maybe_extend_persistent_ttl(&env, &key);
+        score
     }
 
     pub fn get_tier(env: Env, wallet: Address) -> u32 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::CreditTier(wallet))
-            .unwrap_or(0)
+        let key = DataKey::CreditTier(wallet);
+        let tier = env.storage().persistent().get(&key).unwrap_or(0);
+        maybe_extend_persistent_ttl(&env, &key);
+        tier
     }
 
     pub fn get_tier_limit(env: Env, tier: u32) -> i128 {
+        bump_instance_ttl(&env);
         match tier {
             1 => env
                 .storage()
@@ -223,6 +244,13 @@ impl CreditRegistry {
                 .unwrap_or(0),
             _ => 0,
         }
+    }
+
+    pub fn is_tier_current(env: Env, wallet: Address) -> bool {
+        let expiry_key = DataKey::TierExpiry(wallet);
+        let expiry = env.storage().persistent().get::<_, u32>(&expiry_key).unwrap_or(0);
+        maybe_extend_persistent_ttl(&env, &expiry_key);
+        expiry > env.ledger().sequence()
     }
 
     pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
@@ -254,6 +282,12 @@ fn store_credit_state(env: &Env, wallet: Address, metrics: Metrics, score: u32, 
         &DataKey::TierTimestamp(wallet.clone()),
         &env.ledger().timestamp(),
     );
+    env.storage().persistent().set(
+        &DataKey::TierExpiry(wallet.clone()),
+        &env.ledger().sequence().saturating_add(TIER_EXPIRY_LEDGERS),
+    );
+    bump_credit_state_ttl(env, &wallet);
+    bump_instance_ttl(env);
     env.events().publish(
         (symbol_short!("score_upd"), wallet),
         (score, tier, env.ledger().timestamp()),
@@ -273,8 +307,27 @@ fn score_to_tier(score: u32) -> u32 {
 }
 
 fn get_issuer(env: &Env) -> Address {
+    bump_instance_ttl(env);
     env.storage()
         .instance()
         .get(&DataKey::Issuer)
         .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+}
+
+fn bump_credit_state_ttl(env: &Env, wallet: &Address) {
+    maybe_extend_persistent_ttl(env, &DataKey::Metrics(wallet.clone()));
+    maybe_extend_persistent_ttl(env, &DataKey::Score(wallet.clone()));
+    maybe_extend_persistent_ttl(env, &DataKey::CreditTier(wallet.clone()));
+    maybe_extend_persistent_ttl(env, &DataKey::TierTimestamp(wallet.clone()));
+    maybe_extend_persistent_ttl(env, &DataKey::TierExpiry(wallet.clone()));
+}
+
+fn bump_instance_ttl(env: &Env) {
+    env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+}
+
+fn maybe_extend_persistent_ttl(env: &Env, key: &DataKey) {
+    if env.storage().persistent().has(key) {
+        env.storage().persistent().extend_ttl(key, MIN_TTL, MAX_TTL);
+    }
 }

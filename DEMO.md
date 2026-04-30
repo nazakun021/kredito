@@ -393,7 +393,7 @@ Backend and contract flow:
 
 What to show:
 
-- success screen
+- success screen with **Celebration Particles**
 - updated score
 - updated tier
 - new borrow limit
@@ -405,7 +405,7 @@ This is the conclusion of the demo.
 
 What to say:
 
-`The user’s repayment feeds back into the credit model. This closes the loop: connect wallet, borrow, repay, improve score, unlock better borrowing power.`
+`The user’s repayment feeds back into the credit model instantly. This closes the loop: connect wallet, borrow, repay, improve score, and unlock better borrowing power on your Credit Passport.`
 
 ## 9. Suggested Presenter Script
 

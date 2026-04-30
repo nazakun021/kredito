@@ -63,6 +63,8 @@ kredito/
 - `db.ts`: SQLite connection and schema creation/migration
 - `errors.ts`: app error helpers and Soroban-friendly error mapping
 - `cron.ts`: scheduled overdue-loan monitoring
+- `loan-state.ts`: shared on-chain loan reads and settlement polling helpers
+- `users.ts`: typed user-loading helpers for route handlers
 - `middleware/auth.ts`: JWT authentication middleware
 - `routes/auth.ts`: challenge issuance and Freighter login
 - `routes/credit.ts`: score generation, score reads, pool info, metrics reads
@@ -141,6 +143,7 @@ The system deliberately splits responsibility:
 - Off-chain metric aggregation is easier for Horizon account history and event scanning.
 - On-chain state is needed for transparent eligibility checks and enforceable lending rules.
 - The backend acts as the bridge that converts observed wallet activity into contract state.
+- Startup reconciliation repopulates `active_loans` from on-chain state so cron monitoring can recover from missed writes or past route failures.
 
 This means the score formula exists twice:
 
@@ -230,6 +233,7 @@ Important details:
 - `get_score`
 - `get_tier`
 - `get_tier_limit`
+- `is_tier_current`
 
 ### Events
 
@@ -322,6 +326,8 @@ This is an architectural mismatch between display/business logic and on-chain en
 - `disburse`
 - `repaid`
 - `defaulted`
+- Pool state and individual loans now extend TTL on reads/writes.
+- The pool also exposes `get_flat_fee_bps` and `admin_withdraw`.
 
 ## 4.3 `phpc_token`
 

@@ -6,10 +6,21 @@ import { config } from '../config';
 import db from '../db';
 import { asyncRoute, badRequest, unauthorized } from '../errors';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import type { DbUser } from '../types/db';
 
 const router = Router();
 const webAuthKeypair = Keypair.fromSecret(config.webAuthSecretKey);
 const CHALLENGE_TIMEOUT_SECONDS = 5 * 60;
+
+const IS_PROD = process.env.NODE_ENV === "production";
+
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: IS_PROD,
+  sameSite: "strict" as const,
+  maxAge: 24 * 60 * 60 * 1000, // 24 h in ms
+  path: "/",
+} as const;
 
 const freighterChallengeSchema = z.object({
   stellarAddress: z.string().startsWith('G'),
@@ -126,18 +137,19 @@ router.post(
 
     const existing = db
       .prepare('SELECT id, stellar_pub, is_external FROM users WHERE stellar_pub = ?')
-      .get(clientAccountID) as any;
+      .get(clientAccountID) as Pick<DbUser, 'id' | 'stellar_pub' | 'is_external'> | undefined;
 
     if (existing) {
       db.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
         Number(existing.id),
       );
-      return res.json({
-        token: issueToken(Number(existing.id)),
-        wallet: existing.stellar_pub,
-        isNew: false,
-        isExternal: Boolean(existing.is_external),
-      });
+      return res
+        .cookie("kredito_token", issueToken(Number(existing.id)), COOKIE_OPTIONS)
+        .json({
+          wallet: existing.stellar_pub,
+          isNew: false,
+          isExternal: Boolean(existing.is_external),
+        });
     }
 
     const info = db
@@ -153,12 +165,17 @@ router.post(
       Number(info.lastInsertRowid),
     );
 
-    res.json({
-      token: issueToken(Number(info.lastInsertRowid)),
-      wallet: clientAccountID,
-      isNew: true,
-      isExternal: true,
-    });
+    return res
+      .cookie(
+        "kredito_token",
+        issueToken(Number(info.lastInsertRowid)),
+        COOKIE_OPTIONS,
+      )
+      .json({
+        wallet: clientAccountID,
+        isNew: true,
+        isExternal: true,
+      });
   }),
 );
 
@@ -167,11 +184,15 @@ router.post(
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
     const userId = req.userId;
-    if (typeof userId !== 'number') {
-      throw unauthorized('User context missing');
-    }
-    res.json({ token: issueToken(userId) });
+    if (typeof userId !== "number") throw unauthorized("User context missing");
+    res
+      .cookie("kredito_token", issueToken(userId), COOKIE_OPTIONS)
+      .json({ ok: true });
   }),
 );
+
+router.post("/logout", (_req, res) => {
+  res.clearCookie("kredito_token", { path: "/" }).json({ ok: true });
+});
 
 export default router;

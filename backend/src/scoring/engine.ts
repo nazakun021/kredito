@@ -201,6 +201,10 @@ export async function fetchTxCount(address: string): Promise<number> {
   }
 }
 
+/**
+ * Returns the wallet's native XLM balance in whole units, not PHPC.
+ * This remains the current scoring input so UI copy must label it as XLM.
+ */
 export async function fetchAverageBalance(address: string): Promise<number> {
   try {
     const account = await horizonServer.accounts().accountId(address).call();

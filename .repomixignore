@@ -7,7 +7,7 @@ target/
 
 # Lock Files (Usually noise for AI context)
 *-lock.yaml
-*-lock.json
+package-lock.json
 Cargo.lock
 
 # Environment & Local Databases
@@ -23,7 +23,6 @@ Cargo.lock
 
 # Assets & Documentation (Optional exclusions)
 images/
-docs/
 *.png
 *.jpg
 *.svg

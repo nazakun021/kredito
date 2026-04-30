@@ -1,9 +1,8 @@
-// frontend/lib/freighter.ts
-
 'use client';
 
 import axios from 'axios';
 import {
+  getAddress,
   getNetwork,
   isConnected,
   requestAccess,
@@ -14,6 +13,7 @@ import { TESTNET_PASSPHRASE } from './constants';
 const authApi = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/',
   timeout: 15000,
+  withCredentials: true,
 });
 
 // ─── Phase 1.2 Helpers ──────────────────────────────────────────────────────
@@ -58,9 +58,17 @@ export async function connectWallet(): Promise<{ address: string } | { error: st
  */
 export async function getConnectedAddress(): Promise<string | null> {
   try {
+    const result = await getAddress();
+    if (result && 'address' in result && result.address) {
+      return result.address;
+    }
+  } catch {
+    // Fall through to permissioned access for older Freighter versions.
+  }
+
+  try {
     const result = await requestAccess();
-    if (result && 'address' in result) return result.address;
-    return null;
+    return result && 'address' in result ? result.address : null;
   } catch {
     return null;
   }
@@ -128,9 +136,9 @@ export async function loginWithFreighter() {
   if ('error' in signResult) throw new Error(signResult.error);
 
   const loginRes = await authApi.post<{
-    token: string;
     wallet: string;
     isExternal: boolean;
+    isNew: boolean;
   }>('auth/login', {
     signedChallengeXdr: signResult.signedXdr,
   });

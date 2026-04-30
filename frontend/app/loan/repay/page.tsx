@@ -88,7 +88,7 @@ export default function RepayPage() {
           if ('error' in approveResult) throw new Error(approveResult.error);
 
           setTxStep(3); // Submitting (Approve)
-          await api.post('/loan/sign-and-submit', {
+          await api.post('/tx/sign-and-submit', {
             signedInnerXdr: [approveResult.signedXdr],
             flow: { action: 'repay', step: 'approve' },
           });
@@ -103,7 +103,7 @@ export default function RepayPage() {
           if ('error' in repayResult) throw new Error(repayResult.error);
 
           setTxStep(3); // Submitting (Repay)
-          const finalResult = await api.post('/loan/sign-and-submit', {
+          const finalResult = await api.post('/tx/sign-and-submit', {
             signedInnerXdr: [repayResult.signedXdr],
             flow: { action: 'repay', step: 'repay' },
           });
@@ -116,7 +116,7 @@ export default function RepayPage() {
           if ('error' in repayResult) throw new Error(repayResult.error);
 
           setTxStep(3); // Submitting (Repay)
-          const result = await api.post('/loan/sign-and-submit', {
+          const result = await api.post('/tx/sign-and-submit', {
             signedInnerXdr: [repayResult.signedXdr],
             flow: { action: 'repay', step: 'repay' },
           });
@@ -207,7 +207,7 @@ export default function RepayPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-        <StepBreadcrumb step={4} total={4} />
+        <StepBreadcrumb step={loading ? Math.max(1, Math.min(txStep, 4)) : 3} total={4} />
         <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Active Loan</h1>
         <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           Timely repayment feeds into the next metrics refresh and upgrades your Credit Passport.

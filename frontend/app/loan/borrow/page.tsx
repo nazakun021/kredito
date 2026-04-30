@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle2, Loader2, TimerReset, Info, Wallet } from 'lucide-react';
@@ -48,6 +48,7 @@ export default function BorrowPage() {
   const [txStep, setTxStep] = useState<number>(0); // 0: Idle, 1: Preparing, 2: Signing, 3: Submitting, 4: Confirming
   const [success, setSuccess] = useState<BorrowSuccess | null>(null);
   const [error, setError] = useState('');
+  const [borrowAmountInput, setBorrowAmountInput] = useState('');
 
   const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
@@ -76,10 +77,23 @@ export default function BorrowPage() {
     }
   }, [loanStatus, isLoanStatusLoading, router, user, success]);
 
-  const borrowAmount = Number(score?.borrowLimit || 0);
+  const borrowLimit = Number(score?.borrowLimit || 0);
+
+  const displayedBorrowAmount = borrowAmountInput === '' && borrowLimit > 0
+    ? borrowLimit.toFixed(2)
+    : borrowAmountInput;
+  const parsedBorrowAmount = Number(displayedBorrowAmount);
+  const borrowAmount =
+    Number.isFinite(parsedBorrowAmount) && parsedBorrowAmount > 0 ? parsedBorrowAmount : 0;
   const fee = borrowAmount * ((score?.feeBps || 0) / 10_000);
+  const isAmountValid = borrowAmount > 0 && borrowAmount <= borrowLimit;
 
   const handleBorrow = async () => {
+    if (!isAmountValid) {
+      setError(`Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`);
+      return;
+    }
+
     setLoading(true);
     setError('');
     setTxStep(1); // Preparing
@@ -92,7 +106,7 @@ export default function BorrowPage() {
         if ('error' in signResult) throw new Error(signResult.error);
 
         setTxStep(3); // Submitting
-        const result = await api.post('/loan/sign-and-submit', {
+        const result = await api.post('/tx/sign-and-submit', {
           signedInnerXdr: [signResult.signedXdr],
           flow: { action: 'borrow' },
         });
@@ -172,6 +186,9 @@ export default function BorrowPage() {
             Approved amount
           </p>
           <p className="mt-4 text-5xl font-extrabold tabular-nums">P{borrowAmount.toFixed(2)}</p>
+          <p className="mt-2 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+            Max available now: P{borrowLimit.toFixed(2)}
+          </p>
           <div className="mt-6 space-y-3" style={{ color: 'var(--color-text-secondary)' }}>
             <Row label="Tier" value={score?.tierLabel || 'Unrated'} />
             <Row label="Fee" value={`${(score?.feeRate || 0).toFixed(2)}%`} />
@@ -192,18 +209,49 @@ export default function BorrowPage() {
                   <Info size={16} style={{ color: 'var(--color-accent)' }} />
                   Loan Review
                 </h3>
+                <label className="mb-4 block">
+                  <span className="mb-2 block text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
+                    Borrow amount
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    max={borrowLimit > 0 ? borrowLimit.toFixed(2) : undefined}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={displayedBorrowAmount}
+                    onChange={(event) => setBorrowAmountInput(event.target.value)}
+                    className="w-full rounded-xl border px-4 py-3 text-base font-semibold outline-none transition-colors"
+                    style={{
+                      background: 'var(--color-bg-secondary)',
+                      borderColor: 'var(--color-border)',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  />
+                </label>
                 <ul className="text-xs space-y-2 list-disc pl-4" style={{ color: 'var(--color-text-secondary)' }}>
                   <li>Instant disbursement to your connected wallet.</li>
                   <li>30-day fixed term.</li>
                   <li>Fee is deducted upon repayment, not from the principal.</li>
                 </ul>
               </div>
+              <div className="flex gap-3 rounded-xl p-4 text-sm mb-4" style={{ background: 'var(--color-accent-glow)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-accent)' }}>
+                <Info className="mt-0.5 shrink-0" size={16} style={{ color: 'var(--color-accent)' }} />
+                <p>
+                  After borrowing P{borrowAmount.toFixed(2)}, you will need to top up at least P{fee.toFixed(2)} PHPC before repayment so your wallet can cover the fee.
+                </p>
+              </div>
+              {!isAmountValid && borrowLimit > 0 && (
+                <p className="mb-4 text-xs font-medium" style={{ color: 'var(--color-danger)' }}>
+                  Enter an amount between P0.01 and P{borrowLimit.toFixed(2)}.
+                </p>
+              )}
               <button 
                 onClick={() => setStep('confirm')}
-                disabled={borrowAmount <= 0 || score?.tier === 0}
+                disabled={!isAmountValid || score?.tier === 0}
                 className="btn-primary btn-accent mt-auto"
               >
-                {borrowAmount <= 0 || score?.tier === 0 ? 'Not Eligible' : 'Review & Confirm'}
+                {!isAmountValid || score?.tier === 0 ? 'Not Eligible' : 'Review & Confirm'}
                 <ArrowRight size={16} />
               </button>
               {score?.tier === 0 && (

@@ -1,14 +1,13 @@
 import { Router } from 'express';
-import { Address } from '@stellar/stellar-sdk';
 import { z } from 'zod';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import db from '../db';
 import { asyncRoute, badRequest } from '../errors';
 import { buildScoreSummary, toPhpAmount } from '../scoring/engine';
 import { submitSponsoredSignedXdr } from '../stellar/feebump';
-import { queryContract } from '../stellar/query';
-import { contractIds } from '../stellar/client';
 import { updateOnChainMetrics } from '../stellar/issuer';
+import { getLoanRecord, waitForLoanRepayment } from '../loan-state';
+import { loadUserById } from '../users';
 
 const router = Router();
 
@@ -21,18 +20,6 @@ const submitFlowSchema = z
 
 function getExplorerUrl(txHash: string) {
   return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
-}
-
-async function loadUser(request: AuthRequest) {
-  return db
-    .prepare('SELECT id, stellar_pub, stellar_enc_secret, is_external FROM users WHERE id = ?')
-    .get(request.userId) as any;
-}
-
-async function getLoanRecord(walletAddress: string) {
-  return queryContract(contractIds.lendingPool, 'get_loan', [
-    Address.fromString(walletAddress).toScVal(),
-  ]);
 }
 
 router.post(
@@ -70,7 +57,7 @@ router.post(
     }
 
     const flow = submitFlowSchema.parse(req.body?.flow);
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
 
     const hashes: string[] = [];
     for (const xdr of signedInnerXdr) {
@@ -95,17 +82,17 @@ router.post(
 
       const loan = await getLoanRecord(user.stellar_pub);
       if (loan) {
-        const principal = Number(toPhpAmount(BigInt(loan.principal)));
-        const fee = Number(toPhpAmount(BigInt(loan.fee)));
+        const principal = Number(toPhpAmount(loan.principal));
+        const fee = Number(toPhpAmount(loan.fee));
         responsePayload.amount = principal.toFixed(2);
         responsePayload.fee = fee.toFixed(2);
-        responsePayload.feeBps = Math.round((fee / principal) * 10_000);
+        responsePayload.feeBps = principal > 0 ? Math.round((fee / principal) * 10_000) : 0;
         responsePayload.totalOwed = (principal + fee).toFixed(2);
       }
     }
 
     if (flow?.action === 'repay' && flow.step === 'repay') {
-      const settledLoan = await getLoanRecord(user.stellar_pub);
+      const settledLoan = await waitForLoanRepayment(user.stellar_pub);
       const previousSnapshot = db
         .prepare('SELECT score_json FROM score_events WHERE user_id = ? ORDER BY id DESC LIMIT 1')
         .get(req.userId) as { score_json?: string } | undefined;
@@ -113,9 +100,11 @@ router.post(
         ? ((JSON.parse(previousSnapshot.score_json).score as number | null | undefined) ?? null)
         : null;
 
-      db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
+      if (!settledLoan?.repaid) {
+        throw badRequest('Repayment confirmation did not settle in time. Please retry.');
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 6000));
+      db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
 
       const refreshed = await buildScoreSummary(user.stellar_pub);
       await updateOnChainMetrics(user.stellar_pub, refreshed.metrics);
@@ -134,7 +123,7 @@ router.post(
       );
 
       responsePayload.amountRepaid = toPhpAmount(
-        BigInt(settledLoan?.principal ?? 0) + BigInt(settledLoan?.fee ?? 0),
+        settledLoan.principal + settledLoan.fee,
       );
       responsePayload.previousScore = previousScore;
       responsePayload.newScore = refreshed.score;

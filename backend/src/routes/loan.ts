@@ -17,23 +17,13 @@ import { buildAndSubmitFeeBump, buildUnsignedContractCall } from '../stellar/fee
 import { queryContract } from '../stellar/query';
 import { contractIds, rpcServer } from '../stellar/client';
 import { updateOnChainMetrics } from '../stellar/issuer';
+import { getLoanRecord, waitForLoanRepayment } from '../loan-state';
+import { loadUserById } from '../users';
 
 const router = Router();
 
 function getExplorerUrl(txHash: string) {
   return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
-}
-
-async function loadUser(request: AuthRequest) {
-  return db
-    .prepare('SELECT id, stellar_pub, stellar_enc_secret, is_external FROM users WHERE id = ?')
-    .get(request.userId) as any;
-}
-
-async function getLoanRecord(walletAddress: string) {
-  return queryContract(contractIds.lendingPool, 'get_loan', [
-    Address.fromString(walletAddress).toScVal(),
-  ]);
 }
 
 async function getWalletTokenBalance(walletAddress: string) {
@@ -52,7 +42,7 @@ router.post(
       throw badRequest('Invalid amount');
     }
 
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
     const score = await buildScoreSummary(user.stellar_pub);
     const currentLoan = await getLoanRecord(user.stellar_pub);
     if (currentLoan && !currentLoan.repaid && !currentLoan.defaulted) {
@@ -82,7 +72,7 @@ router.post(
       totalOwed: (amount + feeAmount).toFixed(2),
     };
 
-    if (user.is_external) {
+    if (Boolean(user.is_external)) {
       const unsignedXdr = await buildUnsignedContractCall(
         user.stellar_pub,
         contractIds.lendingPool,
@@ -94,6 +84,10 @@ router.post(
         unsignedXdr,
         meta,
       });
+    }
+
+    if (!user.stellar_enc_secret) {
+      throw badRequest('Internal wallet secret is missing for this account.');
     }
 
     const userSecret = decrypt(user.stellar_enc_secret);
@@ -125,7 +119,7 @@ router.post(
   '/repay',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
     const loan = await getLoanRecord(user.stellar_pub);
 
     if (!loan) {
@@ -160,7 +154,7 @@ router.post(
     const repayArgs = [Address.fromString(user.stellar_pub).toScVal()];
     const previousScore = await buildScoreSummary(user.stellar_pub);
 
-    if (user.is_external) {
+    if (Boolean(user.is_external)) {
       // Check if the approve has already been done on-chain.
       // The PHPC token panics during simulation if there is no allowance set,
       // so we must build the repay XDR only AFTER the approve is confirmed.
@@ -214,6 +208,10 @@ router.post(
       });
     }
 
+    if (!user.stellar_enc_secret) {
+      throw badRequest('Internal wallet secret is missing for this account.');
+    }
+
     const userSecret = decrypt(user.stellar_enc_secret);
     try {
       const userKeypair = Keypair.fromSecret(userSecret);
@@ -225,9 +223,12 @@ router.post(
         repayArgs,
       );
 
-      db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
+      const settledLoan = await waitForLoanRepayment(user.stellar_pub);
+      if (!settledLoan?.repaid) {
+        throw badRequest('Repayment confirmation did not settle in time. Please retry.');
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 6000));
+      db.prepare('DELETE FROM active_loans WHERE user_id = ?').run(req.userId);
 
       const refreshed = await buildScoreSummary(user.stellar_pub);
       await updateOnChainMetrics(user.stellar_pub, refreshed.metrics);
@@ -264,7 +265,7 @@ router.get(
   '/status',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
     const [loan, poolSnapshot, latestLedger, walletBalanceStroops] = await Promise.all([
       getLoanRecord(user.stellar_pub),
       getPoolSnapshot(),
@@ -282,7 +283,7 @@ router.get(
     }
 
     const currentLedger = latestLedger.sequence;
-    const dueLedger = Number(loan.due_ledger);
+    const dueLedger = loan.due_ledger;
     const daysRemaining = computeDaysRemaining(currentLedger, dueLedger);
     const status = loan.repaid
       ? 'repaid'
@@ -299,13 +300,13 @@ router.get(
       ...poolSnapshot,
       loan: hasActiveLoan
         ? {
-            principal: toPhpAmount(BigInt(loan.principal)),
-            fee: toPhpAmount(BigInt(loan.fee)),
-            totalOwed: toPhpAmount(BigInt(loan.principal) + BigInt(loan.fee)),
+            principal: toPhpAmount(loan.principal),
+            fee: toPhpAmount(loan.fee),
+            totalOwed: toPhpAmount(loan.principal + loan.fee),
             walletBalance: toPhpAmount(walletBalanceStroops),
             shortfall:
-              walletBalanceStroops < BigInt(loan.principal) + BigInt(loan.fee)
-                ? toPhpAmount(BigInt(loan.principal) + BigInt(loan.fee) - walletBalanceStroops)
+              walletBalanceStroops < loan.principal + loan.fee
+                ? toPhpAmount(loan.principal + loan.fee - walletBalanceStroops)
                 : '0.00',
             dueLedger,
             currentLedger,

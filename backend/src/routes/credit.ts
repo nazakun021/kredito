@@ -4,31 +4,20 @@ import { Router } from 'express';
 import { Address } from '@stellar/stellar-sdk';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import db from '../db';
-import { asyncRoute, notFound, unauthorized } from '../errors';
+import { asyncRoute, notFound } from '../errors';
 import { buildScoreSummary, getPoolSnapshot } from '../scoring/engine';
 import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
 import { queryContract } from '../stellar/query';
 import { contractIds } from '../stellar/client';
+import { loadUserById } from '../users';
 
 const router = Router();
-
-async function loadUser(request: AuthRequest) {
-  const user = db
-    .prepare('SELECT id, stellar_pub, stellar_enc_secret, is_external FROM users WHERE id = ?')
-    .get(request.userId) as any;
-
-  if (!user) {
-    throw unauthorized('User not found. Please log in again.');
-  }
-
-  return user;
-}
 
 router.post(
   '/generate',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
     const summary = await buildScoreSummary(user.stellar_pub);
     const txHashes = await updateOnChainMetrics(user.stellar_pub, summary.metrics);
     const payload = {
@@ -59,10 +48,10 @@ router.get(
   '/score',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
     const latest = db
       .prepare('SELECT score_json FROM score_events WHERE user_id = ? ORDER BY id DESC LIMIT 1')
-      .get(req.userId) as any;
+      .get(req.userId) as { score_json?: string } | undefined;
 
     if (!latest?.score_json) {
       throw notFound('No score on-chain yet. Call generate first.');
@@ -89,7 +78,7 @@ router.get(
   '/metrics',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const user = await loadUser(req);
+    const user = loadUserById(req.userId);
     const metrics = await queryContract(contractIds.creditRegistry, 'get_metrics', [
       Address.fromString(user.stellar_pub).toScVal(),
     ]);

@@ -3,7 +3,7 @@ set -e
 
 NETWORK="testnet"
 SOURCE="issuer"
-ISSUER_PUB="GBGKIBN3WUKPLUZIODCL7CS3L7QCTU7MAVXHMRX5DGPCTHBGMST47ABV"
+ISSUER_PUB=$(stellar keys show "$SOURCE" --public-key)
 WASM_DIR="target/wasm32v1-none/release"
 
 # The credit_registry is working fine — reuse it.

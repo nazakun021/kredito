@@ -19,9 +19,11 @@ pub enum DataKey {
     Admin,
     Balance(Address),
     Allowance(Address, Address),
+    Authorized(Address),
     Name,
     Symbol,
     Decimals,
+    TotalSupply,
 }
 
 #[contract]
@@ -40,6 +42,7 @@ pub enum Error {
     InvalidAllowanceExpiration = 7,
     InsufficientBalance = 8,
     InsufficientAllowance = 9,
+    UnauthorizedAccount = 10,
 }
 
 #[contractimpl]
@@ -56,6 +59,7 @@ impl Token {
         env.storage().instance().set(&DataKey::Decimals, &decimal);
         env.storage().instance().set(&DataKey::Name, &name);
         env.storage().instance().set(&DataKey::Symbol, &symbol);
+        env.storage().instance().set(&DataKey::TotalSupply, &0i128);
     }
 
     pub fn mint(env: Env, to: Address, amount: i128) {
@@ -67,11 +71,16 @@ impl Token {
         }
 
         let key = DataKey::Balance(to.clone());
+        require_authorized(&env, &to);
         let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         let new_balance = balance
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(&env, Error::BalanceOverflow));
         env.storage().persistent().set(&key, &new_balance);
+        let total_supply = Self::total_supply(env.clone())
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::BalanceOverflow));
+        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
 
         env.events().publish((symbol_short!("mint"), to), amount);
     }
@@ -89,6 +98,8 @@ impl Token {
         expiration_ledger: u32,
     ) {
         from.require_auth();
+        require_authorized(&env, &from);
+        require_authorized(&env, &spender);
         if amount < 0 {
             panic_with_error!(&env, Error::InvalidAllowanceAmount);
         }
@@ -112,6 +123,8 @@ impl Token {
 
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
+        require_authorized(&env, &from);
+        require_authorized(&env, &to);
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
         }
@@ -142,6 +155,9 @@ impl Token {
 
     pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
         spender.require_auth();
+        require_authorized(&env, &spender);
+        require_authorized(&env, &from);
+        require_authorized(&env, &to);
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
         }
@@ -192,6 +208,7 @@ impl Token {
 
     pub fn burn(env: Env, from: Address, amount: i128) {
         from.require_auth();
+        require_authorized(&env, &from);
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
         }
@@ -203,11 +220,17 @@ impl Token {
         }
 
         env.storage().persistent().set(&key, &(balance - amount));
+        let total_supply = Self::total_supply(env.clone())
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
+        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
         env.events().publish((symbol_short!("burn"), from), amount);
     }
 
     pub fn burn_from(env: Env, spender: Address, from: Address, amount: i128) {
         spender.require_auth();
+        require_authorized(&env, &spender);
+        require_authorized(&env, &from);
         if amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
         }
@@ -233,6 +256,10 @@ impl Token {
         env.storage()
             .persistent()
             .set(&from_key, &(balance - amount));
+        let total_supply = Self::total_supply(env.clone())
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
+        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
         env.events().publish((symbol_short!("burn"), from), amount);
     }
 
@@ -255,6 +282,22 @@ impl Token {
             .instance()
             .get(&DataKey::Symbol)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
+    pub fn total_supply(env: Env) -> i128 {
+        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
+    }
+
+    pub fn authorized(env: Env, id: Address) -> bool {
+        read_authorized(&env, &id)
+    }
+
+    pub fn set_authorized(env: Env, id: Address, authorize: bool) {
+        let admin = get_admin(&env);
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Authorized(id), &authorize);
     }
 }
 
@@ -291,4 +334,17 @@ fn write_allowance(env: &Env, key: &DataKey, amount: i128, expiration_ledger: u3
         expiration_ledger: if amount == 0 { 0 } else { expiration_ledger },
     };
     env.storage().persistent().set(key, &allowance);
+}
+
+fn read_authorized(env: &Env, id: &Address) -> bool {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Authorized(id.clone()))
+        .unwrap_or(true)
+}
+
+fn require_authorized(env: &Env, id: &Address) {
+    if !read_authorized(env, id) {
+        panic_with_error!(env, Error::UnauthorizedAccount);
+    }
 }
