@@ -1,542 +1,945 @@
-# Kredito — SPEC.md
+# SPEC.md — Kredito v2 Technical Specification
 
-> Technical specification for the full Kredito system.
-> Cross-references all three layers: Contracts (Soroban), Backend (Express), Frontend (Next.js).
-> Covers contract interfaces, data flows, API contracts, and the interconnection model.
+### Soroban-First · Stateless Backend · Chain as Source of Truth
+
+**Version:** 2.0.0
+**Network:** Stellar Testnet (Soroban-enabled)
+**Status:** Refactor Target
 
 ---
 
-## 1. System Overview
+## Table of Contents
 
-Kredito is a micro-lending platform on Stellar Testnet. The architecture is a strict three-tier stack:
+1. [System Architecture](#1-system-architecture)
+2. [Smart Contracts](#2-smart-contracts)
+3. [Backend API](#3-backend-api)
+4. [Frontend](#4-frontend)
+5. [Authentication Protocol](#5-authentication-protocol)
+6. [Credit Scoring Model](#6-credit-scoring-model)
+7. [Transaction Flows](#7-transaction-flows)
+8. [Data Models](#8-data-models)
+9. [Error Handling](#9-error-handling)
+10. [Environment Configuration](#10-environment-configuration)
+11. [Invariants & Constraints](#11-invariants--constraints)
+
+---
+
+## 1. System Architecture
+
+### 1.1 High-Level Diagram
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  FRONTEND  (Next.js 16 / React 19 / Tailwind v4)    │
-│  Vercel deployment, Freighter wallet, TanStack Query │
-└──────────────────────┬──────────────────────────────┘
-                       │ HTTPS (JWT Bearer)
-┌──────────────────────▼──────────────────────────────┐
-│  BACKEND   (Express 5 / TypeScript / SQLite)         │
-│  Auth, score orchestration, fee-bump sponsorship     │
-└──────────────────────┬──────────────────────────────┘
-                       │ Soroban RPC / Horizon REST
-┌──────────────────────▼──────────────────────────────┐
-│  CONTRACTS (Soroban on Stellar Testnet)               │
-│  credit_registry · lending_pool · phpc_token         │
-└─────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  USER BROWSER                                                      │
+│                                                                    │
+│  ┌──────────────────────┐     ┌────────────────────────────────┐  │
+│  │  Next.js Frontend    │────▶│  Freighter Extension           │  │
+│  │  (React 19, Zustand) │◀────│  (Signs XDR, holds private key)│  │
+│  └──────────┬───────────┘     └────────────────────────────────┘  │
+└─────────────│──────────────────────────────────────────────────────┘
+              │ HTTPS (JSON + XDR)
+              ▼
+┌─────────────────────────────────────────┐
+│  BACKEND (Express, Stateless)           │
+│                                         │
+│  Routes: auth / credit / loan / tx      │
+│  Stellar SDK: TX build, query, feebump  │
+│  Scoring Engine: pure function          │
+│  ❌ No database                         │
+│  ❌ No persistent state                 │
+└────────────────┬────────────────────────┘
+                 │ Soroban RPC + Horizon
+                 ▼
+┌────────────────────────────────────────────────────────────────┐
+│  STELLAR TESTNET (Soroban)                                     │
+│                                                                │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌─────────────┐  │
+│  │ credit_registry │  │  lending_pool    │  │ phpc_token  │  │
+│  │                 │  │                  │  │             │  │
+│  │ score           │  │ borrow()         │  │ transfer()  │  │
+│  │ tier            │  │ repay()          │  │ approve()   │  │
+│  │ metrics         │  │ mark_default()   │  │ balance()   │  │
+│  │ tier_limits     │  │ get_loan()       │  │ mint()      │  │
+│  └─────────────────┘  └──────────────────┘  └─────────────┘  │
+└────────────────────────────────────────────────────────────────┘
 ```
+
+### 1.2 Responsibility Matrix
+
+| Concern                   | Frontend       | Backend        | Contract    |
+| ------------------------- | -------------- | -------------- | ----------- |
+| Wallet connection         | ✅             | ❌             | ❌          |
+| Auth challenge generation | ❌             | ✅             | ❌          |
+| Auth challenge signing    | ✅ (Freighter) | ❌             | ❌          |
+| JWT issuance              | ❌             | ✅             | ❌          |
+| Score computation         | ❌             | ✅ (off-chain) | ❌          |
+| Score storage             | ❌             | ❌             | ✅          |
+| Loan state                | ❌             | ❌             | ✅          |
+| TX building               | ❌             | ✅             | ❌          |
+| TX signing                | ✅ (Freighter) | ❌             | ❌          |
+| TX sponsorship            | ❌             | ✅ (fee-bump)  | ❌          |
+| TX submission             | ❌             | ✅             | ❌          |
+| Rule enforcement          | ❌             | ❌             | ✅          |
+| User identity             | Wallet addr    | Wallet addr    | Wallet addr |
+| Data persistence          | ❌             | ❌             | ✅ (ledger) |
+
+### 1.3 Design Principles (Non-Negotiable)
+
+1. **Chain is the source of truth** — Any state that matters lives in a Soroban contract.
+2. **Backend is replaceable** — Any stateless service with the right RPC credentials can replace it.
+3. **Wallet is identity** — No email, no username, no userId. Stellar public key is the user.
+4. **Contracts enforce rules** — Backend performs UX pre-checks only. Enforcement is on-chain.
+5. **Frontend is a viewer + signer** — It displays chain state and triggers Freighter signatures.
 
 ---
 
 ## 2. Smart Contracts
 
-### 2.1 `phpc_token` — Philippine Peso Coin
+### 2.1 Deployed Contract Addresses (Testnet)
 
-**Deployed:** `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
+| Contract          | Address                                                    |
+| ----------------- | ---------------------------------------------------------- |
+| `credit_registry` | `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ` |
+| `lending_pool`    | `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH` |
+| `phpc_token`      | `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR` |
 
-**Storage:**
+### 2.2 `credit_registry`
 
-| Key                           | Type             | Storage    | Description               |
-| ----------------------------- | ---------------- | ---------- | ------------------------- |
-| `Admin`                       | `Address`        | Instance   | Contract admin            |
-| `Decimals`                    | `u32`            | Instance   | Always `7`                |
-| `Name`                        | `String`         | Instance   | "Philippine Peso Coin"    |
-| `Symbol`                      | `String`         | Instance   | "PHPC"                    |
-| `Balance(Address)`            | `i128`           | Persistent | Token balance per address |
-| `Allowance(Address, Address)` | `AllowanceValue` | Persistent | Spender allowance         |
-| `Authorized(Address)`         | `bool`           | Persistent | Freeze / clawback gate    |
-| `TotalSupply`                 | `i128`           | Instance   | Total PHPC supply         |
+**Purpose:** Stores credit score, tier, and raw metrics for each wallet address. Acts as the on-chain Credit Passport.
 
-**Key functions:**
+**Storage layout:**
 
-| Function                                            | Auth Required | Description                                     |
-| --------------------------------------------------- | ------------- | ----------------------------------------------- |
-| `initialize(admin, decimal, name, symbol)`          | `admin`       | One-time init. Panics if already initialized.   |
-| `mint(to, amount)`                                  | `admin`       | Mints new PHPC. Amount must be `> 0`.           |
-| `transfer(from, to, amount)`                        | `from`        | Moves PHPC between addresses.                   |
-| `transfer_from(spender, from, to, amount)`          | `spender`     | Moves PHPC using a pre-approved allowance.      |
-| `approve(from, spender, amount, expiration_ledger)` | `from`        | Sets spending allowance. Must not be expired.   |
-| `allowance(from, spender)` → `i128`                 | —             | Reads current allowance (returns 0 if expired). |
-| `balance(id)` → `i128`                              | —             | Reads token balance.                            |
-| `burn(from, amount)`                                | `from`        | Destroys tokens.                                |
-| `total_supply()` → `i128`                           | —             | Returns circulating PHPC supply.                |
-| `authorized(id)` → `bool`                           | —             | Returns whether an address is authorized.       |
-| `set_authorized(id, authorize)`                     | `admin`       | Toggles address authorization.                  |
-| `decimals()`                                        | —             | Always `7`.                                     |
+| Key             | Type      | Description                                                     |
+| --------------- | --------- | --------------------------------------------------------------- |
+| `Admin`         | `Address` | Issuer/admin, only account authorized to call `update_metrics`  |
+| `Score(addr)`   | `u32`     | Computed score, written by issuer via `update_metrics`          |
+| `Tier(addr)`    | `u32`     | Tier 0–3, derived from score                                    |
+| `Metrics(addr)` | `Metrics` | Raw `{ tx_count, repayment_count, avg_balance, default_count }` |
+| `TierLimit(1)`  | `i128`    | Borrow ceiling for Tier 1, in 7-decimal PHPC                    |
+| `TierLimit(2)`  | `i128`    | Borrow ceiling for Tier 2                                       |
+| `TierLimit(3)`  | `i128`    | Borrow ceiling for Tier 3                                       |
+
+**Initialized with:**
+
+```
+tier1_limit = 50_000_000_000   // 5,000 PHPC
+tier2_limit = 200_000_000_000  // 20,000 PHPC
+tier3_limit = 500_000_000_000  // 50,000 PHPC
+```
+
+**Interface:**
+
+```rust
+fn initialize(issuer: Address, tier1_limit: i128, tier2_limit: i128, tier3_limit: i128)
+fn update_metrics(user: Address, metrics: Metrics) -> u32   // requires issuer auth
+fn update_metrics_raw(user: Address, tx_count: u32, repayment_count: u32, avg_balance: u32, default_count: u32)
+fn update_score(user: Address)
+fn compute_score(metrics: Metrics) -> u32                   // view — no state change
+fn get_score(user: Address) -> u32
+fn get_tier(user: Address) -> u32
+fn get_metrics(user: Address) -> Metrics
+fn get_tier_limit(tier: u32) -> i128
+fn set_tier(user: Address, tier: u32)                       // requires issuer auth (admin override)
+fn revoke_tier(user: Address)                               // requires issuer auth
+fn transfer(from, to, amount)                               // always panics with #6 — SBT non-transferable
+fn transfer_from(spender, from, to, amount)                 // always panics with #6
+```
+
+**Score Formula (on-chain, mirrors backend):**
+
+```
+score = (tx_count × 2) + (repayment_count × 10) + (avg_balance × 5) − (default_count × 25)
+score = max(0, score)
+```
+
+**Tier derivation:**
+
+```
+tier 0: score < 40
+tier 1: score >= 40
+tier 2: score >= 80
+tier 3: score >= 120
+```
 
 **Error codes:**
 
-| Code | Name                         | Meaning                                |
-| ---- | ---------------------------- | -------------------------------------- |
-| 1    | `AlreadyInitialized`         | `initialize` called twice              |
-| 2    | `NotInitialized`             | Admin not set                          |
-| 3    | `InvalidDecimals`            | Decimal > 18                           |
-| 4    | `InvalidAmount`              | Amount ≤ 0                             |
-| 5    | `BalanceOverflow`            | Balance + amount overflows i128        |
-| 6    | `InvalidAllowanceAmount`     | Allowance amount < 0                   |
-| 7    | `InvalidAllowanceExpiration` | Expiration ledger is in the past       |
-| 8    | `InsufficientBalance`        | Not enough tokens to transfer/burn     |
-| 9    | `InsufficientAllowance`      | Allowance less than requested transfer |
-
-**SPEC NOTE — PHPC Decimals:** All PHPC amounts in storage are in "stroops" (smallest unit). `1 PHPC = 10^7 stroops`. The backend converts with `toPhpAmount(bigint)` and `toStroops(phpFloat)`.
-
----
-
-### 2.2 `credit_registry` — On-Chain Credit Score
-
-**Deployed:** `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
-
-**Storage:**
-
-| Key                      | Type      | Storage    | Description                                                   |
-| ------------------------ | --------- | ---------- | ------------------------------------------------------------- |
-| `Issuer`                 | `Address` | Instance   | Contract issuer (backend keypair)                             |
-| `Tier1Limit`             | `i128`    | Instance   | Max borrow for Bronze (50,000,000,000 stroops = 5,000 PHPC)   |
-| `Tier2Limit`             | `i128`    | Instance   | Max borrow for Silver (200,000,000,000 stroops = 20,000 PHPC) |
-| `Tier3Limit`             | `i128`    | Instance   | Max borrow for Gold (500,000,000,000 stroops = 50,000 PHPC)   |
-| `Metrics(Address)`       | `Metrics` | Persistent | Raw on-chain metrics per wallet                               |
-| `Score(Address)`         | `u32`     | Persistent | Computed credit score per wallet                              |
-| `CreditTier(Address)`    | `u32`     | Persistent | Tier (0=Unrated, 1=Bronze, 2=Silver, 3=Gold)                  |
-| `TierTimestamp(Address)` | `u64`     | Persistent | Ledger timestamp of last tier assignment                      |
-| `TierExpiry(Address)`    | `u32`     | Persistent | Ledger number after which a tier is considered stale          |
-
-**`Metrics` struct:**
-
-```rust
-pub struct Metrics {
-    pub tx_count: u32,
-    pub repayment_count: u32,
-    pub avg_balance: u32,   // XLM native balance in whole units
-    pub default_count: u32,
-}
+```
+#1 AlreadyInitialized
+#2 NotInitialized
+#3 InvalidLimits         (non-positive or non-ascending tier limits)
+#4 DescendingLimits
+#5 InvalidTier           (set_tier called with tier = 0)
+#6 NonTransferable       (SBT semantics — wallet score is not transferable)
 ```
 
-**Scoring Formula (identical in contract and backend):**
+### 2.3 `lending_pool`
 
-```
-avg_balance_factor = min(avg_balance / 100, 10)   // [0..10]
-score = (tx_count × 2) + (repayment_count × 10) + (avg_balance_factor × 5) - (default_count × 25)
-score = max(0, score)   // floor at 0
-```
+**Purpose:** Manages the PHPC liquidity pool. Enforces all loan rules. One active loan per wallet.
 
-**Tier Thresholds:**
+**Storage layout:**
 
-```
-score >= 120 → Tier 3 (Gold)
-score >= 80  → Tier 2 (Silver)
-score >= 40  → Tier 1 (Bronze)
-score <  40  → Tier 0 (Unrated)
-```
-
-**Key functions:**
-
-| Function                                                                                    | Auth Required | Description                                                                 |
-| ------------------------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------- |
-| `initialize(issuer, tier1_limit, tier2_limit, tier3_limit)`                                 | `issuer`      | One-time init. Limits must be positive and ascending.                       |
-| `update_metrics(wallet, metrics)` → `u32`                                                   | `issuer`      | Writes metrics, recomputes score and tier. Returns new score.               |
-| `update_metrics_raw(wallet, tx_count, repayment_count, avg_balance, default_count)` → `u32` | `issuer`      | Convenience wrapper over `update_metrics`.                                  |
-| `update_score(wallet)` → `u32`                                                              | `issuer`      | Recomputes score from current stored metrics.                               |
-| `set_tier(wallet, tier)`                                                                    | `issuer`      | Directly sets tier (1–3) and sets score to tier minimum.                    |
-| `revoke_tier(wallet)`                                                                       | `issuer`      | Sets tier to 0, score to 0. Emits `revoked` event.                          |
-| `compute_score(metrics)` → `u32`                                                            | —             | Pure computation, no state changes.                                         |
-| `get_metrics(wallet)` → `Metrics`                                                           | —             | Returns stored metrics (defaults to zero if none).                          |
-| `get_score(wallet)` → `u32`                                                                 | —             | Returns stored score.                                                       |
-| `get_tier(wallet)` → `u32`                                                                  | —             | Returns current tier.                                                       |
-| `get_tier_limit(tier)` → `i128`                                                             | —             | Returns borrow limit for a tier.                                            |
-| `is_tier_current(wallet)` → `bool`                                                          | —             | Returns whether the wallet's tier is still current.                         |
-| `transfer(...)`                                                                             | —             | **Always panics** (`NonTransferable`). Credit passport is non-transferable. |
-| `transfer_from(...)`                                                                        | —             | **Always panics** (`NonTransferable`).                                      |
-
-**Events emitted:**
-
-- `(score_upd, wallet) → (score, tier, timestamp)` — on any metrics/score update.
-- `(revoked, wallet) → timestamp` — on tier revocation.
-
-**TTL policy:** wallet credit state and contract instance storage are TTL-bumped on reads/writes to reduce expiration risk.
-
----
-
-### 2.3 `lending_pool` — Borrow and Repay
-
-**Deployed:** `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
-
-**Storage:**
-
-| Key               | Type         | Storage    | Description                                        |
-| ----------------- | ------------ | ---------- | -------------------------------------------------- |
-| `Admin`           | `Address`    | Instance   | Contract admin                                     |
-| `RegistryId`      | `Address`    | Instance   | Address of `credit_registry`                       |
-| `TokenId`         | `Address`    | Instance   | Address of `phpc_token`                            |
-| `FlatFeeBps`      | `u32`        | Instance   | Base fee in basis points (deployed: 500 = 5%)      |
-| `LoanTermLedgers` | `u32`        | Instance   | Loan term in ledgers (deployed: 518,400 ≈ 30 days) |
-| `PoolBalance`     | `i128`       | Instance   | Total PHPC in pool (stroops)                       |
-| `Loan(Address)`   | `LoanRecord` | Persistent | Loan record per borrower                           |
+| Key          | Type         | Description                                       |
+| ------------ | ------------ | ------------------------------------------------- |
+| `Admin`      | `Address`    | Pool admin                                        |
+| `Registry`   | `Address`    | `credit_registry` contract address                |
+| `PhpcToken`  | `Address`    | `phpc_token` contract address                     |
+| `FlatFeeBps` | `u32`        | Default fee in basis points (overridden per tier) |
+| `LoanTerm`   | `u32`        | Loan duration in ledgers (518,400 ≈ 30 days)      |
+| `Loan(addr)` | `LoanRecord` | Active loan record per borrower                   |
 
 **`LoanRecord` struct:**
 
 ```rust
 pub struct LoanRecord {
-    pub principal: i128,  // borrowed amount in stroops
-    pub fee: i128,        // fee charged in stroops
-    pub due_ledger: u32,  // ledger number when loan expires
-    pub repaid: bool,     // true after successful repayment
-    pub defaulted: bool,  // true after mark_default is called
+    pub principal: i128,
+    pub fee: i128,
+    pub due_ledger: u32,
+    pub repaid: bool,
+    pub defaulted: bool,
 }
 ```
 
-**Tier-Based Fee Calculation:**
-The deployed contract uses `flat_fee_bps = 500` as a base, then reduces by tier:
+**Fee per tier:**
 
 ```
-Tier 3 (Gold):   flat_fee_bps - 350 = 150 bps (1.5%)
-Tier 2 (Silver): flat_fee_bps - 200 = 300 bps (3.0%)
-Tier 1 (Bronze): flat_fee_bps       = 500 bps (5.0%)
+Tier 1: 500 bps (5.0%)
+Tier 2: 300 bps (3.0%)
+Tier 3: 150 bps (1.5%)
 ```
 
-This **matches** `tierFeeBps()` in the backend scoring engine. Both are consistent.
+**Interface:**
 
-**Key functions:**
+```rust
+fn initialize(admin: Address, registry: Address, phpc: Address, fee_bps: u32, loan_term: u32)
+fn deposit(amount: i128)                           // admin funds the pool
+fn borrow(borrower: Address, amount: i128)         // requires borrower auth
+fn repay(borrower: Address)                        // requires borrower auth via phpc approve
+fn mark_default(borrower: Address)                 // requires admin auth; only on overdue loans
+fn get_loan(borrower: Address) -> Option<LoanRecord>
+fn get_pool_balance() -> i128
+```
 
-| Function                                                                      | Auth Required | Description                                                                                             |
-| ----------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
-| `initialize(admin, registry_id, phpc_token, flat_fee_bps, loan_term_ledgers)` | `admin`       | One-time init. `flat_fee_bps ≤ 10000`.                                                                  |
-| `deposit(amount)`                                                             | `admin`       | Admin transfers PHPC into pool via `transfer_from`. Requires prior `approve`.                           |
-| `borrow(borrower, amount)`                                                    | `borrower`    | Validates tier, checks limit, charges fee, sends PHPC. Stores LoanRecord.                               |
-| `repay(borrower)`                                                             | `borrower`    | Pulls `principal + fee` from borrower via `transfer_from`. Requires prior `approve`. Panics if overdue. |
-| `mark_default(borrower)`                                                      | — (anyone)    | Marks a loan as defaulted if `current_ledger > due_ledger`.                                             |
-| `get_loan(borrower)` → `Option<LoanRecord>`                                   | —             | Returns loan record if exists.                                                                          |
-| `get_pool_balance()` → `i128`                                                 | —             | Returns current pool balance in stroops.                                                                |
-| `get_flat_fee_bps()` → `u32`                                                  | —             | Returns the pool's base fee schedule parameter.                                                         |
-| `admin_withdraw(amount)`                                                      | `admin`       | Allows the pool admin to withdraw PHPC from the pool.                                                   |
+**Borrow enforcement (on-chain):**
 
-**Events emitted:**
+1. Borrower must have a tier ≥ 1 in `credit_registry` (checks `get_tier()`)
+2. No active loan exists (`get_loan()` is `None` or `repaid/defaulted`)
+3. Amount ≤ `tier_limit` for borrower's current tier
+4. Amount ≤ current pool balance
+5. Amount > 0
 
-- `(disburse, borrower) → (amount, fee, due_ledger)` — on borrow.
-- `(repaid, borrower) → (total_owed, timestamp)` — on repayment.
-- `(defaulted, borrower) → principal` — on mark_default.
+**Repay enforcement (on-chain):**
 
-**TTL policy:** loan entries and instance storage are TTL-bumped on reads/writes to keep active pool state alive.
+1. An active loan exists for borrower
+2. Loan is not defaulted
+3. Loan is not yet overdue (current ledger ≤ `due_ledger`)
+4. PHPC approval ≥ `principal + fee` has been granted to pool
 
-**Borrow validation flow:**
+**Error codes:**
 
-1. `amount > 0` (else `InvalidAmount`)
-2. No active loan exists for `borrower` (else `ActiveLoanExists`)
-3. `registry.get_tier(borrower) >= 1` (else `NoCreditTier`)
-4. `amount <= registry.get_tier_limit(tier)` (else `BorrowLimitExceeded`)
-5. `amount <= pool_balance` (else `InsufficientPoolLiquidity`)
+```
+#3  InvalidFeeBps          fee_bps > 10000
+#4  InvalidLoanTerm        loan_term = 0
+#5  InvalidAmount          amount <= 0
+#6  NotInitialized
+#7  ActiveLoanExists       double-borrow attempt
+#8  NoSbt                  borrower has no credit tier
+#9  OverLimit              amount > tier_limit
+#10 InsufficientLiquidity  amount > pool_balance
+#15 LoanDefaulted          repay called on defaulted loan
+#16 LoanOverdue            repay called after due_ledger
+#18 LoanNotOverdue         mark_default called before due_ledger
+```
+
+### 2.4 `phpc_token`
+
+**Purpose:** SEP-41 compliant stablecoin pegged to Philippine Peso. Used as the lending currency.
+
+**Decimals:** 7 (100_000_000 = 10 PHPC)
+
+**Interface:** Standard SEP-41 token interface:
+
+```rust
+fn initialize(admin: Address, decimal: u32, name: String, symbol: String)
+fn mint(to: Address, amount: i128)          // admin only
+fn transfer(from, to, amount)
+fn transfer_from(spender, from, to, amount)
+fn approve(from, spender, amount, expiration_ledger)
+fn balance(id: Address) -> i128
+fn allowance(from, spender) -> i128
+fn burn(from, amount)
+fn decimals() -> u32
+fn name() -> String
+fn symbol() -> String
+fn total_supply() -> i128
+```
+
+**Amount encoding (7 decimals):**
+
+```
+1 PHPC    = 10_000_000
+100 PHPC  = 1_000_000_000
+500 PHPC  = 5_000_000_000
+5000 PHPC = 50_000_000_000
+```
 
 ---
 
 ## 3. Backend API
 
-**Base URL:** `http://localhost:3001/api/` (dev)
+### 3.1 Base Configuration
 
-All authenticated endpoints require `Authorization: Bearer <JWT>`.
+| Property       | Value                              |
+| -------------- | ---------------------------------- |
+| Default port   | `3001`                             |
+| Base path      | `/api`                             |
+| Auth mechanism | Bearer JWT                         |
+| Content-Type   | `application/json`                 |
+| CORS origin    | Configurable via `CORS_ORIGIN` env |
 
----
-
-### 3.1 Auth Routes (`/api/auth`)
+### 3.2 Authentication Routes
 
 #### `POST /api/auth/challenge`
 
-Initiates SEP-10 WebAuth challenge for a Stellar address.
+**Auth:** None
 
 **Request:**
 
 ```json
-{ "stellarAddress": "G..." }
+{ "wallet": "G..." }
 ```
 
-**Response:**
-
-```json
-{ "challengeXdr": "AAAAAQ...", "expiresIn": 300 }
-```
-
-**Notes:**
-
-- Generates a `WebAuth.buildChallengeTx` XDR signed by `WEB_AUTH_SECRET_KEY`.
-- Stores a hash of the challenge in `auth_challenges` with a 5-minute TTL.
-- Rate-limited: 10 requests / minute per IP.
-
-#### `POST /api/auth/login`
-
-Verifies a signed challenge and issues a JWT.
-
-**Request:**
-
-```json
-{ "signedChallengeXdr": "AAAAAQ..." }
-```
-
-**Response:**
+**Response `200`:**
 
 ```json
 {
-  "token": "eyJ...",
-  "wallet": "G...",
-  "isNew": true,
-  "isExternal": true
+  "challenge": "<SEP-10 signed transaction XDR>",
+  "expiresAt": 1700000000
 }
 ```
 
-**Notes:**
+**Behavior:**
 
-- Calls `WebAuth.readChallengeTx` and `WebAuth.verifyChallengeTxSigners`.
-- Consumes the challenge (deletes from DB) — prevents replay attacks.
-- Creates a new user row if `stellar_pub` is unseen; otherwise returns existing user.
-- JWT expiry: 24 hours. Payload: `{ userId: number }`.
-
-#### `POST /api/auth/refresh`
-
-Refreshes a valid JWT. Returns a new token.
-
-**Auth:** Required.
+- Generates a SEP-10 transaction challenge signed by `WEB_AUTH_SECRET_KEY`
+- Challenge is a Stellar transaction with `manageData` operation
+- TTL: 5 minutes (300 seconds)
+- No DB interaction
 
 ---
 
-### 3.2 Credit Routes (`/api/credit`)
+#### `POST /api/auth/login`
 
-Rate-limited: 5 requests / minute for `/generate`.
-
-#### `POST /api/credit/generate`
-
-Reads Horizon + on-chain events, computes score, writes metrics on-chain, stores in DB.
-
-**Auth:** Required.
-**Response:** Full `ScorePayload` (see Section 3.5).
-**Notes:**
-
-- Calls `buildScoreSummary(stellar_pub)` → `updateOnChainMetrics(...)`.
-- Submits two contract calls in one transaction: `update_metrics_raw` + `update_score`.
-- Stores a `score_events` row.
-
-#### `GET /api/credit/score`
-
-Returns the latest cached score from DB, merged with on-chain state.
-
-**Auth:** Required.
-**Response:** `ScorePayload` with `source: "onchain"`.
-**Notes:**
-
-- Returns `404` if no score has been generated yet.
-- Merges `score_events.score_json` (latest DB snapshot) with live on-chain query (`get_score`, `get_tier`, `get_metrics`, `get_tier_limit`).
-
-#### `GET /api/credit/pool`
-
-Returns current pool balance.
-
-**Response:**
-
-```json
-{ "poolBalance": "100000.00", "poolBalanceRaw": "1000000000000000" }
-```
-
-#### `GET /api/credit/metrics`
-
-Returns raw on-chain metrics from `credit_registry` for the authenticated user.
-
-**Response:** `Metrics` struct as JSON.
-
----
-
-### 3.3 Loan Routes (`/api/loan`)
-
-#### `POST /api/loan/borrow`
-
-Validates borrow eligibility. For Freighter users, returns an unsigned XDR. For internal wallets, submits the transaction directly.
-
-**Auth:** Required.
+**Auth:** None
 
 **Request:**
 
 ```json
-{ "amount": 5000.0 }
+{ "signedChallenge": "<signed XDR from Freighter>" }
 ```
 
-**Response (Freighter user):**
+**Response `200`:**
 
 ```json
 {
-  "requiresSignature": true,
-  "unsignedXdr": "AAAAAQ...",
-  "meta": {
-    "amount": "5000.00",
-    "fee": "75.00",
-    "feeBps": 150,
-    "totalOwed": "5075.00"
+  "token": "<JWT>",
+  "wallet": "G..."
+}
+```
+
+**JWT Payload:**
+
+```json
+{
+  "sub": "G...",
+  "iat": 1700000000,
+  "exp": 1700003600
+}
+```
+
+**Behavior:**
+
+- Verifies Freighter signature against the challenge
+- Issues short-lived JWT (1 hour)
+- No DB write
+- Returns `401` on invalid or expired challenge
+
+---
+
+### 3.3 Credit Routes
+
+All routes require `Authorization: Bearer <JWT>`.
+
+#### `GET /api/credit/score`
+
+**Response `200`:**
+
+```json
+{
+  "score": 95,
+  "tier": 2,
+  "tierLabel": "Silver",
+  "borrowLimit": "20000.00",
+  "feeRate": 3.0,
+  "feeBps": 300,
+  "nextTier": "Gold",
+  "nextTierThreshold": 120,
+  "progressToNext": 25,
+  "formula": {
+    "expression": "score = (txCount×2) + (repaymentCount×10) + (avgBalanceFactor×5) - (defaultCount×25)",
+    "txComponent": 40,
+    "repaymentComponent": 40,
+    "balanceComponent": 15,
+    "defaultPenalty": 0,
+    "total": 95
+  },
+  "metrics": {
+    "txCount": 20,
+    "repaymentCount": 4,
+    "avgBalance": 350,
+    "avgBalanceFactor": 3,
+    "defaultCount": 0
   }
 }
 ```
 
-**Response (internal user, direct submit):**
+**Behavior:**
+
+- Calls `credit_registry.get_score()`, `get_tier()`, `get_metrics()`, `get_tier_limit()` in parallel
+- Returns `404` if wallet has no score (tier = 0 AND score = 0)
+- In-memory cache: 60 seconds per wallet
+
+---
+
+#### `POST /api/credit/generate`
+
+**Response `200`:** Same shape as `GET /api/credit/score`
+
+**Behavior:**
+
+1. Fetch Stellar metrics for wallet (Horizon API)
+2. Compute score via `calculateScore(metrics)`
+3. Call `credit_registry.update_metrics_raw()` + `update_score()` via issuer TX
+4. Return full score payload with fresh on-chain data
+
+**Rate limit:** 1 call per wallet per 60 seconds (prevent RPC spam)
+
+---
+
+#### `POST /api/credit/refresh`
+
+Alias for `POST /api/credit/generate`. Identical behavior.
+
+---
+
+#### `GET /api/credit/pool`
+
+**Response `200`:**
 
 ```json
-{
-  "txHash": "abc...",
-  "amount": "5000.00",
-  "fee": "75.00",
-  "feeBps": 150,
-  "totalOwed": "5075.00",
-  "dueDate": "2026-05-30T...",
-  "explorerUrl": "https://stellar.expert/..."
-}
+{ "poolBalance": "95000.00" }
 ```
 
-**Validation:**
+**Behavior:**
 
-1. `amount` must be a positive finite number.
-2. No active loan exists on-chain.
-3. `score.tier >= 1`.
-4. `toStroops(amount) <= borrowLimitRaw`.
+- Calls `lending_pool.get_pool_balance()` via `simulateTransaction`
+- Returns balance formatted to 2 decimal PHPC
 
-#### `POST /api/loan/repay`
+---
 
-Two-step flow. First call checks allowance and returns approve XDR if needed; second call (after approve is submitted) returns repay XDR.
+### 3.4 Loan Routes
 
-**Auth:** Required.
-
-**Step 1 response (allowance not set):**
-
-```json
-{
-  "requiresSignature": true,
-  "step": "approve",
-  "unsignedXdr": "AAAAAQ...",
-  "meta": { "amountRepaid": "5075.00" }
-}
-```
-
-**Step 2 response (allowance sufficient):**
-
-```json
-{
-  "requiresSignature": true,
-  "step": "repay",
-  "unsignedXdr": "AAAAAQ..."
-}
-```
-
-**Validation:**
-
-1. Loan exists on-chain.
-2. Loan is not already `repaid` or `defaulted`.
-3. Wallet PHPC balance `>= principal + fee` (else `400` with shortfall amount).
+All routes require `Authorization: Bearer <JWT>`.
 
 #### `GET /api/loan/status`
 
-Returns current loan state for the authenticated user.
-
-**Response (active loan):**
+**Response `200`:**
 
 ```json
 {
   "hasActiveLoan": true,
-  "walletPhpBalance": "4000.00",
   "poolBalance": "95000.00",
-  "poolBalanceRaw": "...",
   "loan": {
-    "principal": "5000.00",
-    "fee": "75.00",
-    "totalOwed": "5075.00",
-    "walletBalance": "4000.00",
-    "shortfall": "1075.00",
-    "dueLedger": 12345678,
-    "currentLedger": 12345000,
-    "dueDate": "2026-05-30T...",
-    "daysRemaining": 29,
+    "principal": "500.00",
+    "fee": "25.00",
+    "totalOwed": "525.00",
+    "dueLedger": 5234800,
+    "daysRemaining": 28,
+    "repaid": false,
+    "defaulted": false,
     "status": "active"
   }
 }
 ```
 
-**Loan `status` values:** `active` | `overdue` | `repaid` | `defaulted`
+**Loan status values:** `"active"` | `"repaid"` | `"defaulted"` | `null`
+
+**Behavior:**
+
+- Calls `lending_pool.get_loan(wallet)` and `get_pool_balance()` in parallel
+- `daysRemaining` = `((dueLedger − currentLedger) × 5) / 86400` (5 seconds per ledger)
+- Returns `loan: null` and `hasActiveLoan: false` if no loan exists
 
 ---
 
-### 3.4 Transaction Routes (`/api/tx`)
+#### `POST /api/loan/borrow`
 
-**IMPORTANT:** The frontend must call `/tx/sign-and-submit`, NOT `/loan/sign-and-submit`.
+**Request:**
+
+```json
+{ "amount": 500 }
+```
+
+**Response `200`:**
+
+```json
+{
+  "requiresSignature": true,
+  "unsignedXdr": "<base64-encoded XDR>",
+  "preview": {
+    "amount": "500.00",
+    "fee": "25.00",
+    "totalOwed": "525.00",
+    "feeBps": 500,
+    "tier": 1,
+    "tierLabel": "Bronze"
+  }
+}
+```
+
+**Behavior:**
+
+1. UX pre-check: `hasActiveLoan()` → `400` if true
+2. UX pre-check: `get_tier(wallet)` → `400` if tier = 0
+3. UX pre-check: `poolBalance >= amount` → `400` if false
+4. Validate `amount` is a positive number ≤ `tierLimit`
+5. Build `lending_pool.borrow(wallet, amount_i128)` TX
+6. Call `rpcServer.prepareTransaction()` to simulate and get auth entries
+7. Return unsigned XDR — never sign or submit here
+
+---
+
+#### `POST /api/loan/repay`
+
+**Response `200`:**
+
+```json
+{
+  "requiresSignature": true,
+  "transactions": [
+    {
+      "type": "approve",
+      "unsignedXdr": "<XDR>",
+      "description": "Authorize pool to spend 525.00 PHPC"
+    },
+    {
+      "type": "repay",
+      "unsignedXdr": "<XDR>",
+      "description": "Repay loan principal + fee"
+    }
+  ],
+  "summary": {
+    "principal": "500.00",
+    "fee": "25.00",
+    "totalOwed": "525.00",
+    "walletPhpcBalance": "550.00"
+  }
+}
+```
+
+**Response `422` — Insufficient balance:**
+
+```json
+{
+  "error": "InsufficientBalance",
+  "shortfall": "25.00",
+  "walletBalance": "500.00",
+  "totalOwed": "525.00"
+}
+```
+
+**Behavior:**
+
+1. Get `get_loan(wallet)` — `400` if no active loan
+2. Get `phpc_token.balance(wallet)` — if `balance < totalOwed`, return `422`
+3. Get current ledger — set `approveExpiry = currentLedger + 200`
+4. Build TX 1: `phpc_token.approve(wallet, lendingPool, totalOwed, approveExpiry)`
+5. Build TX 2: `lending_pool.repay(wallet)`
+6. Return both unsigned XDRs
+
+---
+
+### 3.5 Transaction Routes
+
+All routes require `Authorization: Bearer <JWT>`.
 
 #### `POST /api/tx/sign-and-submit`
-
-Takes a signed inner XDR from Freighter, wraps it in a fee-bump, and submits to Soroban.
-
-**Auth:** Required.
 
 **Request:**
 
 ```json
 {
-  "signedInnerXdr": ["AAAAAQ..."],
-  "flow": { "action": "borrow" | "repay", "step": "approve" | "repay" }
+  "signedInnerXdr": ["<signed XDR>"],
+  "flow": { "action": "borrow" }
 }
 ```
 
-**Response (borrow):**
+OR for repay:
 
 ```json
 {
-  "txHash": "abc...",
-  "txHashes": ["abc..."],
-  "explorerUrl": "https://...",
-  "amount": "5000.00",
-  "fee": "75.00",
-  "feeBps": 150,
-  "totalOwed": "5075.00"
+  "signedInnerXdr": ["<approve XDR>", "<repay XDR>"],
+  "flow": { "action": "repay" }
 }
 ```
 
-**Response (repay, step=repay):**
+**Response `200`:**
 
 ```json
 {
-  "txHash": "abc...",
-  "txHashes": ["abc..."],
-  "explorerUrl": "https://...",
-  "amountRepaid": "5075.00",
-  "previousScore": 65,
-  "newScore": 75,
-  "newTier": "Bronze",
-  "newBorrowLimit": "5000.00"
+  "txHash": "abc123...",
+  "explorerUrl": "https://stellar.expert/explorer/testnet/tx/abc123...",
+  "amount": "500.00",
+  "fee": "25.00",
+  "totalOwed": "525.00",
+  "feeBps": 500
 }
 ```
 
-**Side effects (borrow):** Inserts into `active_loans` table. Reads post-confirmation `LoanRecord` to return confirmed fee/amount.
+**Behavior (borrow):**
 
-**Side effects (repay, step=repay):** Deletes from `active_loans` after repayment is observed on-chain. Rebuilds score summary and calls `updateOnChainMetrics`. Inserts `score_events` row.
+1. Deserialize `signedInnerXdr[0]`
+2. Wrap in fee-bump TX signed by issuer
+3. Submit via `rpcServer.sendTransaction()`
+4. Poll until `SUCCESS` or `FAILED`
+5. Return TX hash and metadata
 
-#### `POST /api/tx/submit`
+**Behavior (repay):**
 
-Simpler submit: takes one or more signed XDRs, wraps each in fee-bump, submits. No flow-awareness.
+1. Submit `signedInnerXdr[0]` (approve) as fee-bumped TX, poll to SUCCESS
+2. Only if approve succeeds: submit `signedInnerXdr[1]` (repay) as fee-bumped TX, poll to SUCCESS
+3. Return repay TX hash
+
+**Fee-bump configuration:**
+
+- Base fee: `1000 stroops` per operation (10× network minimum)
+- Outer TX fee-payer: `ISSUER_SECRET_KEY`
 
 ---
 
-### 3.5 Score Payload Schema
+### 3.6 Health Route
+
+#### `GET /health`
+
+**Auth:** None
+
+**Response `200`:**
+
+```json
+{ "status": "ok" }
+```
+
+---
+
+## 4. Frontend
+
+### 4.1 Application Routes
+
+| Route          | Component                  | Auth Required |
+| -------------- | -------------------------- | ------------- |
+| `/`            | `app/page.tsx`             | No            |
+| `/dashboard`   | `app/dashboard/page.tsx`   | Yes           |
+| `/loan/borrow` | `app/loan/borrow/page.tsx` | Yes           |
+| `/loan/repay`  | `app/loan/repay/page.tsx`  | Yes           |
+
+### 4.2 State Management
+
+**Auth Store (`store/auth.ts`):**
 
 ```typescript
-interface ScorePayload {
-  walletAddress: string;
-  source: "generated" | "onchain";
+interface AuthState {
+  user: { wallet: string; token: string } | null;
+  setAuth: (wallet: string, token: string) => void;
+  clearAuth: () => void;
+}
+```
+
+- JWT stored in memory only (not localStorage, not cookie)
+- Cleared on page reload (user must re-authenticate)
+- Cleared on wallet disconnect
+
+**Wallet Store (`store/walletStore.ts`):**
+
+```typescript
+interface WalletState {
+  publicKey: string | null;
+  network: string | null;
+  isConnected: boolean;
+  connectionError: string | null;
+  isCorrectNetwork: boolean; // derived: network === 'TESTNET'
+  connect: () => Promise<void>;
+  disconnect: () => void;
+}
+```
+
+### 4.3 API Client (`lib/api.ts`)
+
+- Axios instance with `baseURL = NEXT_PUBLIC_API_URL`
+- Injects `Authorization: Bearer <token>` from auth store on every request
+- Intercepts `401` responses → calls `clearAuth()` → redirects to `/?session=expired`
+
+### 4.4 Query Keys (`lib/queryKeys.ts`)
+
+```typescript
+const QUERY_KEYS = {
+  score: (wallet: string) => ["score", wallet],
+  loanStatus: (wallet: string) => ["loanStatus", wallet],
+  pool: ["pool"],
+};
+```
+
+### 4.5 Freighter Integration (`lib/freighter.ts`)
+
+```typescript
+async function waitForFreighter(): Promise<boolean>;
+async function getPublicKey(): Promise<string | null>; // silent, no popup
+async function signTx(
+  xdr: string,
+  wallet: string,
+): Promise<{ signedXdr: string } | { error: string }>;
+```
+
+---
+
+## 5. Authentication Protocol
+
+### 5.1 SEP-10 Challenge Flow
+
+```
+Frontend                    Backend                     Freighter
+   │                           │                            │
+   │  POST /auth/challenge      │                            │
+   │  { wallet: "G..." }        │                            │
+   │──────────────────────────▶│                            │
+   │                           │                            │
+   │  { challenge: XDR }       │                            │
+   │◀──────────────────────────│                            │
+   │                           │                            │
+   │  signTransaction(XDR)     │                            │
+   │──────────────────────────────────────────────────────▶│
+   │                           │                            │
+   │  { signedXdr }            │                            │
+   │◀──────────────────────────────────────────────────────│
+   │                           │                            │
+   │  POST /auth/login         │                            │
+   │  { signedChallenge }      │                            │
+   │──────────────────────────▶│                            │
+   │                           │ verify signature           │
+   │                           │ issue JWT                  │
+   │  { token, wallet }        │                            │
+   │◀──────────────────────────│                            │
+```
+
+### 5.2 JWT Specification
+
+| Field         | Value                               |
+| ------------- | ----------------------------------- |
+| Algorithm     | `HS256`                             |
+| Secret        | `JWT_SECRET` env var (min 32 chars) |
+| `sub`         | Stellar public key (G...)           |
+| `iat`         | Unix timestamp (seconds)            |
+| `exp`         | `iat + 3600` (1 hour)               |
+| Custom fields | None                                |
+
+### 5.3 Session Lifecycle
+
+1. JWT issued on successful `POST /auth/login`
+2. JWT stored in Zustand memory store (lost on page reload)
+3. All API requests include `Authorization: Bearer <token>`
+4. Backend middleware validates JWT on every authenticated request
+5. `401` response clears frontend state and redirects to `/?session=expired`
+6. Explicit logout: clears Zustand store, disconnects wallet
+
+---
+
+## 6. Credit Scoring Model
+
+### 6.1 Inputs
+
+All inputs are derived deterministically from on-chain + Horizon data:
+
+| Input            | Source                              | Description                                       |
+| ---------------- | ----------------------------------- | ------------------------------------------------- |
+| `txCount`        | Horizon `/accounts/{id}/operations` | Total operation count (capped at 200)             |
+| `repaymentCount` | `lending_pool` contract events      | Count of `repay()` calls by this address          |
+| `avgBalance`     | Horizon `/accounts/{id}/effects`    | Average XLM balance, rounded to nearest integer   |
+| `defaultCount`   | `lending_pool` contract events      | Count of `mark_default()` events for this address |
+
+### 6.2 Score Formula
+
+```
+avgBalanceFactor = floor(avgBalance / 100)
+
+score = (txCount × 2)
+      + (repaymentCount × 10)
+      + (avgBalanceFactor × 5)
+      - (defaultCount × 25)
+
+score = max(0, score)
+```
+
+**Example:**
+
+```
+txCount = 20, repaymentCount = 4, avgBalance = 350 XLM, defaultCount = 0
+
+avgBalanceFactor = floor(350 / 100) = 3
+score = (20×2) + (4×10) + (3×5) - (0×25)
+score = 40 + 40 + 15 - 0 = 95
+```
+
+### 6.3 Tier Thresholds
+
+| Tier | Name    | Min Score | Borrow Limit | Fee Rate |
+| ---- | ------- | --------- | ------------ | -------- |
+| 0    | Unrated | —         | 0 PHPC       | N/A      |
+| 1    | Bronze  | 40        | 5,000 PHPC   | 5.0%     |
+| 2    | Silver  | 80        | 20,000 PHPC  | 3.0%     |
+| 3    | Gold    | 120       | 50,000 PHPC  | 1.5%     |
+
+### 6.4 Determinism Requirements
+
+- Same `(txCount, repaymentCount, avgBalance, defaultCount)` inputs → same output, always
+- No randomness, no time-based variation in formula
+- Score is recomputable by any party with access to the inputs
+- Formula is displayed verbatim in the dashboard UI
+
+### 6.5 On-Chain Storage
+
+Score and tier are stored in `credit_registry` contract via `update_metrics_raw()` + `update_score()`:
+
+- Only the issuer keypair may write to the registry
+- Any party can read via `get_score()`, `get_tier()`, `get_metrics()`
+- Score update emits a Soroban event (queryable via Horizon)
+
+---
+
+## 7. Transaction Flows
+
+### 7.1 Borrow Flow
+
+```
+Frontend             Backend                  Freighter         Soroban
+   │                    │                        │                 │
+   │ POST /loan/borrow  │                        │                 │
+   │ { amount: 500 }    │                        │                 │
+   │───────────────────▶│                        │                 │
+   │                    │ pre-check: hasActiveLoan, tier, liquidity
+   │                    │ build borrow TX        │                 │
+   │                    │ prepareTransaction     │                 │
+   │                    │───────────────────────────────────────▶│
+   │                    │ { simulatedXdr }       │                 │
+   │                    │◀───────────────────────────────────────│
+   │                    │                        │                 │
+   │ { unsignedXdr }    │                        │                 │
+   │◀───────────────────│                        │                 │
+   │                    │                        │                 │
+   │ signTransaction(unsignedXdr)                │                 │
+   │────────────────────────────────────────────▶│                 │
+   │ { signedXdr }      │                        │                 │
+   │◀────────────────────────────────────────────│                 │
+   │                    │                        │                 │
+   │ POST /tx/sign-and-submit                    │                 │
+   │ { signedInnerXdr, flow: "borrow" }          │                 │
+   │───────────────────▶│                        │                 │
+   │                    │ feebump(signedXdr)     │                 │
+   │                    │ sendTransaction        │                 │
+   │                    │───────────────────────────────────────▶│
+   │                    │ { hash: "PENDING" }    │                 │
+   │                    │ poll(hash) until SUCCESS                  │
+   │                    │◀───────────────────────────────────────│
+   │ { txHash, amount, fee, totalOwed }          │                 │
+   │◀───────────────────│                        │                 │
+```
+
+### 7.2 Repay Flow
+
+```
+Frontend             Backend                  Freighter         Soroban
+   │                    │                        │                 │
+   │ POST /loan/repay   │                        │                 │
+   │───────────────────▶│                        │                 │
+   │                    │ get_loan(wallet): { principal, fee }     │
+   │                    │ phpc.balance(wallet): check shortfall    │
+   │                    │ build TX1: approve(wallet, pool, total)  │
+   │                    │ build TX2: repay(wallet)                 │
+   │ { [approveXdr, repayXdr] }                  │                 │
+   │◀───────────────────│                        │                 │
+   │                    │                        │                 │
+   │ "Step 1: Approve PHPC spend"                │                 │
+   │ signTransaction(approveXdr)                 │                 │
+   │────────────────────────────────────────────▶│                 │
+   │ { signedApproveXdr }                        │                 │
+   │◀────────────────────────────────────────────│                 │
+   │                    │                        │                 │
+   │ "Step 2: Confirm Repayment"                 │                 │
+   │ signTransaction(repayXdr)                   │                 │
+   │────────────────────────────────────────────▶│                 │
+   │ { signedRepayXdr } │                        │                 │
+   │◀────────────────────────────────────────────│                 │
+   │                    │                        │                 │
+   │ POST /tx/sign-and-submit                    │                 │
+   │ { signedInnerXdr: [approve, repay], "repay"}│                 │
+   │───────────────────▶│                        │                 │
+   │                    │ feebump+submit approveXdr → poll SUCCESS │
+   │                    │ feebump+submit repayXdr → poll SUCCESS   │
+   │                    │◀───────────────────────────────────────│
+   │ { txHash }         │                        │                 │
+   │◀───────────────────│                        │                 │
+   │ trigger score refresh                       │                 │
+```
+
+### 7.3 Score Generation Flow
+
+```
+Frontend             Backend                  Horizon           Soroban
+   │                    │                        │                 │
+   │ POST /credit/generate                       │                 │
+   │───────────────────▶│                        │                 │
+   │                    │ GET /accounts/{id}/operations            │
+   │                    │───────────────────────▶│                 │
+   │                    │ txCount, effects       │                 │
+   │                    │◀───────────────────────│                 │
+   │                    │ query lending_pool events (repayCount, defaultCount)
+   │                    │─────────────────────────────────────────▶│
+   │                    │ calculateScore(metrics)                   │
+   │                    │ update_metrics_raw(wallet, ...) [issuer signs]
+   │                    │─────────────────────────────────────────▶│
+   │                    │ update_score(wallet) [issuer signs]       │
+   │                    │─────────────────────────────────────────▶│
+   │                    │ getOnChainCreditSnapshot(wallet)          │
+   │                    │─────────────────────────────────────────▶│
+   │ { score, tier, metrics, formula }           │                 │
+   │◀───────────────────│                        │                 │
+```
+
+---
+
+## 8. Data Models
+
+### 8.1 API Response Types
+
+**`ScoreResponse`** (returned by `GET /credit/score` and `POST /credit/generate`):
+
+```typescript
+interface ScoreResponse {
   score: number;
   tier: number; // 0–3
-  tierNumeric: number; // alias of tier
   tierLabel: string; // "Unrated" | "Bronze" | "Silver" | "Gold"
-  borrowLimit: string; // PHP string e.g. "5000.00"
-  borrowLimitRaw: string; // stroops as string
-  feeRate: number; // decimal e.g. 1.5 (percent)
-  feeBps: number; // basis points e.g. 150
+  borrowLimit: string; // "5000.00" formatted PHPC
+  feeRate: number; // 5.0 (percent)
+  feeBps: number; // 500
+  nextTier: string | null; // "Silver" or null if Gold
+  nextTierThreshold: number | null;
   progressToNext: number; // points needed to reach next tier
-  nextTier: string | null; // e.g. "Silver"
-  nextTierThreshold: number | null; // e.g. 80
-  metrics: {
-    txCount: number;
-    repaymentCount: number;
-    avgBalance: number; // XLM native balance in whole units (NOT PHPC)
-    avgBalanceFactor: number; // min(avgBalance / 100, 10)
-    defaultCount: number;
-  };
   formula: {
     expression: string;
     txComponent: number;
@@ -545,298 +948,230 @@ interface ScorePayload {
     defaultPenalty: number;
     total: number;
   };
-  factors: ScoreFactor[];
-  txHashes: { metricsTxHash?: string; scoreTxHash?: string };
+  metrics: {
+    txCount: number;
+    repaymentCount: number;
+    avgBalance: number; // XLM
+    avgBalanceFactor: number; // floor(avgBalance / 100)
+    defaultCount: number;
+  };
+}
+```
+
+**`LoanStatusResponse`** (returned by `GET /loan/status`):
+
+```typescript
+interface LoanStatusResponse {
+  hasActiveLoan: boolean;
+  poolBalance: string; // "95000.00"
+  loan: {
+    principal: string; // "500.00"
+    fee: string; // "25.00"
+    totalOwed: string; // "525.00"
+    dueLedger: number;
+    daysRemaining: number;
+    repaid: boolean;
+    defaulted: boolean;
+    status: "active" | "repaid" | "defaulted";
+  } | null;
+}
+```
+
+### 8.2 Internal Types
+
+**`WalletMetrics`** (scoring engine input):
+
+```typescript
+interface WalletMetrics {
+  txCount: number;
+  repaymentCount: number;
+  avgBalance: number;
+  defaultCount: number;
+}
+```
+
+**`LoanState`** (contract query result):
+
+```typescript
+interface LoanState {
+  principal: bigint; // 7-decimal i128
+  fee: bigint;
+  dueLedger: number;
+  repaid: boolean;
+  defaulted: boolean;
+}
+```
+
+### 8.3 JWT Payload
+
+```typescript
+interface JwtPayload {
+  sub: string; // Stellar public key G...
+  iat: number; // issued at (Unix seconds)
+  exp: number; // expires at (iat + 3600)
 }
 ```
 
 ---
 
-## 4. Data Flow: Full Borrow Cycle
+## 9. Error Handling
 
-```
-User                   Frontend                Backend               Soroban
- │                        │                       │                     │
- │──── Connect Wallet ────▶│                       │                     │
- │                        │── POST /auth/challenge ▶│                    │
- │                        │◀── challengeXdr ────────│                    │
- │                        │── Freighter sign ──────▶│ (popup)            │
- │                        │── POST /auth/login ─────▶│                   │
- │                        │◀── JWT token ───────────│                    │
- │                        │                         │                    │
- │──── Dashboard ─────────▶│                        │                    │
- │                        │── POST /credit/generate ▶│                   │
- │                        │                         │── Horizon txCount ─▶│
- │                        │                         │◀── tx history ──────│
- │                        │                         │── update_metrics_raw▶│
- │                        │                         │◀── tx confirmed ─────│
- │                        │◀── ScorePayload ─────────│                    │
- │                        │                         │                    │
- │──── Click Borrow ──────▶│                        │                    │
- │                        │── POST /loan/borrow ─────▶│                  │
- │                        │                         │── buildScoreSummary│
- │                        │                         │── prepareTransaction▶│
- │                        │◀── unsignedXdr ──────────│                   │
- │                        │── Freighter signTx ─────▶│ (popup)           │
- │                        │── POST /tx/sign-and-submit▶│                 │
- │                        │                         │── feeBumpTx ───────▶│
- │                        │                         │── pollTransaction ──▶│
- │                        │                         │◀── SUCCESS ──────────│
- │                        │                         │── getLoanRecord ────▶│
- │                        │◀── BorrowSuccess ────────│                    │
- │◀─── Success UI ─────────│                        │                    │
+### 9.1 HTTP Status Codes
+
+| Status | When Used                                        |
+| ------ | ------------------------------------------------ |
+| `200`  | Success                                          |
+| `400`  | Bad request (invalid input, UX pre-check failed) |
+| `401`  | Unauthorized (missing/invalid/expired JWT)       |
+| `404`  | Resource not found (no score for wallet)         |
+| `422`  | Unprocessable entity (PHPC balance shortfall)    |
+| `429`  | Rate limit exceeded                              |
+| `500`  | Unexpected server error                          |
+| `503`  | RPC unavailable / TRY_AGAIN_LATER exhausted      |
+
+### 9.2 Error Response Shape
+
+```json
+{ "error": "<human readable message>" }
 ```
 
----
+For `422` shortfall:
 
-## 5. Data Flow: Full Repay Cycle
-
-```
-User                   Frontend                Backend               Soroban
- │                        │                       │                     │
- │──── Click Repay ───────▶│                       │                    │
- │                        │── POST /loan/repay ─────▶│                  │
- │                        │                         │── getLoanRecord ──▶│
- │                        │                         │── getWalletBalance▶│
- │                        │                         │── checkAllowance ──▶│
- │                        │◀── { step:"approve", unsignedXdr } ──────────│
- │                        │── Freighter signTx ─────▶│ (popup: approve) │
- │                        │── POST /tx/sign-and-submit▶│                 │
- │                        │    { flow: { step:"approve" } }              │
- │                        │                         │── feeBumpTx ───────▶│
- │                        │                         │── pollTransaction ──▶│
- │                        │◀── { txHash } ───────────│                   │
- │                        │                         │                    │
- │                        │── POST /loan/repay ─────▶│                  │
- │                        │                         │── checkAllowance ──▶│
- │                        │◀── { step:"repay", unsignedXdr } ────────────│
- │                        │── Freighter signTx ─────▶│ (popup: repay)   │
- │                        │── POST /tx/sign-and-submit▶│                 │
- │                        │    { flow: { action:"repay", step:"repay" } }│
- │                        │                         │── feeBumpTx ───────▶│
- │                        │                         │── pollTransaction ──▶│
- │                        │                         │── sleep(6s) ────────│
- │                        │                         │── buildScoreSummary▶│
- │                        │                         │── updateOnChainMetrics▶│
- │                        │◀── RepaySuccess ─────────│                   │
- │◀─── Success UI ─────────│                        │                    │
-```
-
----
-
-## 6. Fee Structure
-
-| Tier | Label   | `tierFeeBps` (backend) | Contract `tier_fee_bps(flat=500, tier)` |
-| ---- | ------- | ---------------------- | --------------------------------------- |
-| 0    | Unrated | 500                    | N/A (cannot borrow)                     |
-| 1    | Bronze  | 500                    | 500                                     |
-| 2    | Silver  | 300                    | 300                                     |
-| 3    | Gold    | 150                    | 150                                     |
-
-**Both layers are consistent.** The contract calculates: `fee = amount × effective_fee_bps / 10_000`.
-
-**Example:** Borrow 5,000 PHPC at Tier 1:
-
-- `fee = 5,000 × 500 / 10,000 = 250 PHPC`
-- `total_owed = 5,250 PHPC`
-- The user must hold 5,250 PHPC in their wallet before calling repay.
-
----
-
-## 7. Database Schema (SQLite)
-
-### `users`
-
-```sql
-CREATE TABLE users (
-  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-  email              TEXT UNIQUE NOT NULL,       -- synthetic for Freighter users
-  stellar_pub        TEXT UNIQUE NOT NULL,
-  stellar_enc_secret TEXT,                       -- NULL for external (Freighter) users
-  is_external        BOOLEAN NOT NULL DEFAULT 0, -- 1 for Freighter users
-  email_verified     BOOLEAN NOT NULL DEFAULT 0,
-  otp_hash           TEXT,
-  otp_expires_at     DATETIME,
-  otp_attempt_count  INTEGER NOT NULL DEFAULT 0,
-  otp_locked_until   DATETIME,
-  last_login_at      DATETIME,
-  created_at         DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### `auth_challenges`
-
-```sql
-CREATE TABLE auth_challenges (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  stellar_pub    TEXT NOT NULL,
-  challenge_hash TEXT NOT NULL UNIQUE,
-  expires_at     DATETIME NOT NULL,              -- 5 minutes from creation
-  created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### `score_events`
-
-```sql
-CREATE TABLE score_events (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id         INTEGER NOT NULL REFERENCES users(id),
-  tier            INTEGER NOT NULL,
-  score           INTEGER NOT NULL,
-  bootstrap_score INTEGER NOT NULL DEFAULT 0,
-  stellar_score   INTEGER NOT NULL DEFAULT 0,
-  score_json      TEXT NOT NULL,                 -- full ScorePayload JSON
-  sbt_minted      BOOLEAN NOT NULL DEFAULT 0,
-  sbt_tx_hash     TEXT,
-  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### `active_loans`
-
-```sql
-CREATE TABLE active_loans (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id     INTEGER NOT NULL REFERENCES users(id),
-  stellar_pub TEXT NOT NULL UNIQUE,
-  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-);
--- Unique index on user_id (one active loan per user)
-```
-
-### `bootstrap_assessments`
-
-Currently unused in the live flow (legacy from earlier design). No writes in current route code.
-
----
-
-## 8. Environment Variables
-
-### Backend (`.env`)
-
-| Variable              | Required | Default                               | Description                            |
-| --------------------- | -------- | ------------------------------------- | -------------------------------------- |
-| `JWT_SECRET`          | ✅       | —                                     | HS256 JWT signing secret               |
-| `ENCRYPTION_KEY`      | ✅       | —                                     | 64-char hex (32 bytes) for AES-256-GCM |
-| `ISSUER_SECRET_KEY`   | ✅       | —                                     | Issuer Stellar keypair secret          |
-| `WEB_AUTH_SECRET_KEY` | —        | `ISSUER_SECRET_KEY`                   | SEP-10 challenge signing keypair       |
-| `PHPC_ID`             | ✅       | —                                     | PHPC token contract ID                 |
-| `REGISTRY_ID`         | ✅       | —                                     | credit_registry contract ID            |
-| `LENDING_POOL_ID`     | ✅       | —                                     | lending_pool contract ID               |
-| `HORIZON_URL`         | —        | `https://horizon-testnet.stellar.org` | Horizon endpoint                       |
-| `SOROBAN_RPC_URL`     | —        | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint                   |
-| `NETWORK_PASSPHRASE`  | —        | Testnet passphrase                    | Stellar network passphrase             |
-| `HOME_DOMAIN`         | —        | `localhost`                           | SEP-10 home domain                     |
-| `WEB_AUTH_DOMAIN`     | —        | `localhost:3001`                      | SEP-10 WebAuth domain                  |
-| `CORS_ORIGIN`         | —        | `http://localhost:3000`               | Comma-separated allowed origins        |
-| `PORT`                | —        | `3001`                                | Backend listen port                    |
-| `DATABASE_PATH`       | —        | `../kredito.db`                       | SQLite file path                       |
-
-### Frontend (`.env.local`)
-
-| Variable              | Required | Default                      | Description          |
-| --------------------- | -------- | ---------------------------- | -------------------- |
-| `NEXT_PUBLIC_API_URL` | —        | `http://localhost:3001/api/` | Backend API base URL |
-
----
-
-## 9. Fee Bump Transaction Model
-
-For all external (Freighter) user transactions:
-
-1. Backend calls `buildUnsignedContractCall(userPublicKey, contractId, fn, args)`:
-   - Gets user account from RPC.
-   - Builds a `Transaction` with `invokeHostFunction` op.
-   - Calls `rpcServer.prepareTransaction(tx)` (simulates and attaches auth footprint).
-   - Returns XDR of the unsigned, prepared transaction.
-
-2. Frontend calls `signTx(xdr, userAddress)` via Freighter:
-   - Freighter signs the inner transaction as the user.
-   - Returns `signedXdr`.
-
-3. Frontend calls `POST /tx/sign-and-submit` with `signedXdr`.
-
-4. Backend calls `submitSponsoredSignedXdr(signedXdr)`:
-   - Deserializes the signed inner transaction.
-   - Wraps it in a `FeeBumpTransaction` where the issuer pays the fee (`1,000,000 stroops`).
-   - Submits the fee-bump to Soroban RPC.
-   - Polls `rpcServer.getTransaction(hash)` until `SUCCESS` or `FAILED` (60 s timeout).
-   - Returns `txHash`.
-
----
-
-## 10. Cron Jobs
-
-### Default Monitor (`0 */6 * * *` — every 6 hours)
-
-- Reads all rows from `active_loans`.
-- For each, queries `get_loan` on-chain.
-- If `loan.repaid || loan.defaulted` → deletes from `active_loans`.
-- If `currentLedger > loan.due_ledger` → calls `markLoanDefaulted` on-chain, refreshes score, inserts `score_events`, deletes from `active_loans`.
-
-### Loan Reconciliation (`0 */2 * * *` — every 2 hours)
-
-- Queries all users from DB.
-- For each, queries `get_loan` on-chain.
-- If loan exists and is active → `INSERT OR IGNORE INTO active_loans`.
-- Ensures `active_loans` stays in sync even if a row was missed.
-
----
-
-## 11. Frontend State Management
-
-### `useAuthStore` (Zustand + persist)
-
-```typescript
-{ token: string | null; user: { wallet: string; isExternal: boolean } | null }
-```
-
-- Persists to `localStorage` under key `"kredito-auth"`.
-- Cleared on `401` response (via `api.ts` interceptor).
-
-### `useWalletStore` (Zustand, no persist)
-
-```typescript
+```json
 {
-  (isConnected,
-    publicKey,
-    network,
-    networkPassphrase,
-    isConnecting,
-    connectionError);
+  "error": "InsufficientBalance",
+  "shortfall": "25.00",
+  "walletBalance": "500.00",
+  "totalOwed": "525.00"
 }
 ```
 
-- Session-only; restored on mount by `WalletProvider` via `restoreSession()`.
-- Restoration reads `localStorage.kredito_wallet_connected` flag, then calls `requestAccess()` to silently get the address.
+### 9.3 Soroban Error Code Mapping
 
-### TanStack Query Cache Keys
+| Contract          | Code  | Backend Message                                   |
+| ----------------- | ----- | ------------------------------------------------- |
+| `lending_pool`    | `#5`  | Amount must be greater than zero                  |
+| `lending_pool`    | `#7`  | You already have an active loan                   |
+| `lending_pool`    | `#8`  | No credit score found — generate a score first    |
+| `lending_pool`    | `#9`  | Amount exceeds your current tier limit            |
+| `lending_pool`    | `#10` | Insufficient pool liquidity                       |
+| `lending_pool`    | `#15` | This loan has been defaulted and cannot be repaid |
+| `lending_pool`    | `#16` | This loan is overdue and cannot be repaid         |
+| `credit_registry` | `#5`  | Invalid tier value                                |
+| `credit_registry` | `#6`  | Credit scores are non-transferable                |
+| `phpc_token`      | `#8`  | Insufficient PHPC balance                         |
+| `phpc_token`      | `#9`  | Insufficient PHPC allowance                       |
 
-```typescript
-QUERY_KEYS.score(wallet); // ['score', wallet]
-QUERY_KEYS.pool; // ['pool']
-QUERY_KEYS.loanStatus(wallet); // ['loan-status', wallet]
-```
+### 9.4 RPC Error Handling
 
-- `staleTime: 5 * 60 * 1000` for score, `30 * 1000` for loan/pool.
-- Invalidated after borrow and repay to force a fresh read.
+| RPC Status        | Backend Behavior                      |
+| ----------------- | ------------------------------------- |
+| `PENDING`         | Begin polling                         |
+| `TRY_AGAIN_LATER` | Retry up to 3 times with 2s backoff   |
+| `FAILED`          | Decode `resultXdr`, map to user error |
+| `EXCEPTION`       | Return `503`                          |
+| `SUCCESS`         | Return `txHash`                       |
 
 ---
 
-## 12. Recommended Fixes by Priority (Cross-Reference to TODO)
+## 10. Environment Configuration
 
-| TODO ID | Files                                 | Change Summary                                                  |
-| ------- | ------------------------------------- | --------------------------------------------------------------- |
-| P0-1    | `borrow/page.tsx`, `repay/page.tsx`   | Change 4× `/loan/sign-and-submit` → `/tx/sign-and-submit`       |
-| P0-2    | `frontend/lib/api.ts`                 | `timeout: 15000` → `timeout: 90000`                             |
-| P0-3    | `frontend/next.config.ts`             | Add `${NEXT_PUBLIC_API_URL origin}` to CSP `connect-src`        |
-| P1-1    | `dashboard/page.tsx`                  | "PHPC" → "XLM" for avgBalance label                             |
-| P1-3    | `backend/src/cron.ts`                 | Add startup reconciliation pass                                 |
-| P1-4    | `backend/src/routes/tx.ts`, `loan.ts` | Replace `setTimeout(6000)` with retry-loop on `get_loan.repaid` |
-| P1-5    | `frontend/app/page.tsx`               | Handle `?session=expired` query param                           |
-| P2-5    | `backend/package.json`                | Remove `resend`, `bcrypt` dependencies                          |
-| P2-6    | All backend routes                    | Define `DbUser` type, replace `any` cast                        |
-| P3-1    | `contracts/lending_pool/src/lib.rs`   | Add `pub fn get_flat_fee_bps(env: Env) -> u32`                  |
-| P3-2    | All three contracts                   | Add `extend_ttl` calls on persistent/instance storage mutations |
-| P3-3    | `contracts/lending_pool/src/lib.rs`   | Add `admin_withdraw(env, amount)` function                      |
+### 10.1 Backend `.env`
+
+```env
+# Auth
+JWT_SECRET=<min 32 char random string>
+
+# Stellar
+ISSUER_SECRET_KEY=<funded Stellar secret key S...>
+WEB_AUTH_SECRET_KEY=<may be same as ISSUER_SECRET_KEY>
+
+# Network
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+HORIZON_URL=https://horizon-testnet.stellar.org
+NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+
+# Contracts
+REGISTRY_ID=CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ
+LENDING_POOL_ID=CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH
+PHPC_ID=CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR
+
+# Server
+PORT=3001
+HOME_DOMAIN=localhost
+WEB_AUTH_DOMAIN=localhost:3001
+CORS_ORIGIN=http://localhost:3000
+```
+
+**Removed in v2 (no longer needed):**
+
+- `ENCRYPTION_KEY` — DB encryption, no longer applicable
+- No SQLite path — no DB
+
+### 10.2 Frontend `.env.local`
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001/api
+NEXT_PUBLIC_NETWORK=testnet
+NEXT_PUBLIC_EXPLORER_URL=https://stellar.expert/explorer/testnet
+```
+
+### 10.3 Config Validation (Backend Startup)
+
+The backend must validate the following on startup and exit with a clear error if any are missing:
+
+```typescript
+const REQUIRED_VARS = [
+  "JWT_SECRET",
+  "ISSUER_SECRET_KEY",
+  "SOROBAN_RPC_URL",
+  "HORIZON_URL",
+  "NETWORK_PASSPHRASE",
+  "REGISTRY_ID",
+  "LENDING_POOL_ID",
+  "PHPC_ID",
+];
+```
+
+---
+
+## 11. Invariants & Constraints
+
+These invariants must hold at all times. Any code change that violates them is a bug.
+
+### 11.1 On-Chain Invariants (enforced by contracts)
+
+1. **Single-loan rule:** `lending_pool` allows at most one active (non-repaid, non-defaulted) loan per wallet address.
+2. **Tier enforcement:** A wallet with `tier = 0` cannot borrow. Enforced by `borrow()` checking `credit_registry.get_tier()`.
+3. **Limit enforcement:** Borrow amount ≤ `credit_registry.get_tier_limit(tier)`. Enforced by `borrow()`.
+4. **Liquidity enforcement:** Borrow amount ≤ `get_pool_balance()`. Enforced by `borrow()`.
+5. **Non-transferability:** Credit scores (SBT semantics) are non-transferable. `transfer()` always panics.
+6. **Repayment deadline:** `repay()` panics if `current_ledger > due_ledger`.
+7. **Default finality:** A defaulted loan cannot be repaid. `repay()` panics if `loan.defaulted`.
+
+### 11.2 Backend Invariants
+
+1. **No state persistence:** The backend holds no state between requests. Any data needed must come from the chain or the request itself.
+2. **Wallet = identity:** `req.wallet` (from JWT `sub`) is the only identity in all route handlers.
+3. **No double-signing:** Backend never signs a user transaction. Only fee-bump outer TXs are signed by the issuer.
+4. **Pre-checks are non-authoritative:** Backend UX pre-checks (hasActiveLoan, tier check) are convenience only. The contract is the enforcement layer.
+5. **Fee-bump required:** Every user-signed inner TX must be submitted as the inner TX of a fee-bump. Never submit raw inner TXs.
+
+### 11.3 Frontend Invariants
+
+1. **JWT in memory only:** Never persist JWT in localStorage, sessionStorage, or cookies.
+2. **Wallet state from Freighter only:** Never construct or assume a wallet address — always read from Freighter.
+3. **No phantom state:** All displayed values (score, loan, balance) must be traceable to a contract query or a backend endpoint backed by a contract query.
+4. **Signing is explicit:** User must explicitly click to sign. Never trigger Freighter silently for a TX.
+
+### 11.4 Security Constraints
+
+1. `ISSUER_SECRET_KEY` never appears in any response, log, or error message.
+2. JWT secret is at minimum 32 characters and generated with a CSPRNG.
+3. Challenge TTL is enforced server-side (5 minutes). Replayed challenges are rejected.
+4. All CORS origins are explicitly whitelisted — no wildcard in production.
+5. Rate limiting on `POST /auth/challenge` and `POST /credit/generate` (prevents RPC abuse).
+
+---
+
+_End of SPEC.md_
