@@ -17,7 +17,7 @@ export default function NotFound() {
         <h1 className="text-4xl font-extrabold mb-4">404</h1>
         <h2 className="text-xl font-bold mb-2">Page not found</h2>
         <p className="text-sm max-w-xs mx-auto mb-10" style={{ color: 'var(--color-text-secondary)' }}>
-          The path you're looking for doesn't exist or has been moved within the Credit Passport system.
+          The path you&apos;re looking for doesn&apos;t exist or has been moved within the Credit Passport system.
         </p>
 
         <Link 

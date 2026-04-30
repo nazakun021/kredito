@@ -127,6 +127,7 @@ export const useWalletStore = create<WalletState>((set) => ({
         localStorage.removeItem('kredito_wallet_connected');
       }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Failed to restore wallet session:', err);
     }
   }

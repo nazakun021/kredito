@@ -27,7 +27,7 @@ export default function Error({
       
       <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
       <p className="text-sm max-w-xs mx-auto mb-8" style={{ color: 'var(--color-text-secondary)' }}>
-        We couldn't load your dashboard data. This might be a transient network issue.
+        We couldn&apos;t load your dashboard data. This might be a transient network issue.
       </p>
 
       <button
