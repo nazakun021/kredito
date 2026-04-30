@@ -7,7 +7,7 @@ export interface AuthRequest extends Request {
   wallet: string;
 }
 
-export function authMiddleware(req: any, _res: Response, next: NextFunction) {
+export function authMiddleware(req: AuthRequest, _res: Response, next: NextFunction) {
   // Authorization header only
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
 

@@ -14,6 +14,7 @@ import authRoutes from './routes/auth';
 import creditRoutes from './routes/credit';
 import loanRoutes from './routes/loan';
 import txRoutes from './routes/tx';
+import { AuthRequest } from './middleware/auth';
 import { rpcServer, horizonServer, issuerKeypair } from './stellar/client';
 
 const app = express();
@@ -45,7 +46,7 @@ app.use(
     customProps: (req, _res) => ({
       // Log path instead of full url to avoid leaking query params
       path: req.url.split('?')[0],
-      wallet: (req as any).wallet,
+      wallet: (req as AuthRequest).wallet,
     }),
     autoLogging: {
       ignore: (req) => req.url.startsWith('/health'),

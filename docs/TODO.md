@@ -1,262 +1,205 @@
-# 🚨 Remaining Issues (Real Bugs)
+Good — this is exactly the right next move. I’m going to convert your SPEC into a **clean, FAANG-style PR plan** that you can actually execute step-by-step without breaking the system.
 
-## ❌ 1. You STILL have hidden state in `tx.ts`
+This is structured to:
 
-File:
+- minimize regressions
+- keep the system runnable at every step
+- isolate risk per PR
+
+---
+
+# 📦 Kredito — Implementation PR Plan
+
+## 🧠 Strategy
+
+We will NOT “big bang” refactor.
+
+Instead:
+
+> **Each PR = one invariant enforced**
+
+Order matters. Follow this exactly.
+
+---
+
+# 🔴 PHASE 1 — Remove Hidden State (Critical Foundation)
+
+## ✅ PR #1 — Remove Borrower Memory بالكامل
+
+### 🎯 Goal
+
+Eliminate `borrowers.ts` and all memory-based tracking.
+
+---
+
+### 🔧 Changes
+
+#### 1. Delete file:
+
+```
+backend/src/borrowers.ts
+```
+
+---
+
+#### 2. Remove imports from:
 
 ```
 backend/src/routes/tx.ts
 ```
 
-You are still doing:
-
 ```ts
-import { addActiveBorrower, removeActiveBorrower } from "../borrowers";
+❌ remove:
+import { addActiveBorrower, removeActiveBorrower } from '../borrowers';
 ```
-
-👉 That file still exists:
-
-```ts
-const activeBorrowers = new Set<string>();
-```
-
-### Why this is bad (still):
-
-- Violates your own stateless spec
-- Causes divergence from chain
-- Will break under:
-  - multi-instance deploy
-  - restart
-  - partial TX failures
-
-👉 Even worse:
-Your **admin route no longer uses it**, but **tx.ts still mutates it**
-
-→ That creates **split-brain state**
 
 ---
 
-## ❌ 2. `discoverBorrowersFromChain()` is a black box risk
-
-From your implementation:
+#### 3. Remove ALL usages:
 
 ```ts
-const { borrowers, latestLedger, oldestLedger, usedDevFallback } =
-  await discoverBorrowersFromChain();
+❌ delete:
+addActiveBorrower(...)
+removeActiveBorrower(...)
 ```
 
-### Problem:
+---
 
-We don’t see its implementation, but you expose:
+### ⚠️ Expected Breakage
+
+- None (if admin already uses chain)
+- If something breaks → you had hidden dependency (fix it, don’t revert)
+
+---
+
+### ✅ Acceptance Criteria
+
+- [x] Project compiles
+- [x] Borrow flow still submits TX
+- [x] Repay flow still works
+- [x] No references to `borrowers.ts`
+
+---
+
+---
+
+# 🔴 PHASE 2 — Enforce On-Chain Truth
+
+## ✅ PR #2 — Enforce Single Loan Rule (Backend)
+
+### 🎯 Goal
+
+Prevent duplicate loans at backend level.
+
+---
+
+### 🔧 Changes
+
+#### In:
+
+```
+backend/src/routes/tx.ts
+```
+
+Before borrow TX:
 
 ```ts
+const hasLoan = await hasActiveLoan(wallet);
+
+if (hasLoan) {
+  return res.status(400).json({
+    error: "ACTIVE_LOAN_EXISTS",
+  });
+}
+```
+
+---
+
+### ✅ Acceptance Criteria
+
+- [x] Cannot borrow twice via API
+- [x] Works even if frontend is bypassed
+
+---
+
+---
+
+# 🔴 PHASE 3 — Fix Borrower Discovery
+
+## ✅ PR #3 — Remove Dev Fallback بالكامل
+
+### 🎯 Goal
+
+Make borrower discovery **chain-pure**
+
+---
+
+### 🔧 Changes
+
+#### In:
+
+```
+discoverBorrowersFromChain.ts
+```
+
+---
+
+### ❌ REMOVE:
+
+```ts
+config.devKnownBorrowers;
 usedDevFallback;
 ```
 
-### 🚨 This is a red flag
-
-It means:
-
-- Sometimes you're NOT using real on-chain data
-- You might be using:
-  - hardcoded wallets
-  - partial logs
-  - incomplete indexing
-
-### Consequence:
-
-- You will **miss defaults**
-- Or worse → **default wrong users**
-
 ---
 
-## ❌ 3. No concurrency protection in admin sweep
-
-Current logic:
+### ✅ ADD:
 
 ```ts
-for (const loan of loans) {
-  await buildAndSubmitFeeBump(...)
+if (process.env.NODE_ENV === "production" && usedDevFallback) {
+  throw new Error("Fallback borrower discovery is forbidden in production");
 }
 ```
 
-### Problem:
+---
 
-- Sequential execution → slow
-- BUT ALSO:
-- No lock / dedupe / retry strategy
+### 🧠 If no event indexing exists:
 
-### Race condition:
+Temporary:
 
-If:
-
-- 2 admin calls run simultaneously
-
-You get:
-
-- duplicate submissions
-- noisy failures
-
-Even if contract protects, backend becomes unreliable
+- allow fallback ONLY in dev
+- log warning loudly
 
 ---
 
-## ❌ 4. No pre-check before `mark_default`
+### ✅ Acceptance Criteria
 
-You rely purely on:
+- [x] No hardcoded borrowers used in production
+- [x] Only chain-derived wallets used
 
-```ts
-loan.due_ledger < latestLedger;
+---
+
+---
+
+# 🟡 PHASE 4 — Make Admin Idempotent & Safe
+
+## ✅ PR #4 — Add Pre-Check Before Default
+
+### 🎯 Goal
+
+Prevent race condition with repay
+
+---
+
+### 🔧 Changes
+
+#### In:
+
+```
+admin.ts
 ```
 
-### Missing:
-
-- Re-fetch before submit
-- Confirm state hasn’t changed
-
-### Race scenario:
-
-1. Loan is overdue
-2. User repays
-3. Admin sweep still submits default
-
-→ Contract MAY reject, but:
-
-- you waste gas
-- logs become noisy
-
----
-
-## ❌ 5. TX flow does NOT enforce single-loan precondition
-
-You have:
-
-```ts
-getLoanFromChain;
-waitForLoanRepayment;
-```
-
-BUT I do NOT see:
-
-```ts
-hasActiveLoan(wallet);
-```
-
-being enforced before borrow
-
-👉 You defined it:
-
-```ts
-export async function hasActiveLoan(walletAddress: string);
-```
-
-…but not guaranteed used in route
-
-### Risk:
-
-- frontend bypass
-- direct API call
-- duplicate borrow attempts
-
----
-
-## ❌ 6. No timeout / retry strategy for fee bump TX
-
-From your TX layer:
-
-```ts
-await pollTransaction(response.hash);
-```
-
-### Missing:
-
-- max timeout
-- retry logic
-- circuit breaker
-
-### Result:
-
-- stuck requests
-- hanging API calls
-- degraded UX
-
----
-
-## ❌ 7. Score cache introduces soft state
-
-File:
-
-```ts
-const scoreCache = new Map<string, ...>();
-```
-
-### Problem:
-
-- This is still **in-memory state**
-- Violates strict stateless backend
-
-### Impact:
-
-- Not critical (short TTL)
-- But:
-  - inconsistent UX across instances
-  - debugging nightmare
-
----
-
-# 📄 NEW TODO.md (ONLY REMAINING FIXES)
-
----
-
-````markdown
-# 📄 TODO.md — Kredito Final Stabilization Pass
-
-## 🧠 Context
-
-System is mostly correct:
-
-- ✅ Stateless loan tracking (admin fixed)
-- ✅ On-chain source of truth
-- ❌ BUT still has hidden state + race conditions
-
----
-
-# 🔴 CRITICAL FIXES
-
-## 1. REMOVE borrower state بالكامل
-
-### Delete:
-
-- backend/src/borrowers.ts
-
-### Remove ALL usages from:
-
-- routes/tx.ts
-
-### Replace with:
-
-- NO replacement (chain is source of truth)
-
----
-
-## 2. Enforce Single Loan Rule in TX Flow
-
-### In borrow endpoint:
-
-Before submitting TX:
-
-```ts
-if (await hasActiveLoan(wallet)) {
-  throw new Error("Active loan already exists");
-}
-```
-````
-
----
-
-## 3. Fix Admin Race Conditions
-
-### Add pre-check before submit:
+Before `mark_default`:
 
 ```ts
 const latestLoan = await getLoanFromChain(wallet);
@@ -268,132 +211,292 @@ if (!latestLoan || latestLoan.repaid || latestLoan.defaulted) {
 
 ---
 
-## 4. Add Idempotent Admin Execution
+### ✅ Acceptance Criteria
 
-### Wrap TX call:
-
-- Retry only on transient errors
-- Ignore:
-  - LoanAlreadyDefaulted
-  - LoanNotOverdue
+- [x] No default triggered after repayment
+- [x] No unnecessary TX submission
 
 ---
 
-## 5. Add Concurrency Control
+---
 
-### Replace:
+## ✅ PR #5 — Add Idempotent Error Handling
 
-```ts
-for (...) await ...
-```
+### 🎯 Goal
 
-### With:
-
-```ts
-await Promise.allSettled(loans.map(processLoan));
-```
-
-AND limit concurrency (p-limit = 5)
+Make admin safe to retry
 
 ---
 
-# 🟡 HIGH PRIORITY
-
-## 6. Fix discoverBorrowersFromChain()
-
-### Requirements:
-
-- MUST be deterministic
-- MUST NOT rely on:
-  - hardcoded wallets
-  - frontend input
-
-### Acceptable:
-
-- contract events
-- indexed logs
-
-### If fallback used:
+### 🔧 Wrap TX call:
 
 ```ts
-if (usedDevFallback) {
-  log.warn("Using fallback borrower discovery");
+try {
+  await markDefault(...)
+} catch (err) {
+  if (isExpectedContractError(err)) {
+    continue;
+  }
+  throw err;
 }
 ```
 
 ---
 
-## 7. Add TX Timeout + Retry
+### Expected errors to ignore:
 
-### In feebump.ts:
-
-- max wait: 30s
-- retry: 2–3 times
-
-Fail fast after threshold
+- already defaulted
+- already repaid
+- not overdue
 
 ---
 
-## 8. Remove or Refactor scoreCache
+### ✅ Acceptance Criteria
+
+- [x] Multiple admin runs do not break system
+- [x] No crash on known contract errors
+
+---
+
+---
+
+# 🟡 PHASE 5 — Concurrency Control
+
+## ✅ PR #6 — Parallel Admin Sweep (Controlled)
+
+### 🎯 Goal
+
+Speed + safety
+
+---
+
+### 🔧 Install:
+
+```bash
+pnpm add p-limit
+```
+
+---
+
+### Replace:
+
+```ts
+for (...) await processLoan()
+```
+
+---
+
+### With:
+
+```ts
+import pLimit from "p-limit";
+
+const limit = pLimit(5);
+
+await Promise.allSettled(loans.map((loan) => limit(() => processLoan(loan))));
+```
+
+---
+
+### ✅ Acceptance Criteria
+
+- [x] Faster admin execution
+- [x] No RPC overload
+- [x] No duplicate TX spam
+
+---
+
+---
+
+# 🟡 PHASE 6 — Fix TX Reliability
+
+## ✅ PR #7 — Add Timeout + Retry to TX Polling
+
+### 🎯 Goal
+
+Prevent hanging requests
+
+---
+
+### 🔧 In:
+
+```
+feebump.ts / tx utils
+```
+
+---
+
+### Add:
+
+```ts
+const MAX_RETRIES = 3;
+const TIMEOUT_MS = 30000;
+```
+
+---
+
+### Implement:
+
+- timeout wrapper
+- exponential backoff
+
+---
+
+### Behavior:
+
+| Case               | Result |
+| ------------------ | ------ |
+| success            | return |
+| timeout            | retry  |
+| fail after retries | throw  |
+
+---
+
+### ✅ Acceptance Criteria
+
+- [x] No infinite waits
+- [x] API always resolves
+
+---
+
+---
+
+# 🟢 PHASE 7 — Remove Weak State (Cache)
+
+## ✅ PR #8 — Remove or Downgrade Score Cache
+
+### 🎯 Goal
+
+Remove hidden state
+
+---
 
 ### Option A (Preferred):
 
-- DELETE cache
+```ts
+❌ delete scoreCache
+```
+
+---
 
 ### Option B:
 
-- Keep but:
-  - TTL < 30s
-  - treat as non-critical
+- TTL = 30 seconds
+- wrap as optional
 
 ---
 
-# 🟢 RELIABILITY
+### ✅ Acceptance Criteria
 
-## 9. Logging
-
-Add logs:
-
-- borrow start/end
-- repay confirmation
-- default execution
-- RPC failures
+- [x] No correctness depends on cache
+- [x] System behaves same without it
 
 ---
 
-## 10. Observability
+---
 
-Add metrics:
+# 🟢 PHASE 8 — Observability & Logging
 
-- defaulted loans count
-- failed TX count
-- RPC latency
+## ✅ PR #9 — Add Structured Logging
+
+### 🎯 Goal
+
+Debuggability
 
 ---
 
-# 🔵 TESTING
+### Add logs:
 
-## Add tests:
-
-- [ ] double borrow attempt rejected
-- [ ] repay before default prevents default
-- [ ] concurrent admin sweeps safe
-- [ ] backend restart mid-loan is safe
-
----
-
-# 🧠 FINAL RULE
-
-> Backend must be **stateless, deterministic, and idempotent**
-
-If any logic depends on:
-
-- memory
-- execution order
-- previous requests
-
-👉 it is WRONG for this system
-
+```ts
+log.info("Borrow started", { wallet });
+log.info("Repay confirmed", { wallet });
+log.warn("Default triggered", { wallet });
+log.error("TX failed", { error });
 ```
 
-```
+---
+
+### ✅ Acceptance Criteria
+
+- [x] All flows logged
+- [x] Errors traceable
+
+---
+
+---
+
+# 🔵 PHASE 9 — Testing
+
+## ✅ PR #10 — Add Critical Tests
+
+### 🎯 Goal
+
+Prevent regression
+
+---
+
+### Tests:
+
+- [x] cannot borrow twice
+- [x] repay cancels default
+- [x] concurrent admin runs safe
+- [x] restart backend mid-loan safe
+
+---
+
+---
+
+# 🚀 FINAL STATE (After All PRs)
+
+Your system becomes:
+
+### ✅ Stateless
+
+### ✅ Deterministic
+
+### ✅ Idempotent
+
+### ✅ Race-safe
+
+### ✅ Production-ready
+
+---
+
+# 🧠 Execution Advice (Important)
+
+### DO NOT:
+
+- Combine PRs
+- Skip order
+- “fix everything at once”
+
+---
+
+### DO:
+
+- Merge each PR cleanly
+- Test after each step
+- Deploy incrementally (if possible)
+
+---
+
+# 🧠 Final Take
+
+Right now you're transitioning from:
+
+> “Hackathon Web3 app”
+
+to:
+
+> **“Production-grade distributed system”**
+
+That transition is **not about code volume** — it's about:
+
+- removing hidden state
+- enforcing invariants
+- making everything retry-safe
+
+---
+
+If you want next:
+I can turn **PR #4–#7 into actual code patches** (drop-in replacements for your files).

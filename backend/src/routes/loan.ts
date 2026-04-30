@@ -20,7 +20,7 @@ import { logger } from '../utils/logger';
 const router = Router();
 
 async function getWalletTokenBalance(walletAddress: string) {
-  const result = await queryContract(contractIds.phpcToken, 'balance', [
+  const result = await queryContract<bigint | number | string>(contractIds.phpcToken, 'balance', [
     Address.fromString(walletAddress).toScVal(),
   ]);
   return BigInt(result ?? 0);

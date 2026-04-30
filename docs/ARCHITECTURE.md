@@ -1,14 +1,16 @@
 # Architecture
 
-## Backend State
+## Backend Statelessness
 
-`backend/src/routes/credit.ts` uses an in-memory `scoreCache` with a 60-second TTL. This cache is process-local and resets on restart, cold start, or horizontal scale-out. For production, replace it with Redis or another shared KV store behind a small cache interface.
+The Kredito backend is designed to be **entirely stateless**. It does not maintain any in-memory or local database state for business logic.
 
-`backend/src/borrowers.ts` tracks active borrowers in memory for `/api/admin/check-defaults`. This is sufficient for a demo, but it has the same restart limitation as the score cache. A production deployment should persist the borrower set in Redis, Postgres, or another shared store.
+- **Chain as Source of Truth**: All loan statuses, borrower records, and credit metrics are read directly from the Stellar blockchain (via RPC/Horizon).
+- **No Caching**: In-memory caches (like the previous `scoreCache`) have been removed to ensure determinism across horizontal scale-outs and restarts.
+- **Dynamic Discovery**: The admin sweep process dynamically discovers active borrowers by scanning contract events on-chain, rather than relying on a local list or in-memory tracking.
 
 ## Default Detection
 
-Borrowers are added to the active set after a successful `borrow` submission and removed after confirmed repayment or after `mark_default`. The admin checker iterates this tracked set instead of reading a static `ACTIVE_WALLETS` env var.
+The admin sweep process (`/api/admin/check-defaults`) performs a live scan of the ledger to find all historical borrowers, then queries the contract for the current state of each loan. It uses a concurrency-limited worker pool to identify and mark overdue loans as defaulted in a single pass.
 
 ## Scoring Metrics
 

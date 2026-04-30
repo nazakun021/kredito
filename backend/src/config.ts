@@ -33,7 +33,6 @@ export const config = {
   homeDomain: required('HOME_DOMAIN', 'localhost'),
   webAuthDomain: required('WEB_AUTH_DOMAIN', 'localhost:3001'),
   corsOrigins: optionalCsv(process.env.CORS_ORIGIN, ['http://localhost:3000']),
-  devKnownBorrowers: optionalCsv(process.env.DEV_KNOWN_BORROWERS, []),
   approvalLedgerWindow: Number(process.env.APPROVAL_LEDGER_WINDOW || 500),
   contractIds: {
     phpcToken: required('PHPC_ID', process.env.PHPC_CONTRACT_ID),

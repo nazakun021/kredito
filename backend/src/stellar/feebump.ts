@@ -24,6 +24,7 @@ function sleep(ms: number) {
 export async function pollTransaction(hash: string, timeoutMs = 30_000) {
   const startedAt = Date.now();
 
+  let pollInterval = 1000;
   while (Date.now() - startedAt < timeoutMs) {
     try {
       const txResponse = await rpcServer.getTransaction(hash);
@@ -49,7 +50,8 @@ export async function pollTransaction(hash: string, timeoutMs = 30_000) {
       );
     }
 
-    await sleep(1000);
+    await sleep(pollInterval);
+    pollInterval = Math.min(pollInterval * 1.5, 5000);
   }
 
   throw new Error('Transaction timeout');
@@ -158,10 +160,13 @@ export async function submitSponsoredSignedXdr(signedInnerXdr: string, retries =
       return response.hash;
     } catch (error) {
       if (attempt === retries) {
-        logger.error({ err: error, attempt }, 'All submission attempts failed');
+        logger.error(
+          { err: error, attempt, totalAttempts: attempt + 1 },
+          'All submission attempts failed',
+        );
         throw error;
       }
-      logger.warn({ err: error, attempt }, 'Submission attempt failed, retrying...');
+      logger.warn({ err: error, attempt, retry: true }, 'Submission attempt failed, retrying...');
       await sleep(1000 * Math.pow(2, attempt));
     }
   }
@@ -207,10 +212,16 @@ export async function buildAndSubmitFeeBump(
       return response.hash;
     } catch (error) {
       if (attempt === retries) {
-        logger.error({ err: error, attempt, functionName }, 'All submission attempts failed');
+        logger.error(
+          { err: error, attempt, functionName, totalAttempts: attempt + 1 },
+          'All submission attempts failed',
+        );
         throw error;
       }
-      logger.warn({ err: error, attempt, functionName }, 'Submission attempt failed, retrying...');
+      logger.warn(
+        { err: error, attempt, functionName, retry: true },
+        'Submission attempt failed, retrying...',
+      );
       await sleep(1000 * Math.pow(2, attempt));
     }
   }

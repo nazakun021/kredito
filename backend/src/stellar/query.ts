@@ -9,8 +9,6 @@ import {
   scValToNative,
 } from '@stellar/stellar-sdk';
 import { rpcServer, networkPassphrase, issuerKeypair, contractIds } from './client';
-import { config } from '../config';
-import { logger } from '../utils/logger';
 import pLimit from 'p-limit';
 
 export interface LoanState {
@@ -125,7 +123,6 @@ export async function discoverBorrowersFromChain(): Promise<{
   borrowers: string[];
   latestLedger: number;
   oldestLedger: number;
-  usedDevFallback: boolean;
 }> {
   const { events, latestLedger, oldestLedger } = await getAllLendingPoolEvents();
   const borrowers = new Set<string>();
@@ -137,21 +134,14 @@ export async function discoverBorrowersFromChain(): Promise<{
     }
   }
 
-  if (config.devKnownBorrowers && config.devKnownBorrowers.length > 0) {
-    logger.warn(
-      'devKnownBorrowers is set in config but being ignored to ensure strict chain-as-truth discovery',
-    );
-  }
-
   return {
     borrowers: [...borrowers],
     latestLedger,
     oldestLedger,
-    usedDevFallback: false,
   };
 }
 
-export async function queryContract<T = any>(
+export async function queryContract<T = unknown>(
   contractId: string,
   functionName: string,
   args: xdr.ScVal[],
@@ -212,10 +202,8 @@ export async function getAllLoansFromChain(): Promise<{
   loans: LoanRecordWithBorrower[];
   latestLedger: number;
   oldestLedger: number;
-  usedDevFallback: boolean;
 }> {
-  const { borrowers, latestLedger, oldestLedger, usedDevFallback } =
-    await discoverBorrowersFromChain();
+  const { borrowers, latestLedger, oldestLedger } = await discoverBorrowersFromChain();
   const limit = pLimit(5);
   const loans = await Promise.all(
     borrowers.map((walletAddress) =>
@@ -230,7 +218,6 @@ export async function getAllLoansFromChain(): Promise<{
     loans: loans.filter((loan): loan is LoanRecordWithBorrower => loan !== null),
     latestLedger,
     oldestLedger,
-    usedDevFallback,
   };
 }
 

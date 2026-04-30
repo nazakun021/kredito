@@ -97,18 +97,23 @@ export async function markLoanDefaulted(borrowerAddress: string) {
   return response.hash;
 }
 
-export async function queryCreditRegistry(functionName: string, args: xdr.ScVal[]) {
-  return queryContract(contractIds.creditRegistry, functionName, args);
+export async function queryCreditRegistry<T = unknown>(functionName: string, args: xdr.ScVal[]) {
+  return queryContract<T>(contractIds.creditRegistry, functionName, args);
 }
 
 export async function getOnChainCreditSnapshot(walletAddress: string) {
   const wallet = Address.fromString(walletAddress).toScVal();
   const [score, tier, metrics] = await Promise.all([
-    queryCreditRegistry('get_score', [wallet]),
-    queryCreditRegistry('get_tier', [wallet]),
-    queryCreditRegistry('get_metrics', [wallet]),
+    queryCreditRegistry<bigint | number>('get_score', [wallet]),
+    queryCreditRegistry<bigint | number>('get_tier', [wallet]),
+    queryCreditRegistry<{
+      tx_count?: number | bigint;
+      repayment_count?: number | bigint;
+      avg_balance?: number | bigint;
+      default_count?: number | bigint;
+    }>('get_metrics', [wallet]),
   ]);
-  const tierLimit = await queryCreditRegistry('get_tier_limit', [
+  const tierLimit = await queryCreditRegistry<bigint | number | string>('get_tier_limit', [
     nativeToScVal(Number(tier ?? 0), { type: 'u32' }),
   ]);
 

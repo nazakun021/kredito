@@ -2,22 +2,22 @@
   "output": {
     "filePath": "repomix-output.md",
     "style": "markdown",
-    "removeComments": true,
-    "removeEmptyLines": true,
-    "topFilesLength": 5
+    "headerText": "This file is a merged representation of the Kredito codebase.\nKredito is a decentralized credit platform built on the Stellar network using Soroban smart contracts.\nArchitecture:\n- frontend: Next.js application with Tailwind CSS and shadcn/ui.\n- backend: Express.js API serving as a stateless middleware for Stellar interactions.\n- contracts: Soroban smart contracts written in Rust.\n\nPlease use this context to understand the project structure, business logic, and integration patterns.",
+    "instruction": "When analyzing this codebase:\n1. Focus on the interaction between the Express backend and the Soroban smart contracts.\n2. Note that the backend is designed to be stateless, treating the Stellar blockchain as the source of truth.\n3. Pay attention to the security patterns used for signing transactions and managing user sessions.",
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "showRootSummary": true,
+    "topFilesLength": 10
   },
   "include": [
-    "backend/**/*",
+    "backend/src/**/*",
+    "backend/*.json",
+    "backend/*.ts",
     "frontend/**/*",
     "contracts/**/*",
     "docs/**/*",
     "README.md",
-    "DEMO.md",
-    "package.json",
-    ".gitignore",
-    ".repomixignore",
-    "repomix.config.json",
-    "skills-lock.json"
+    "repomix.config.json"
   ],
   "ignore": {
     "customPatterns": [
@@ -31,9 +31,7 @@
       "**/*.db*",
       "**/*.sqlite*",
       "**/*.log",
-      "**/.env",
-      "**/.env.local",
-      "**/.env.*.local",
+      "**/.env*",
       "**/*.tsbuildinfo",
       "**/images/**",
       "**/*.{png,jpg,jpeg,gif,svg,ico,webp,pdf,zip}",
@@ -44,13 +42,13 @@
       "**/test_snapshots/**",
       "**/__snapshots__/**",
       "**/*.test.ts.snap",
-      "repomix-output.md",
-      "docs/SETUP.md",
-      "docs/SPEC.md",
-      "**/*.test.ts",
-      "**/*.spec.ts",
-      "**/tests/**",
-      "**/__tests__/**"
+      "repomix-output.md"
     ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "enabled": true
   }
 }

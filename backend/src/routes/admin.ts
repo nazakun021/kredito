@@ -18,7 +18,7 @@ router.get(
       throw unauthorized('Admin access only');
     }
 
-    const { loans, latestLedger, oldestLedger, usedDevFallback } = await getAllLoansFromChain();
+    const { loans, latestLedger, oldestLedger } = await getAllLoansFromChain();
     req.log?.info({ scannedCount: loans.length, latestLedger }, 'Starting admin sweep');
 
     type SweepResult =
@@ -55,9 +55,14 @@ router.get(
           return { wallet: loan.walletAddress, status: 'defaulted' };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          req.log?.error({ wallet: loan.walletAddress, message }, 'Caught error in processLoan');
 
-          // 3. Idempotent check: ignore if already defaulted or not overdue according to contract
-          if (message.includes('LoanAlreadyDefaulted') || message.includes('LoanNotOverdue')) {
+          // 3. Idempotent check: ignore if already defaulted, repaid, or not overdue according to contract
+          if (
+            message.includes('LoanDefaulted') ||
+            message.includes('LoanAlreadyRepaid') ||
+            message.includes('LoanNotOverdue')
+          ) {
             req.log?.warn(
               { wallet: loan.walletAddress, message },
               'Default execution skipped (idempotent)',
@@ -112,7 +117,6 @@ router.get(
       scannedBorrowers: loans.length,
       currentLedger: latestLedger,
       oldestIndexedLedger: oldestLedger,
-      usedDevFallback,
     });
   }),
 );

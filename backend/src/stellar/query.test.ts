@@ -250,7 +250,6 @@ describe('Stellar Query', () => {
   it('discoverBorrowersFromChain derives wallets from lending pool events', async () => {
     const result = await discoverBorrowersFromChain();
     expect(result.borrowers).toEqual(expect.arrayContaining([DUMMY_WALLET, SECOND_WALLET]));
-    expect(result.usedDevFallback).toBe(false);
     expect(result.oldestLedger).toBe(10_000);
     expect(result.latestLedger).toBe(12_345);
   });

@@ -1,6 +1,6 @@
 // backend/src/scoring/engine.ts
 
-import { Address, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { Address, Horizon, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { LEDGERS_PER_DAY, STROOPS_PER_UNIT } from '../config';
 import { contractIds, horizonServer, rpcServer } from '../stellar/client';
 import { queryContract } from '../stellar/query';
@@ -215,7 +215,9 @@ export async function fetchTxCount(address: string): Promise<number> {
 export async function fetchXlmBalance(address: string): Promise<number> {
   try {
     const account = await horizonServer.accounts().accountId(address).call();
-    const nativeBalance = account.balances.find((balance: any) => balance.asset_type === 'native');
+    const nativeBalance = account.balances.find(
+      (balance): balance is Horizon.HorizonApi.BalanceLineNative => balance.asset_type === 'native',
+    );
     return nativeBalance ? Math.max(0, Math.floor(Number(nativeBalance.balance))) : 0;
   } catch {
     return 0;
@@ -286,9 +288,11 @@ export async function fetchRepaymentMetrics(
     // available window, at least reflect the current persisted loan outcome.
     if (repaymentCount === 0 || defaultCount === 0) {
       try {
-        const latestLoan = await queryContract(contractIds.lendingPool, 'get_loan', [
-          Address.fromString(address).toScVal(),
-        ]);
+        const latestLoan = await queryContract<{ repaid?: boolean; defaulted?: boolean }>(
+          contractIds.lendingPool,
+          'get_loan',
+          [Address.fromString(address).toScVal()],
+        );
 
         if (latestLoan?.repaid) repaymentCount = Math.max(repaymentCount, 1);
         if (latestLoan?.defaulted) defaultCount = Math.max(defaultCount, 1);
@@ -323,9 +327,11 @@ export async function getTierLimit(tier: number) {
     return 0n;
   }
 
-  const result = await queryContract(contractIds.creditRegistry, 'get_tier_limit', [
-    xdr.ScVal.scvU32(tier),
-  ]);
+  const result = await queryContract<bigint | number | string>(
+    contractIds.creditRegistry,
+    'get_tier_limit',
+    [xdr.ScVal.scvU32(tier)],
+  );
   return BigInt(result ?? 0);
 }
 
@@ -346,7 +352,8 @@ export async function buildScoreSummary(address: string) {
 
 export async function getPoolSnapshot() {
   const poolBalanceRaw = BigInt(
-    await queryContract(contractIds.lendingPool, 'get_pool_balance', []),
+    (await queryContract<bigint | number | string>(contractIds.lendingPool, 'get_pool_balance', [])) ??
+      0,
   );
   return {
     poolBalance: toPhpAmount(poolBalanceRaw),
