@@ -24,6 +24,11 @@ Small retail business owners in the Philippines (sari-sari stores, online resell
 
 Kredito uses deterministic on-chain transaction history to generate verifiable credit scores. These scores are stored in a Soroban smart contract and used to unlock tiered micro-loans from a decentralized liquidity pool. Settlement happens in seconds with near-zero fees, and users build a portable "Credit Passport" with every on-time repayment.
 
+### The Scoring Formula
+
+Our scoring engine is completely transparent and verifiable on-chain. Each metric is weighted to reward network presence and financial reliability:
+`score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) − (default_count × 25)`
+
 ## Product Flow
 
 1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth (SEP-10) challenge.
@@ -33,20 +38,74 @@ Kredito uses deterministic on-chain transaction history to generate verifiable c
 
 ---
 
-## ✅ Submission Checklist
+## User Flow
 
-| Requirement                        | Status                                                        |
-| :--------------------------------- | :------------------------------------------------------------ |
-| Public GitHub repository           | ✅                                                            |
-| README with complete documentation | ✅                                                            |
-| Minimum 8+ meaningful commits      | ✅                                                            |
-| Live demo link                     | ✅ [kredito-iota.vercel.app](https://kredito-iota.vercel.app) |
-| Mobile responsive view             | ✅ See screenshot below                                       |
-| CI/CD pipeline running             | ✅ See badge & screenshot below                               |
-| Inter-contract calls working       | ✅ See section below                                          |
-| Custom token deployed              | ✅ PHPC (`CAMZB75T...`)                                       |
-| Pool deployed                      | ✅ Lending Pool (`CDTASHYW...`)                               |
-| Contract addresses                 | ✅ See section below                                          |
+A complete walkthrough of the Kredito experience — from landing to repayment.
+
+---
+
+### Step 1 — Landing Page
+
+The homepage introduces Kredito and invites the user to connect their Stellar wallet via Freighter. No account creation needed.
+
+![Landing Page](./images/1.png)
+
+---
+
+### Step 2 — Freighter Wallet Authentication
+
+Clicking **Connect Freighter Wallet** triggers a SEP-10 WebAuth challenge popup. The user confirms the transaction in Freighter — their private key never leaves the browser.
+
+![Freighter Auth](./images/2.png)
+
+---
+
+### Step 3 — Credit Passport Dashboard
+
+After authentication, the user sees their **Credit Passport**: on-chain score (82), Silver tier, borrow limit (₱20,000), fee rate (3%), transaction count, repayments, and the full transparent scoring formula with raw metrics.
+
+![Dashboard](./images/3.png)
+
+---
+
+### Step 4 — Borrow: Loan Review
+
+The user navigates to **Borrow** and enters a loan amount. The UI shows tier eligibility, fee breakdown, 30-day term, and the total repayment due — all enforced by the on-chain Credit Passport.
+
+![Borrow Review](./images/4.png)
+
+---
+
+### Step 5 — Borrow: Freighter Signing
+
+The user confirms the loan. Freighter opens to sign the borrow transaction. The lending pool validates their tier via `credit_registry::get_tier`, then disburses PHPC via `phpc_token::transfer`.
+
+![Borrow Signing](./images/5.png)
+![Borrow Confirmed](./images/5.1.png)
+
+---
+
+### Step 6 — Repay: Active Loan
+
+The **Repay** page displays the active loan — principal (₱25.00), fee owed (₱0.75), total due (₱25.75), wallet PHPC balance, due date, and days remaining.
+
+![Repay Active Loan](./images/6.png)
+
+---
+
+### Step 7 — Repay: Freighter Signing
+
+Clicking **Repay ₱25.75** triggers a Freighter popup to sign the repayment. The contract calls `phpc_token::transfer_from` to collect funds, then `credit_registry::update_metrics` to update the score on-chain.
+
+![Repay Signing](./images/7.png)
+
+---
+
+### Step 8 — Repaid on Time & Score Update
+
+Repayment is confirmed. The Credit Passport score updates live from **82 → 88**. Each on-time repayment builds toward a higher tier and a larger borrow limit.
+
+![Repaid on Time](./images/8.png)
 
 ---
 
@@ -218,59 +277,99 @@ Example:
 
 Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
 
+### 💡 Demo Tip: Minting PHPC
+
+If your wallet is empty or you need extra PHPC to cover the interest for repayment, you can mint tokens using the `stellar` CLI:
+
+```bash
+stellar contract invoke \
+  --id CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7 \
+  --source-account issuer \
+  --network testnet \
+  -- mint \
+  --to <YOUR_WALLET_ADDRESS> \
+  --amount 900000000
+```
+
+_(This command mints 90 PHPC to the specified address. The amount is in stroops)._
+
 ---
 
-## Setup & Installation
+## 🛠️ Setup & Installation
 
 ### Prerequisites
 
-- Node.js 20+ and `pnpm`
-- Rust (latest stable) and `stellar-cli`
-- Freighter browser extension (set to Testnet)
+Ensure you have the following installed on your machine:
 
-### Quick Start
+- **Node.js 20+** and **pnpm** (for frontend and backend)
+- **Rust** (latest stable) and **stellar-cli** (for smart contracts)
+- **Freighter Browser Extension** (set to **Testnet**)
 
-```bash
-# Clone the repo and run the setup script
-./scripts/setup.sh
+---
 
-# Start the Backend (in one terminal)
-cd backend && pnpm dev
+### 🚀 Quick Start (Local Development)
 
-# Start the Frontend (in another terminal)
-cd frontend && pnpm dev
-```
+1. **Clone & Initialize**: Run the setup script to install all dependencies and create `.env` files from examples.
 
-### Smart Contracts
+   ```bash
+   ./scripts/setup.sh
+   ```
 
-```bash
-cd contracts
-cargo test --workspace
-stellar contract build
-```
+2. **Configure Environment**: Update `backend/.env` and `frontend/.env` with your specific keys and contract IDs (if not using the defaults).
 
-### Backend
+3. **Start the Backend**:
 
-```bash
-cd backend
-pnpm install
-pnpm build
-pnpm dev
-```
+   ```bash
+   cd backend
+   pnpm dev
+   ```
 
-_Requires `backend/.env` (see `backend/.env.example`). Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
+4. **Start the Frontend**:
+   ```bash
+   cd frontend
+   pnpm dev
+   ```
+   The app will be available at `http://localhost:3000`.
 
-### Frontend
+---
 
-```bash
-cd frontend
-pnpm install
-pnpm lint
-pnpm build
-pnpm dev
-```
+### 📦 Smart Contract Management
 
-_Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
+The Kredito logic lives in three Soroban contracts.
+
+- **Build & Test**:
+
+  ```bash
+  cd contracts
+  cargo test --workspace
+  stellar contract build
+  ```
+
+- **Redeploy**: If you need to deploy a fresh set of contracts to Testnet:
+  ```bash
+  cd contracts
+  ./redeploy.sh
+  ```
+  This script will build, deploy, and initialize all three contracts, saving the new IDs to `contracts/deployed.json`.
+
+---
+
+### 🖥️ Backend Configuration
+
+The backend handles off-chain scoring and fee-sponsorship.
+
+- **Linting**: `pnpm run lint` (or `pnpm run lint --fix` to auto-fix issues).
+- **Production Build**: `pnpm build` followed by `pnpm start`.
+
+---
+
+### 🎨 Frontend Development
+
+Built with Next.js App Router and Tailwind CSS.
+
+- **Linting**: `pnpm lint`.
+- **Type Checking**: `pnpm type-check` (if configured).
+- **Production Build**: `pnpm build` followed by `pnpm start`.
 
 ---
 
@@ -290,3 +389,20 @@ Stellar provides the perfect infrastructure for micro-finance:
 - **Instant Settlement**: Borrowers get funds in 3–5 seconds, not days.
 - **Native Compliance**: Stablecoins like PHPC allow for regulatory-friendly settlement in local currency.
 - **Composable Contracts**: Inter-contract calls let the lending pool, credit registry, and token work together atomically.
+
+---
+
+## What's Next / Roadmap
+
+We're building for the long term. Here's what we have planned:
+
+- **Mainnet Launch**: Moving beyond Testnet to support real-world micro-lending with institutional PHPC liquidity.
+- **DAO Governance**: Handing over control of tier limits, interest rates, and fee structures to a community of liquidity providers.
+- **Credit SDK**: Enabling Filipino e-commerce platforms and digital wallets to integrate Kredito scores into their own checkouts.
+- **Advanced Identity**: Integrating with Stellar's identity standards to allow for higher limits through optional KYC levels.
+
+---
+
+## 👥 Authors
+
+Built with ❤️ by **[nazakun021](https://github.com/nazakun021)** for the Stellar Hackathon.
