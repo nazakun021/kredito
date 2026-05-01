@@ -14,6 +14,8 @@ Transparent on-chain credit scores and instant micro-loans for the Filipino unba
 
 > **SEA Stellar Hackathon · Track: Payments & Financial Access**
 
+---
+
 ## Problem
 
 Small retail business owners in the Philippines (sari-sari stores, online resellers, market vendors) lack traditional credit history, making them "invisible" to banks. They often rely on informal lenders with predatory interest rates or use personal savings, which stunts their growth. Traditional digital wallets have low transaction caps and no path to credit, leaving SMEs without the capital needed for bulk inventory orders.
@@ -24,28 +26,151 @@ Kredito uses deterministic on-chain transaction history to generate verifiable c
 
 ## Product Flow
 
-1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth challenge.
-2. **Review Credit Passport** — See raw metrics, the exact formula, and your on-chain tier.
+1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth (SEP-10) challenge.
+2. **Review Credit Passport** — See raw metrics, the exact scoring formula, and your on-chain tier.
 3. **Borrow Instantly** — Pool disburses PHPC to your wallet via smart contract.
 4. **Repay & Level Up** — Repayment pulls PHPC from that same connected wallet, then updates your score live. Higher tier = bigger limit.
 
-## Current Demo Note
+---
 
-Repayment requires the wallet to hold `principal + fee`.
+## ✅ Submission Checklist
 
-Example:
+| Requirement                        | Status                                                        |
+| :--------------------------------- | :------------------------------------------------------------ |
+| Public GitHub repository           | ✅                                                            |
+| README with complete documentation | ✅                                                            |
+| Minimum 8+ meaningful commits      | ✅                                                            |
+| Live demo link                     | ✅ [kredito-iota.vercel.app](https://kredito-iota.vercel.app) |
+| Mobile responsive view             | ✅ See screenshot below                                       |
+| CI/CD pipeline running             | ✅ See badge & screenshot below                               |
+| Inter-contract calls working       | ✅ See section below                                          |
+| Custom token deployed              | ✅ PHPC (`CAMZB75T...`)                                       |
+| Pool deployed                      | ✅ Lending Pool (`CDTASHYW...`)                               |
+| Contract addresses                 | ✅ See section below                                          |
 
-- borrow `100 PHPC`
-- fee `5 PHPC` (500 bps)
-- total repayment due `105 PHPC`
+---
 
-Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
+## 📱 Mobile Responsive
+
+![Mobile View](./images/mobile.png)
+
+The frontend is built with Tailwind CSS and Next.js App Router, with responsive layouts across all screens: landing page, dashboard, borrow flow, and repay flow.
+
+---
+
+## 🔄 CI/CD Pipeline
+
+![CI Pipeline](./images/ci.png)
+
+All checks pass on every push to `main`:
+
+- **Backend** (Node.js) — lint + build
+- **Frontend** (Next.js) — lint + build
+- **Smart Contracts** (Rust) — cargo test
+- **Vercel** — auto-deploy on merge
+- **Railway** — run after every other CI check is done and passed
+
+---
+
+## 🔗 Inter-Contract Calls
+
+Kredito implements **inter-contract calls** between all three Soroban contracts:
+
+### Call Graph
+
+```
+Frontend / Backend
+      │
+      ▼
+lending_pool::borrow(borrower, amount)
+      │
+      ├──► credit_registry::get_tier(borrower)             ← reads tier eligibility
+      │
+      └──► phpc_token::transfer(pool, borrower, amt)       ← disburses funds
+
+lending_pool::repay(borrower, amount)
+      │
+      ├──► phpc_token::transfer_from(borrower, pool)       ← collects repayment
+      │
+      └──► credit_registry::update_metrics(borrower)       ← updates score on-chain
+```
+
+### Example Transaction Hash (Inter-Contract Call)
+
+Borrow + Repay transactions:
+https://stellar.expert/explorer/testnet/contract/CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N
+
+Sample Borrow Transaction:
+![Borrow](./images/borrow.png)
+
+Sample Repay Transaction:
+![Repay](./images/repay.png)
+
+---
+
+## 🪙 Custom Token & Pool
+
+### PHPC — Philippine Peso Coin (Custom Stablecoin)
+
+PHPC is a **SEP-41 compliant custom token** representing the Philippine Peso on Stellar Testnet. It is used as the loan currency throughout the Kredito platform.
+
+| Property         | Value                                                                                                                                                |
+| :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract Address | `CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7`                                                                                           |
+| Standard         | SEP-41 (Stellar token interface)                                                                                                                     |
+| Explorer         | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7?filter=interface) |
+
+### Lending Pool
+
+A decentralized liquidity pool that manages loan disbursements and repayments.
+
+| Property         | Value                                                                                                                                                |
+| :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract Address | `CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N`                                                                                           |
+| Pool Capacity    | ₱100,000,000 PHPC                                                                                                                                    |
+| Explorer         | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N?filter=interface) |
+
+---
+
+## Smart Contracts
+
+All three contracts are deployed and verified on **Stellar Testnet**:
+
+| Contract          | Address                                                    |
+| :---------------- | :--------------------------------------------------------- |
+| `credit_registry` | `CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2` |
+| `lending_pool`    | `CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N` |
+| `phpc_token`      | `CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7` |
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2?filter=interface
+![Credit Registry Explorer](./images/img1.png)
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N?filter=interface
+![Lending Pool Explorer](./images/img2.png)
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7?filter=interface
+![PHPC Token Explorer](./images/img3.png)
+
+---
+
+## Contract Functions
+
+| Function         | Contract          | Description                                                                                    |
+| :--------------- | :---------------- | :--------------------------------------------------------------------------------------------- |
+| `update_metrics` | `credit_registry` | Submits raw tx/balance metrics to update score.                                                |
+| `get_tier`       | `credit_registry` | Returns the current user tier (0–3).                                                           |
+| `borrow`         | `lending_pool`    | Validates tier/limit and disburses PHPC to borrower. Calls `credit_registry` and `phpc_token`. |
+| `repay`          | `lending_pool`    | Accepts repayment, triggers score improvement. Calls `phpc_token` and `credit_registry`.       |
+| `deposit`        | `lending_pool`    | Allows admins/liquidity providers to fund the pool.                                            |
+| `transfer`       | `phpc_token`      | SEP-41 token transfer used internally by `lending_pool`.                                       |
+
+---
 
 ## Architecture
 
 - **Frontend (Next.js 16)**: Built with React 19, Zustand for state management, and TanStack Query for data fetching.
 - **Backend (Express)**: Handles wallet-auth sessions, score orchestration, fee sponsorship, and fully stateless operation with the chain as the source of truth.
-- **Stellar (Soroban)**: Core financial logic running on the Stellar Testnet.
+- **Stellar (Soroban)**: Core financial logic running on Stellar Testnet with inter-contract calls between all three contracts.
 - **Client SDK**: `@stellar/stellar-sdk` for transaction building, fee-sponsoring, and RPC interaction.
 
 ## Project Structure
@@ -54,7 +179,7 @@ Because the wallet receives only the borrowed principal, you must top up the ext
 kredito/
 ├── contracts/
 │   ├── credit_registry/        # Scoring, tiering, and metrics logic
-│   ├── lending_pool/           # Borrowing, repayment, and pool management
+│   ├── lending_pool/           # Borrowing, repayment, pool management + inter-contract calls
 │   └── phpc_token/             # SEP-41 compliant PHPC stablecoin
 ├── backend/
 │   ├── src/
@@ -70,39 +195,30 @@ kredito/
 
 ## Stellar Features Used
 
-| Feature                    | Usage                                                                |
-| :------------------------- | :------------------------------------------------------------------- |
-| **Soroban Contracts**      | Powering the scoring engine and the lending pool logic.              |
-| **PHPC (Stablecoin)**      | Enabling non-volatile loans pegged to the local currency (PHP).      |
-| **Sponsored Transactions** | Issuer-funded fee-bumps for a seamless, gasless user experience.     |
-| **Stellar RPC**            | Real-time indexing of on-chain activity to calculate credit metrics. |
+| Feature                    | Usage                                                                        |
+| :------------------------- | :--------------------------------------------------------------------------- |
+| **Soroban Contracts**      | Powering the scoring engine and the lending pool logic.                      |
+| **Inter-Contract Calls**   | `lending_pool` calls `credit_registry` and `phpc_token` during borrow/repay. |
+| **PHPC (Stablecoin)**      | Enabling non-volatile loans pegged to the local currency (PHP).              |
+| **Sponsored Transactions** | Issuer-funded fee-bumps for a seamless, gasless user experience.             |
+| **Stellar RPC**            | Real-time indexing of on-chain activity to calculate credit metrics.         |
+| **SEP-10 WebAuth**         | Secure, keyless wallet authentication via Freighter.                         |
 
-## Smart Contracts
+---
 
-Deployed and verified on Stellar testnet:
+## Current Demo Note
 
-- **`credit_registry`**: `CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2`
-- **`lending_pool`**: `CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N`
-- **`phpc_token`**: `CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7`
+Repayment requires the wallet to hold `principal + fee`.
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2?filter=interface
-![Credit Registry Explorer](./images/img1.png)
+Example:
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N?filter=interface
-![Lending Pool Explorer](./images/img2.png)
+- borrow `100 PHPC`
+- fee `5 PHPC` (500 bps)
+- total repayment due `105 PHPC`
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7?filter=interface
-![PHPC Token Explorer](./images/img3.png)
+Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
 
-## Contract Functions
-
-| Function         | Contract          | Description                                          |
-| :--------------- | :---------------- | :--------------------------------------------------- |
-| `update_metrics` | `credit_registry` | Submits raw tx/balance metrics to update score.      |
-| `get_tier`       | `credit_registry` | Returns the current user tier (0-3).                 |
-| `borrow`         | `lending_pool`    | Validates tier/limit and disburses PHPC to borrower. |
-| `repay`          | `lending_pool`    | Accepts repayment and triggers score improvement.    |
-| `deposit`        | `lending_pool`    | Allows admins/liquidity providers to fund the pool.  |
+---
 
 ## Setup & Installation
 
@@ -156,6 +272,8 @@ pnpm dev
 
 _Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
 
+---
+
 ## Documentation
 
 - [DEMO.md](./DEMO.md): presenter runbook and dashboard E2E demo flow
@@ -169,5 +287,6 @@ _Runs at `http://localhost:3000`. Freighter should be installed and pointed at S
 Stellar provides the perfect infrastructure for micro-finance:
 
 - **Sub-cent Fees**: Loans are economically viable even at small amounts.
-- **Instant Settlement**: Borrowers get funds in 3-5 seconds, not days.
+- **Instant Settlement**: Borrowers get funds in 3–5 seconds, not days.
 - **Native Compliance**: Stablecoins like PHPC allow for regulatory-friendly settlement in local currency.
+- **Composable Contracts**: Inter-contract calls let the lending pool, credit registry, and token work together atomically.
