@@ -10,7 +10,6 @@ import { checkFreighterInstalled } from '../lib/freighter';
 import { Loader2, Wallet, LogOut, ChevronDown } from 'lucide-react';
 
 export default function ConnectWalletButton() {
-  const router = useRouter();
   const { 
     isConnected, 
     publicKey, 

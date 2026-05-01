@@ -69,8 +69,9 @@ export default function DashboardPage() {
     queryFn: async () => {
       try {
         return await api.get<ScoreResponse>('/credit/score').then((res) => res.data);
-      } catch (err: any) {
-        if (err?.response?.status === 404) return null; // no score yet, not an error
+      } catch (err: unknown) {
+        const error = err as { response?: { status?: number } };
+        if (error?.response?.status === 404) return null; // no score yet, not an error
         throw err;
       }
     },
@@ -129,7 +130,7 @@ export default function DashboardPage() {
   const loanStatus = loanStatusQuery.data;
   const isLoading = !score && (scoreQuery.isLoading || generateMutation.isPending);
   const scoreError =
-    scoreQuery.isError && !shouldAutoGenerate
+    scoreQuery.isError && !isScoreMissing
       ? 'Unable to load your score right now. Please try again.'
       : generateMutation.isError
         ? getErrorMessage(generateMutation.error, 'Unable to generate your on-chain score right now.')
