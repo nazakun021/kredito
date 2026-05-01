@@ -231,11 +231,11 @@ export async function fetchRepaymentMetrics(
   try {
     const latestLedger = await rpcServer.getLatestLedger();
     const requestedStartLedger = Math.max(0, latestLedger.sequence - REPAYMENT_LOOKBACK_LEDGERS);
-    
+
     // P2-2: Use paginateEvents to ensure all events are fetched if > 200
     const { events } = await paginateEvents(
       [{ type: 'contract', contractIds: [contractIds.lendingPool] }],
-      requestedStartLedger
+      requestedStartLedger,
     );
 
     let repaymentCount = 0;

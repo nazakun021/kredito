@@ -1,6 +1,6 @@
 // backend/src/scoring/engine.test.ts
-import { describe, it, expect } from "vitest";
-import { calculateScore } from "./engine";
+import { describe, it, expect } from 'vitest';
+import { calculateScore } from './engine';
 
 // Test vectors derived from the Rust contract (contracts/credit_registry/src/lib.rs)
 const fixtures = [
@@ -42,11 +42,8 @@ const fixtures = [
   },
 ];
 
-describe("calculateScore parity", () => {
-  it.each(fixtures)(
-    "matches Rust contract for $metrics",
-    ({ metrics, expected }) => {
-      expect(calculateScore(metrics)).toBe(expected);
-    },
-  );
+describe('calculateScore parity', () => {
+  it.each(fixtures)('matches Rust contract for $metrics', ({ metrics, expected }) => {
+    expect(calculateScore(metrics)).toBe(expected);
+  });
 });

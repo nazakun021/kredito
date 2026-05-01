@@ -21,9 +21,7 @@ const SPONSORED_BASE_FEE = '1000000';
 export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error('TX_TIMEOUT')), ms),
-    ),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('TX_TIMEOUT')), ms)),
   ]);
 }
 

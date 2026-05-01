@@ -42,8 +42,15 @@ router.get(
     }): Promise<SweepResult> => {
       return limit(async () => {
         if (breakerTriggered) {
-          req.log?.warn({ wallet: loan.walletAddress }, 'Default skipped: circuit breaker triggered');
-          return { wallet: loan.walletAddress, status: 'error', error: 'CIRCUIT_BREAKER_TRIGGERED' };
+          req.log?.warn(
+            { wallet: loan.walletAddress },
+            'Default skipped: circuit breaker triggered',
+          );
+          return {
+            wallet: loan.walletAddress,
+            status: 'error',
+            error: 'CIRCUIT_BREAKER_TRIGGERED',
+          };
         }
 
         try {
@@ -90,7 +97,10 @@ router.get(
           const message = err instanceof Error ? err.message : String(err);
 
           if (action === 'IGNORE') {
-            req.log?.warn({ wallet: loan.walletAddress, message, reason: 'idempotent' }, 'Default skipped');
+            req.log?.warn(
+              { wallet: loan.walletAddress, message, reason: 'idempotent' },
+              'Default skipped',
+            );
             return { wallet: loan.walletAddress, status: 'skipped_idempotent' };
           }
 

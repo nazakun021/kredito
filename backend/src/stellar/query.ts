@@ -54,7 +54,7 @@ async function getAllLendingPoolEvents() {
   ];
 
   const latestLedger = await withRetry(() => rpcServer.getLatestLedger());
-  const requestedStartLedger = Math.max(0, latestLedger.sequence - 250_000); 
+  const requestedStartLedger = Math.max(0, latestLedger.sequence - 250_000);
 
   const { events, oldestLedger } = await paginateEvents(filters, requestedStartLedger);
 

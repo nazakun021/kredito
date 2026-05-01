@@ -31,8 +31,6 @@ if (missingVars.length > 0) {
   }
 }
 
-const isProduction = process.env.NODE_ENV === 'production';
-
 // P2-7: Removed redundant required() calls. Using process.env directly now that check() has verified them.
 export const config = {
   port: Number(process.env.PORT || 3001),
@@ -40,7 +38,7 @@ export const config = {
   issuerSecretKey: process.env.ISSUER_SECRET_KEY!,
   adminApiSecret: process.env.ADMIN_API_SECRET!,
   webAuthSecretKey: process.env.WEB_AUTH_SECRET_KEY!,
-  
+
   contractIds: {
     phpcToken: process.env.PHPC_ID!,
     creditRegistry: process.env.REGISTRY_ID!,
@@ -51,12 +49,12 @@ export const config = {
   rpcUrl: process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
   horizonUrl: process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org',
   networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
-  
+
   homeDomain: process.env.HOME_DOMAIN || 'kredito.finance',
   webAuthDomain: process.env.WEB_AUTH_DOMAIN || 'api.kredito.finance',
-  
+
   corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
-  
+
   approvalLedgerWindow: Number(process.env.APPROVAL_LEDGER_WINDOW || 100), // ~10 minutes
   explorerUrl: process.env.STELLAR_EXPLORER_URL || 'https://stellar.expert/explorer/testnet',
 };

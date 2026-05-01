@@ -35,10 +35,7 @@ router.get(
       throw notFound('No score on-chain yet. Call generate first.');
     }
 
-    logger.info(
-      { wallet: req.wallet, score: payload.score },
-      'Retrieved on-chain credit snapshot',
-    );
+    logger.info({ wallet: req.wallet, score: payload.score }, 'Retrieved on-chain credit snapshot');
     res.json(payload);
   }),
 );

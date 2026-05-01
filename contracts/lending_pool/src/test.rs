@@ -295,10 +295,7 @@ fn test_admin_withdraw_happy_path() {
         pool_client(&ctx).get_pool_balance(),
         POOL_FUNDING - withdraw_amount
     );
-    assert_eq!(
-        phpc_client(&ctx).balance(&ctx.admin),
-        withdraw_amount
-    );
+    assert_eq!(phpc_client(&ctx).balance(&ctx.admin), withdraw_amount);
 }
 
 #[test]

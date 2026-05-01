@@ -21,7 +21,9 @@ export function isRpcError(err: any): boolean {
     '504 Gateway Timeout',
     'rate limit',
   ];
-  return rpcMarkers.some((marker) => message.includes(marker) || message.toLowerCase().includes(marker.toLowerCase()));
+  return rpcMarkers.some(
+    (marker) => message.includes(marker) || message.toLowerCase().includes(marker.toLowerCase()),
+  );
 }
 
 export function classifyError(err: any): ErrorAction {
