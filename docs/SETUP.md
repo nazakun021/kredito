@@ -1,8 +1,18 @@
 # Setup
 
+## Quick Start
+
+The easiest way to set up the project is using the provided setup script:
+
+```bash
+./scripts/setup.sh
+```
+
+This will copy `.env.example` files to `.env` and install all dependencies.
+
 ## Backend
 
-Create `backend/.env` from `backend/.env.example` and set:
+If you prefer manual setup, create `backend/.env` from `backend/.env.example` and set:
 
 - `JWT_SECRET` for API auth
 - `ISSUER_SECRET_KEY` for Stellar issuer signing
@@ -15,7 +25,7 @@ Generate `ADMIN_API_SECRET` as a separate random token. Do not reuse `ISSUER_SEC
 Optional backend settings:
 
 - `APPROVAL_LEDGER_WINDOW=500` controls how long PHPC approval stays valid during repayment signing
-- `CORS_ORIGIN` should be a comma-separated allowlist in production, not `*`
+- `CORS_ORIGINS` should be a comma-separated allowlist in production, not `*`
 
 Run:
 

@@ -94,7 +94,7 @@ vi.mock('./client', async (importOriginal) => {
             inSuccessfulContractCall: true,
             txHash: 'tx-2',
             topic: [
-              xdr.ScVal.scvSymbol('repaid'),
+              xdr.ScVal.scvSymbol('disburse'),
               xdr.ScVal.scvString('GDCMAY7XILWXKTJ7K5IJICJD2GFAKCIFPNGJB2HMNLUGIZUMVXT2VJRL'),
             ],
             value: xdr.ScVal.scvVoid(),

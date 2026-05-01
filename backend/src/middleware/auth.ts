@@ -24,3 +24,9 @@ export function authMiddleware(req: Request, _res: Response, next: NextFunction)
     return next(unauthorized('Unauthorized: Invalid token'));
   }
 }
+
+export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  if (token !== config.adminApiSecret) return next(unauthorized('Admin access only'));
+  return next();
+}

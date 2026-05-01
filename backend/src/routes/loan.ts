@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Address, nativeToScVal } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal, Keypair } from '@stellar/stellar-sdk';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { asyncRoute, badRequest } from '../errors';
 import {
@@ -16,6 +16,7 @@ import { queryContract, getLoanFromChain, hasActiveLoan } from '../stellar/query
 import { contractIds, rpcServer } from '../stellar/client';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { ensureDemoWalletReady } from '../stellar/demo';
 
 const router = Router();
 
@@ -36,6 +37,10 @@ router.post(
     }
 
     const wallet = req.wallet;
+
+    if (config.stellarNetwork !== 'PUBLIC') {
+      await ensureDemoWalletReady(Keypair.fromPublicKey(wallet));
+    }
 
     if (await hasActiveLoan(wallet)) {
       throw badRequest('Active loan already exists');
@@ -136,7 +141,7 @@ router.post(
 
     const approveArgs = [
       Address.fromString(wallet).toScVal(),
-      Address.fromString(contractIds.lendingPool).toScAddress(),
+      Address.fromString(contractIds.lendingPool).toScVal(),
       nativeToScVal(totalOwedStroops, { type: 'i128' }),
       nativeToScVal(expirationLedger, { type: 'u32' }),
     ];

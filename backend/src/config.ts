@@ -72,3 +72,7 @@ if (config.issuerSecretKey && !StrKey.isValidEd25519SecretSeed(config.issuerSecr
 if (config.webAuthSecretKey && !StrKey.isValidEd25519SecretSeed(config.webAuthSecretKey)) {
   throw new Error('Invalid WEB_AUTH_SECRET_KEY');
 }
+
+if (config.adminApiSecret && config.adminApiSecret.length < 32) {
+  throw new Error('ADMIN_API_SECRET must be at least 32 characters');
+}

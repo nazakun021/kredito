@@ -140,7 +140,7 @@ export default function BorrowPage() {
 
         setTxStep(3); // Submitting
         const result = await api.post('/tx/sign-and-submit', {
-          signedInnerXdr: [signResult.signedXdr],
+          signedInnerXdr: [signResult.signedXdr], // tx route accepts xdr[]
           flow: { action: 'borrow' },
         });
 

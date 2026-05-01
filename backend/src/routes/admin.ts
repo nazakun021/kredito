@@ -1,24 +1,20 @@
 import { Router } from 'express';
 import pLimit from 'p-limit';
 import { Address } from '@stellar/stellar-sdk';
-import { asyncRoute, unauthorized } from '../errors';
-import { config } from '../config';
+import { asyncRoute } from '../errors';
 import { getAllLoansFromChain, getLoanFromChain } from '../stellar/query';
 import { buildAndSubmitFeeBump } from '../stellar/feebump';
 import { issuerKeypair, contractIds } from '../stellar/client';
 import { classifyError } from '../lib/errors/classifyError';
+import { adminAuthMiddleware } from '../middleware/auth';
 
 const router = Router();
 const limit = pLimit(5);
 
 router.get(
   '/check-defaults',
+  adminAuthMiddleware,
   asyncRoute(async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== `Bearer ${config.adminApiSecret}`) {
-      throw unauthorized('Admin access only');
-    }
-
     const { loans, latestLedger, oldestLedger } = await getAllLoansFromChain();
     req.log?.info({ scannedCount: loans.length, latestLedger }, 'Starting admin sweep');
 

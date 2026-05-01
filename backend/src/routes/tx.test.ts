@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import txRoutes from './tx';
-import { hasActiveLoan } from '../stellar/query';
+import { hasActiveLoan, getLoanFromChain } from '../stellar/query';
 import { submitSponsoredSignedXdr } from '../stellar/feebump';
 
 vi.mock('../middleware/auth', () => ({
@@ -63,6 +63,13 @@ describe('TX Routes', () => {
     it('allows borrow if no active loan exists', async () => {
       vi.mocked(hasActiveLoan).mockResolvedValue(false);
       vi.mocked(submitSponsoredSignedXdr).mockResolvedValue('TX_HASH');
+      vi.mocked(getLoanFromChain).mockResolvedValue({
+        principal: 5000000000n,
+        fee: 250000000n,
+        due_ledger: 10000,
+        repaid: false,
+        defaulted: false,
+      });
 
       const response = await request(app)
         .post('/tx/sign-and-submit')

@@ -3,7 +3,7 @@
 use super::{LendingPool, LendingPoolClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger, LedgerInfo},
-    Address, Env, String,
+    Address, Env, IntoVal, String,
 };
 
 mod phpc_token {
@@ -281,4 +281,72 @@ fn test_repay_rejects_defaulted_loan() {
     });
     pool_client(&ctx).mark_default(&ctx.borrower);
     pool_client(&ctx).repay(&ctx.borrower);
+}
+
+#[test]
+fn test_admin_withdraw_happy_path() {
+    let ctx = setup_pool(500, 100);
+    fund_pool(&ctx, POOL_FUNDING);
+
+    let withdraw_amount = 100_000_000_000;
+    pool_client(&ctx).admin_withdraw(&withdraw_amount);
+
+    assert_eq!(
+        pool_client(&ctx).get_pool_balance(),
+        POOL_FUNDING - withdraw_amount
+    );
+    assert_eq!(
+        phpc_client(&ctx).balance(&ctx.admin),
+        withdraw_amount
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_admin_withdraw_rejects_over_balance() {
+    let ctx = setup_pool(500, 100);
+    fund_pool(&ctx, 1_000);
+    pool_client(&ctx).admin_withdraw(&1_001);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_admin_withdraw_rejects_zero_amount() {
+    let ctx = setup_pool(500, 100);
+    pool_client(&ctx).admin_withdraw(&0);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_mark_default_requires_admin_auth() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let borrower = Address::generate(&env);
+    let registry_id = Address::generate(&env);
+    let phpc_id = Address::generate(&env);
+
+    let pool_id = env.register(LendingPool, ());
+    let pool_client = LendingPoolClient::new(&env, &pool_id);
+
+    pool_client
+        .mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &pool_id,
+                fn_name: "initialize",
+                args: (
+                    admin.clone(),
+                    registry_id.clone(),
+                    phpc_id.clone(),
+                    500u32,
+                    100u32,
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .initialize(&admin, &registry_id, &phpc_id, &500, &100);
+
+    // Call mark_default without any mock auth, should fail because require_auth() is called for admin
+    pool_client.mark_default(&borrower);
 }

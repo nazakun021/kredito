@@ -12,6 +12,7 @@ import { rpcServer, networkPassphrase, issuerKeypair, contractIds } from './clie
 import pLimit from 'p-limit';
 import { sleep } from '../utils/sleep';
 import { paginateEvents } from './events';
+import { logger } from '../utils/logger';
 
 export interface LoanState {
   principal: bigint;
@@ -29,6 +30,8 @@ export interface LoanRepaymentConfirmation {
 export interface LoanRecordWithBorrower extends LoanState {
   walletAddress: string;
 }
+
+const MAX_BORROWERS_PER_SWEEP = 500;
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000): Promise<T> {
   for (let i = 0; i < retries; i++) {
@@ -81,8 +84,18 @@ export async function discoverBorrowersFromChain(): Promise<{
     }
   }
 
+  const borrowersList = [...borrowers];
+  const cappedBorrowers = borrowersList.slice(0, MAX_BORROWERS_PER_SWEEP);
+
+  if (borrowersList.length > MAX_BORROWERS_PER_SWEEP) {
+    logger.warn(
+      { total: borrowersList.length, cap: MAX_BORROWERS_PER_SWEEP },
+      'Borrower cap reached during discovery',
+    );
+  }
+
   return {
-    borrowers: [...borrowers],
+    borrowers: cappedBorrowers,
     latestLedger,
     oldestLedger,
   };

@@ -132,6 +132,7 @@ export default function Page() {
 
   return (
     <div className="min-h-dvh overflow-x-hidden">
+      {/* Required: useSearchParams() inside SessionExpiredToast needs Suspense in App Router */}
       <Suspense fallback={null}>
         <SessionExpiredToast setError={setError} />
       </Suspense>

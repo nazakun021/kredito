@@ -32,6 +32,7 @@ target/
 
 # Repomix
 repomix-output.txt
+repomix.config.json
 
 # --- IDEs ---
 .vscode/

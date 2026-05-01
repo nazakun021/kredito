@@ -2,7 +2,7 @@
 set -e
 
 NETWORK="testnet"
-SOURCE="issuer"
+SOURCE="${STELLAR_SOURCE_ACCOUNT:-issuer}"
 ISSUER_PUB=$(stellar keys show "$SOURCE" --public-key)
 WASM_DIR="target/wasm32v1-none/release"
 

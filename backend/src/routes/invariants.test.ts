@@ -15,6 +15,11 @@ vi.mock('../middleware/auth', () => ({
     req.wallet = DUMMY_WALLET;
     next();
   }),
+  adminAuthMiddleware: vi.fn((req, res, next) => {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+    if (token !== config.adminApiSecret) return next(new Error('Admin access only'));
+    next();
+  }),
 }));
 
 vi.mock('../stellar/query', () => ({

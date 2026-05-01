@@ -47,6 +47,8 @@ export default function ConnectWalletButton() {
       <div className="relative">
         <button
           onClick={() => setShowDropdown(!showDropdown)}
+          aria-expanded={showDropdown}
+          aria-haspopup="menu"
           className="btn-primary btn-dark flex items-center gap-2 px-4 py-2 text-sm font-medium"
         >
           <Wallet size={16} style={{ color: 'var(--color-accent)' }} />
@@ -55,38 +57,11 @@ export default function ConnectWalletButton() {
         </button>
 
         {showDropdown && (
-          <>
-            <div 
-              className="fixed inset-0 z-40" 
-              onClick={() => setShowDropdown(false)} 
-            />
-            <div 
-              className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
-              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
-            >
-              <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                <p className="text-[10px] font-semibold tracking-widest uppercase mb-1" style={{ color: 'var(--color-text-muted)' }}>
-                  Connected Address
-                </p>
-                <p className="text-xs font-mono break-all" style={{ color: 'var(--color-text-secondary)' }}>
-                  {publicKey}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  useAuthStore.getState().clearAuth();
-                  disconnect();
-                  setShowDropdown(false);
-                  router.replace('/');
-                }}
-                className="flex items-center gap-2 w-full px-4 py-3 text-sm transition-colors text-left hover:bg-slate-800/50"
-                style={{ color: 'var(--color-danger)' }}
-              >
-                <LogOut size={14} />
-                Disconnect
-              </button>
-            </div>
-          </>
+          <DropdownMenu 
+            publicKey={publicKey} 
+            onClose={() => setShowDropdown(false)} 
+            disconnect={disconnect}
+          />
         )}
       </div>
     );
@@ -110,5 +85,64 @@ export default function ConnectWalletButton() {
         </>
       )}
     </button>
+  );
+}
+
+function DropdownMenu({ 
+  publicKey, 
+  onClose, 
+  disconnect 
+}: { 
+  publicKey: string; 
+  onClose: () => void; 
+  disconnect: () => void;
+}) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  return (
+    <>
+      <div 
+        className="fixed inset-0 z-40" 
+        onClick={onClose} 
+      />
+      <div 
+        role="menu"
+        aria-orientation="vertical"
+        aria-labelledby="wallet-dropdown-button"
+        className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
+        style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
+      >
+        <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <p className="text-[10px] font-semibold tracking-widest uppercase mb-1" style={{ color: 'var(--color-text-muted)' }}>
+            Connected Address
+          </p>
+          <p className="text-xs font-mono break-all" style={{ color: 'var(--color-text-secondary)' }}>
+            {publicKey}
+          </p>
+        </div>
+        <button
+          role="menuitem"
+          onClick={() => {
+            useAuthStore.getState().clearAuth();
+            disconnect();
+            onClose();
+            router.replace('/');
+          }}
+          className="flex items-center gap-2 w-full px-4 py-3 text-sm transition-colors text-left hover:bg-slate-800/50"
+          style={{ color: 'var(--color-danger)' }}
+        >
+          <LogOut size={14} />
+          Disconnect
+        </button>
+      </div>
+    </>
   );
 }

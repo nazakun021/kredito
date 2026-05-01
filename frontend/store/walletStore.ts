@@ -35,6 +35,7 @@ export const useWalletStore = create<WalletState>((set) => ({
   connectionError: null,
 
   connect: async () => {
+    if (typeof window === 'undefined') return;
     set({ isConnecting: true, connectionError: null });
 
     try {
@@ -106,6 +107,7 @@ export const useWalletStore = create<WalletState>((set) => ({
   },
 
   disconnect: () => {
+    if (typeof window === 'undefined') return;
     // P2-5: Clear AuthStore when disconnecting wallet to prevent lingering sessions
     useAuthStore.getState().clearAuth();
 

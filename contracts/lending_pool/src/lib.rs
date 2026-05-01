@@ -262,6 +262,9 @@ impl LendingPool {
     }
 
     pub fn mark_default(env: Env, borrower: Address) {
+        let admin = get_admin(&env);
+        admin.require_auth();
+
         let loan_key = DataKey::Loan(borrower.clone());
         let mut loan: LoanRecord = env
             .storage()

@@ -27,18 +27,6 @@ export default function CelebrationParticles() {
           }}
         />
       ))}
-      <style jsx>{`
-        @keyframes fall {
-          0% {
-            transform: translateY(0) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(600px) rotate(360deg);
-            opacity: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 }

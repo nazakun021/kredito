@@ -112,6 +112,19 @@ Explorer Link: https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4
 - Rust (latest stable) and `stellar-cli`
 - Freighter browser extension (set to Testnet)
 
+### Quick Start
+
+```bash
+# Clone the repo and run the setup script
+./scripts/setup.sh
+
+# Start the Backend (in one terminal)
+cd backend && pnpm dev
+
+# Start the Frontend (in another terminal)
+cd frontend && pnpm dev
+```
+
 ### Smart Contracts
 
 ```bash
@@ -129,7 +142,7 @@ pnpm build
 pnpm dev
 ```
 
-_Requires `backend/.env` with `JWT_SECRET`, `ISSUER_SECRET_KEY`, `ADMIN_API_SECRET`, `WEB_AUTH_SECRET_KEY`, `HOME_DOMAIN`, `WEB_AUTH_DOMAIN`, and the deployed Stellar contract IDs. Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
+_Requires `backend/.env` (see `backend/.env.example`). Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
 
 ### Frontend
 
@@ -137,7 +150,7 @@ _Requires `backend/.env` with `JWT_SECRET`, `ISSUER_SECRET_KEY`, `ADMIN_API_SECR
 cd frontend
 pnpm install
 pnpm lint
-pnpm exec next build --webpack
+pnpm build
 pnpm dev
 ```
 
