@@ -13,6 +13,7 @@ This runbook outlines the steps for a live demonstration of the Kredito platform
 ## 2. Step-by-Step Flow
 
 ### Step 1: Secure Wallet Sign-in
+
 1. Navigate to the Kredito homepage (`http://localhost:3000`).
 2. Click **Connect Freighter Wallet**.
 3. Approve the connection request in Freighter.
@@ -20,6 +21,7 @@ This runbook outlines the steps for a live demonstration of the Kredito platform
 5. You should be redirected to the **Dashboard**.
 
 ### Step 2: Establish Credit Identity (Initial Scoring)
+
 1. On the Dashboard, you'll see "Unrated" or a low score if it's a new wallet.
 2. Click **Refresh Score** (or **Calculate Score**).
 3. The backend will sweep the last 10,000 ledgers for your address history (payments, XLM balance, age).
@@ -27,6 +29,7 @@ This runbook outlines the steps for a live demonstration of the Kredito platform
 5. The Dashboard should now display your **Credit Passport** with a Tier (e.g., Bronze, Silver, Gold) and a Borrow Limit.
 
 ### Step 3: Borrow from the Pool
+
 1. Click **Borrow Funds** in the sidebar or from the dashboard card.
 2. Review the loan terms:
    - 30-day fixed term.
@@ -39,11 +42,14 @@ This runbook outlines the steps for a live demonstration of the Kredito platform
 7. **Success!** Particles will appear, and you can view the transaction on Stellar Expert. Your wallet now contains the borrowed PHPC.
 
 ### Step 4: Top-up for Repayment (Demo Tip)
-*Note: Since Kredito is a pure micro-loan flow, you only received the principal. To repay, you need `principal + fee`.*
+
+_Note: Since Kredito is a pure micro-loan flow, you only received the principal. To repay, you need `principal + fee`._
+
 1. Explain that for the demo, we need a few extra PHPC to cover the interest/fee.
 2. Use the "issuer" or a script to send a small amount of PHPC to the demo wallet, or explain that in a real-world scenario, the user would already have some balance or top up via an anchor.
 
 ### Step 5: Repay and Level Up
+
 1. Navigate to the **Repay** page.
 2. You will see your active loan details and the due date.
 3. Click **Repay Loan**.

@@ -6,11 +6,11 @@ Transparent on-chain credit scores and instant micro-loans for the Filipino unba
 
 🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
 
-🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS?filter=interface)**
+🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2?filter=interface)**
 
-🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6?filter=interface)**
+🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N?filter=interface)**
 
-🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE?filter=interface)**
+🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7?filter=interface)**
 
 > **SEA Stellar Hackathon · Track: Payments & Financial Access**
 
@@ -81,17 +81,17 @@ kredito/
 
 Deployed and verified on Stellar testnet:
 
-- **`credit_registry`**: `CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS`
-- **`lending_pool`**: `CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6`
-- **`phpc_token`**: `CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE`
+- **`credit_registry`**: `CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2`
+- **`lending_pool`**: `CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N`
+- **`phpc_token`**: `CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7`
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS?filter=interface
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CBQV7ZIM6ZA4VIENUYDADWYWTATLXMY4RKQ67SQAZH3LWQJEITB6IOY2?filter=interface
 ![Credit Registry Explorer](./images/img1.png)
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6?filter=interface
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CDTASHYWGEEM7I4Z4QCQSZKZOY3KMID32RBZDTA3VOUXFWE4YXWFY26N?filter=interface
 ![Lending Pool Explorer](./images/img2.png)
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE?filter=interface
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CAMZB75TSS7IP7O7BTGQJVLBBPRIA3STHWPF4UUVZ5L3B5Z7J7A7T4E7?filter=interface
 ![PHPC Token Explorer](./images/img3.png)
 
 ## Contract Functions

@@ -26,7 +26,7 @@ In the `credit_registry` smart contract, the metric for balance is named `avg_ba
 
 ## CORS And Auth
 
-The backend CORS configuration is driven by `CORS_ORIGINS` and remains a strict allowlist in production. 
+The backend CORS configuration is driven by `CORS_ORIGINS` and remains a strict allowlist in production.
 
 ### CSRF Protection
 

@@ -7,12 +7,14 @@ This document describes how to verify the correctness of the Kredito system at a
 The contracts use the standard Soroban testing framework with snapshots.
 
 ### Run all tests
+
 ```bash
 cd contracts
 cargo test --workspace
 ```
 
 ### Key Test Files
+
 - `contracts/credit_registry/src/test.rs`: Verifies scoring formulas, tier thresholds, and authorized metric updates.
 - `contracts/lending_pool/src/test.rs`: Verifies borrow/repay logic, interest calculations, and liquidity management.
 - `contracts/phpc_token/src/test.rs`: Verifies SEP-41 compliance and basic token flows.
@@ -24,13 +26,16 @@ cargo test --workspace
 The backend uses Vitest for unit and integration tests, mocking Stellar network calls where appropriate.
 
 ### Run all tests
+
 ```bash
 cd backend
 pnpm test
 ```
 
 ### Manual API Verification
+
 You can test the admin-only "default check" trigger (requires `ADMIN_API_SECRET`):
+
 ```bash
 curl -X GET http://localhost:3001/api/admin/check-defaults \
   -H "Authorization: Bearer <your_admin_secret>"
@@ -43,13 +48,16 @@ curl -X GET http://localhost:3001/api/admin/check-defaults \
 We use Next.js built-in linting and TypeScript for static analysis.
 
 ### Type Check & Lint
+
 ```bash
 cd frontend
 pnpm lint
 ```
 
 ### Build Verification
+
 Always verify that the production build succeeds, as this catches CSP and SSR issues:
+
 ```bash
 cd frontend
 pnpm build
