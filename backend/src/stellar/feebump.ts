@@ -13,13 +13,10 @@ import {
 } from '@stellar/stellar-sdk';
 import { horizonServer, issuerKeypair, networkPassphrase, rpcServer } from './client';
 import { logger } from '../utils/logger';
+import { sleep } from '../utils/sleep';
 
 const CLASSIC_BASE_FEE = '100';
 const SPONSORED_BASE_FEE = '1000000';
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -99,10 +96,6 @@ async function ensureUserAccountByAddress(publicKey: string) {
     await createAccountFromIssuer(publicKey);
     return rpcServer.getAccount(publicKey);
   }
-}
-
-async function ensureUserAccount(userKeypair: Keypair) {
-  return ensureUserAccountByAddress(userKeypair.publicKey());
 }
 
 function buildInvokeTransaction(
@@ -189,7 +182,8 @@ export async function buildAndSubmitFeeBump(
   args: xdr.ScVal[],
   retries = 2,
 ): Promise<string> {
-  const userAccount = await ensureUserAccount(userKeypair);
+  // P2-1: Remove ensureUserAccount and call ensureUserAccountByAddress directly
+  const userAccount = await ensureUserAccountByAddress(userKeypair.publicKey());
   const tx = buildInvokeTransaction(userAccount, contractId, functionName, args);
   const prepared = await rpcServer.prepareTransaction(tx);
   prepared.sign(userKeypair);

@@ -10,16 +10,11 @@
     "topFilesLength": 10
   },
   "include": [
-    "backend/src/**/*",
-    "backend/*.json",
-    "backend/*.ts",
-    "frontend/**/*",
-    "contracts/**/*",
-    "docs/**/*",
-    "README.md",
-    "repomix.config.json"
+    "**/*"
   ],
   "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
     "customPatterns": [
       "**/node_modules/**",
       "**/dist/**",

@@ -7,6 +7,7 @@ import {
 } from '../lib/freighter';
 import { REQUIRED_NETWORK } from '../lib/constants';
 import { toast } from 'sonner';
+import { useAuthStore } from './auth';
 
 interface WalletState {
   isConnected: boolean;
@@ -105,6 +106,9 @@ export const useWalletStore = create<WalletState>((set) => ({
   },
 
   disconnect: () => {
+    // P2-5: Clear AuthStore when disconnecting wallet to prevent lingering sessions
+    useAuthStore.getState().clearAuth();
+
     set({
       isConnected: false,
       publicKey: null,

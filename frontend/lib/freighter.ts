@@ -11,9 +11,9 @@ import {
 import { TESTNET_PASSPHRASE } from './constants';
 
 const authApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
   timeout: 15000,
-  withCredentials: true,
+  headers: { 'X-Requested-With': 'XMLHttpRequest' },
 });
 
 // ─── Phase 1.2 Helpers ──────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ export async function loginWithFreighter() {
 
   const publicKey = connection.address;
 
-  const challengeRes = await authApi.post<{ challenge: string }>('auth/challenge', {
+  const challengeRes = await authApi.post<{ challenge: string }>('/auth/challenge', {
     wallet: publicKey,
   });
 
@@ -138,7 +138,7 @@ export async function loginWithFreighter() {
   const loginRes = await authApi.post<{
     wallet: string;
     token: string;
-  }>('auth/login', {
+  }>('/auth/login', {
     signedChallenge: signResult.signedXdr,
   });
 

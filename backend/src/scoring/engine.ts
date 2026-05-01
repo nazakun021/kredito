@@ -4,6 +4,7 @@ import { Address, Horizon, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { LEDGERS_PER_DAY, STROOPS_PER_UNIT } from '../config';
 import { contractIds, horizonServer, rpcServer } from '../stellar/client';
 import { queryContract } from '../stellar/query';
+import { paginateEvents } from '../stellar/events';
 
 const REPAYMENT_LOOKBACK_LEDGERS = 250_000;
 
@@ -227,53 +228,20 @@ export async function fetchXlmBalance(address: string): Promise<number> {
 export async function fetchRepaymentMetrics(
   address: string,
 ): Promise<Pick<WalletMetrics, 'repaymentCount' | 'defaultCount'>> {
-  async function loadEvents(startLedger: number) {
-    return rpcServer.getEvents({
-      startLedger,
-      filters: [
-        {
-          type: 'contract',
-          contractIds: [contractIds.lendingPool],
-        },
-      ],
-      limit: 200,
-    });
-  }
-
-  function parseLedgerRange(error: unknown) {
-    const message =
-      typeof error === 'object' && error !== null && 'message' in error
-        ? String((error as { message?: unknown }).message ?? '')
-        : '';
-    const match = message.match(/ledger range:\s*(\d+)\s*-\s*(\d+)/i);
-    if (!match) return null;
-
-    return {
-      min: Number(match[1]),
-      max: Number(match[2]),
-    };
-  }
-
   try {
     const latestLedger = await rpcServer.getLatestLedger();
     const requestedStartLedger = Math.max(0, latestLedger.sequence - REPAYMENT_LOOKBACK_LEDGERS);
-    let events;
-
-    try {
-      events = await loadEvents(requestedStartLedger);
-    } catch (error) {
-      const range = parseLedgerRange(error);
-      if (!range) {
-        throw error;
-      }
-
-      events = await loadEvents(Math.max(range.min, Math.min(requestedStartLedger, range.max)));
-    }
+    
+    // P2-2: Use paginateEvents to ensure all events are fetched if > 200
+    const { events } = await paginateEvents(
+      [{ type: 'contract', contractIds: [contractIds.lendingPool] }],
+      requestedStartLedger
+    );
 
     let repaymentCount = 0;
     let defaultCount = 0;
 
-    for (const event of events.events) {
+    for (const event of events) {
       const topicName = scValToNative(event.topic[0]);
       const topicAddress = event.topic[1] ? scValToNative(event.topic[1]) : null;
       if (topicAddress !== address) {

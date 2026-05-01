@@ -6,6 +6,8 @@ import { buildScoreSummary, toPhpAmount } from '../scoring/engine';
 import { submitSponsoredSignedXdr } from '../stellar/feebump';
 import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
 import { getLoanFromChain, hasActiveLoan, waitForLoanRepayment } from '../stellar/query';
+import { sleep } from '../utils/sleep';
+import { config } from '../config';
 
 const router = Router();
 
@@ -17,7 +19,7 @@ const submitFlowSchema = z
   .optional();
 
 function getExplorerUrl(txHash: string) {
-  return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
+  return `${config.explorerUrl}/tx/${txHash}`;
 }
 
 router.post(
@@ -112,7 +114,14 @@ router.post(
     };
 
     if (flow?.action === 'borrow') {
-      const loan = await getLoanFromChain(wallet);
+      // P2-3: Wait up to ~15s for state to settle after borrow submit
+      let loan = null;
+      for (let i = 0; i < 5; i++) {
+        loan = await getLoanFromChain(wallet);
+        if (loan) break;
+        await sleep(3000);
+      }
+
       if (loan) {
         const principal = Number(toPhpAmount(loan.principal));
         const fee = Number(toPhpAmount(loan.fee));
@@ -127,7 +136,7 @@ router.post(
       }
     }
 
-    if (flow?.action === 'repay') {
+    if (flow?.action === 'repay' && flow?.step === 'repay') {
       const settledLoan = await waitForLoanRepayment(wallet);
       req.log?.info({ wallet, txHash }, 'Repayment confirmed on-chain');
       const previousSnapshot = await getOnChainCreditSnapshot(wallet).catch(() => null);

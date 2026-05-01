@@ -4,27 +4,25 @@ import { contractIds, issuerKeypair, networkPassphrase, rpcServer } from './clie
 import { queryContract } from './query';
 import { pollTransaction } from './feebump';
 
-async function invokeIssuerContract(operations: { functionName: string; args: xdr.ScVal[] }[]) {
+async function invokeIssuerContractSingle(functionName: string, args: xdr.ScVal[]) {
   const issuerAccount = await rpcServer.getAccount(issuerKeypair.publicKey());
   const builder = new TransactionBuilder(issuerAccount, {
     fee: '1000',
     networkPassphrase,
   });
 
-  for (const op of operations) {
-    builder.addOperation(
-      Operation.invokeHostFunction({
-        func: xdr.HostFunction.hostFunctionTypeInvokeContract(
-          new xdr.InvokeContractArgs({
-            contractAddress: Address.fromString(contractIds.creditRegistry).toScAddress(),
-            functionName: op.functionName,
-            args: op.args,
-          }),
-        ),
-        auth: [],
-      }),
-    );
-  }
+  builder.addOperation(
+    Operation.invokeHostFunction({
+      func: xdr.HostFunction.hostFunctionTypeInvokeContract(
+        new xdr.InvokeContractArgs({
+          contractAddress: Address.fromString(contractIds.creditRegistry).toScAddress(),
+          functionName,
+          args,
+        }),
+      ),
+      auth: [],
+    }),
+  );
 
   const tx = builder.setTimeout(180).build();
   const prepared = await rpcServer.prepareTransaction(tx);
@@ -44,57 +42,18 @@ async function invokeIssuerContract(operations: { functionName: string; args: xd
 export async function updateOnChainMetrics(walletAddress: string, metrics: WalletMetrics) {
   const wallet = Address.fromString(walletAddress).toScVal();
 
-  const hash = await invokeIssuerContract([
-    {
-      functionName: 'update_metrics_raw',
-      args: [
-        wallet,
-        nativeToScVal(metrics.txCount, { type: 'u32' }),
-        nativeToScVal(metrics.repaymentCount, { type: 'u32' }),
-        nativeToScVal(metrics.xlmBalance, { type: 'u32' }),
-        nativeToScVal(metrics.defaultCount, { type: 'u32' }),
-      ],
-    },
-    {
-      functionName: 'update_score',
-      args: [wallet],
-    },
+  // Two sequential single-op transactions — Soroban does not allow multi-op txs
+  const metricsTxHash = await invokeIssuerContractSingle('update_metrics_raw', [
+    wallet,
+    nativeToScVal(metrics.txCount, { type: 'u32' }),
+    nativeToScVal(metrics.repaymentCount, { type: 'u32' }),
+    nativeToScVal(metrics.xlmBalance, { type: 'u32' }),
+    nativeToScVal(metrics.defaultCount, { type: 'u32' }),
   ]);
 
-  return { metricsTxHash: hash, scoreTxHash: hash };
-}
+  const scoreTxHash = await invokeIssuerContractSingle('update_score', [wallet]);
 
-export async function markLoanDefaulted(borrowerAddress: string) {
-  const issuerAccount = await rpcServer.getAccount(issuerKeypair.publicKey());
-  const builder = new TransactionBuilder(issuerAccount, {
-    fee: '1000',
-    networkPassphrase,
-  }).addOperation(
-    Operation.invokeHostFunction({
-      func: xdr.HostFunction.hostFunctionTypeInvokeContract(
-        new xdr.InvokeContractArgs({
-          contractAddress: Address.fromString(contractIds.lendingPool).toScAddress(),
-          functionName: 'mark_default',
-          args: [Address.fromString(borrowerAddress).toScVal()],
-        }),
-      ),
-      auth: [],
-    }),
-  );
-
-  const tx = builder.setTimeout(180).build();
-  const prepared = await rpcServer.prepareTransaction(tx);
-  prepared.sign(issuerKeypair);
-
-  const response = await rpcServer.sendTransaction(prepared);
-  if (response.status !== 'PENDING') {
-    throw new Error(
-      `Mark default transaction failed: ${JSON.stringify(response.errorResult ?? response)}`,
-    );
-  }
-
-  await pollTransaction(response.hash);
-  return response.hash;
+  return { metricsTxHash, scoreTxHash };
 }
 
 export async function queryCreditRegistry<T = unknown>(functionName: string, args: xdr.ScVal[]) {
@@ -103,7 +62,9 @@ export async function queryCreditRegistry<T = unknown>(functionName: string, arg
 
 export async function getOnChainCreditSnapshot(walletAddress: string) {
   const wallet = Address.fromString(walletAddress).toScVal();
-  const [score, tier, metrics] = await Promise.all([
+
+  // P2-9: Run initial 4 queries in parallel to reduce sequential round-trips
+  const [score, tier, metrics, tierLimitForTier0] = await Promise.all([
     queryCreditRegistry<bigint | number>('get_score', [wallet]),
     queryCreditRegistry<bigint | number>('get_tier', [wallet]),
     queryCreditRegistry<{
@@ -112,14 +73,23 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
       avg_balance?: number | bigint;
       default_count?: number | bigint;
     }>('get_metrics', [wallet]),
+    queryCreditRegistry<bigint | number | string>('get_tier_limit', [
+      nativeToScVal(0, { type: 'u32' }),
+    ]),
   ]);
-  const tierLimit = await queryCreditRegistry<bigint | number | string>('get_tier_limit', [
-    nativeToScVal(Number(tier ?? 0), { type: 'u32' }),
-  ]);
+
+  // If tier is 0, we already have the limit. Otherwise fetch it.
+  const finalTier = Number(tier ?? 0);
+  const tierLimit =
+    finalTier === 0
+      ? tierLimitForTier0
+      : await queryCreditRegistry<bigint | number | string>('get_tier_limit', [
+          nativeToScVal(finalTier, { type: 'u32' }),
+        ]);
 
   return buildScorePayload(walletAddress, {
     score: Number(score ?? 0),
-    tier: Number(tier ?? 0),
+    tier: finalTier,
     tierLimit: BigInt(tierLimit ?? 0),
     metrics: {
       txCount: Number(metrics?.tx_count ?? 0),
@@ -128,6 +98,6 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
       defaultCount: Number(metrics?.default_count ?? 0),
     },
     source: 'onchain',
-    tierLabel: tierLabel(Number(tier ?? 0)),
+    tierLabel: tierLabel(finalTier),
   });
 }

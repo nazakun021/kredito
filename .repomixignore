@@ -10,8 +10,9 @@ target/
 package-lock.json
 Cargo.lock
 
-# Environment & Local Databases
+# Environment, Logs & Local Databases
 .env*
+*.log
 *.db
 *.sqlite
 

@@ -14,6 +14,8 @@ import { REQUIRED_NETWORK } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
+import CelebrationParticles from '@/components/CelebrationParticles';
+import SummaryRow from '@/components/SummaryRow';
 import { signTx } from '@/lib/freighter';
 import { toast } from 'sonner';
 
@@ -181,9 +183,9 @@ export default function BorrowPage() {
           </div>
 
           <div className="mt-8 rounded-xl p-5 text-left" style={{ background: 'var(--color-bg-card)' }}>
-            <Row label="Amount" value={`P${success.amount}`} />
-            <Row label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`P${success.fee}`} />
-            <Row label="Total owed" value={`P${success.totalOwed}`} strong />
+            <SummaryRow label="Amount" value={`P${success.amount}`} />
+            <SummaryRow label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`P${success.fee}`} />
+            <SummaryRow label="Total owed" value={`P${success.totalOwed}`} strong />
           </div>
 
           <a 
@@ -236,7 +238,7 @@ export default function BorrowPage() {
                   <div key={index} className="skeleton h-6" role="status" aria-busy="true" />
                 ))
               : summaryRows.map((row) => (
-                  <Row key={row.label} label={row.label} value={row.value} strong={row.strong} />
+                  <SummaryRow key={row.label} label={row.label} value={row.value} strong={row.strong} />
                 ))}
           </div>
         </div>
@@ -396,18 +398,6 @@ export default function BorrowPage() {
   );
 }
 
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div
-      className={`flex items-center justify-between text-sm ${strong ? 'mt-4 border-t pt-4 font-bold' : ''}`}
-      style={strong ? { borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' } : {}}
-    >
-      <span>{label}</span>
-      <span className="tabular-nums">{value}</span>
-    </div>
-  );
-}
-
 function getBorrowErrorMessage(err: unknown, borrowLimit: number) {
   const message = getErrorMessage(err, 'Borrowing failed. Please try again.');
 
@@ -457,41 +447,6 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function CelebrationParticles() {
-  const [particles] = useState<{ left: string; animationDelay: string; duration: string }[]>(() =>
-    Array.from({ length: 20 }).map(() => ({
-      left: `${Math.random() * 100}%`,
-      animationDelay: `${Math.random() * 2}s`,
-      duration: `${2 + Math.random() * 3}s`,
-    }))
-  );
-
-  return (
-    <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
-      {particles.map((p, i) => (
-        <div
-          key={i}
-          className="absolute h-2 w-2 rounded-full"
-          style={{
-            background: i % 2 === 0 ? 'var(--color-accent)' : 'var(--color-amber)',
-            top: '-20px',
-            left: p.left,
-            animation: `fall ${p.duration} linear infinite`,
-            animationDelay: p.animationDelay,
-            opacity: 0.6,
-          }}
-        />
-      ))}
-      <style jsx>{`
-        @keyframes fall {
-          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(600px) rotate(360deg); opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }

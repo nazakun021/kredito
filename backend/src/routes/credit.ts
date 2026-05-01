@@ -30,23 +30,16 @@ router.get(
   '/score',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    try {
-      const payload = await getOnChainCreditSnapshot(req.wallet);
-      if (payload.tier === 0 && payload.score === 0) {
-        throw notFound('No score on-chain yet. Call generate first.');
-      }
-
-      logger.info(
-        { wallet: req.wallet, score: payload.score },
-        'Retrieved on-chain credit snapshot',
-      );
-      res.json(payload);
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('No score on-chain yet')) {
-        throw e;
-      }
-      throw e;
+    const payload = await getOnChainCreditSnapshot(req.wallet);
+    if (payload.tier === 0 && payload.score === 0) {
+      throw notFound('No score on-chain yet. Call generate first.');
     }
+
+    logger.info(
+      { wallet: req.wallet, score: payload.score },
+      'Retrieved on-chain credit snapshot',
+    );
+    res.json(payload);
   }),
 );
 

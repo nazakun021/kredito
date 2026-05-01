@@ -136,25 +136,16 @@ router.post(
 
     const approveArgs = [
       Address.fromString(wallet).toScVal(),
-      Address.fromString(contractIds.lendingPool).toScVal(),
+      Address.fromString(contractIds.lendingPool).toScAddress(),
       nativeToScVal(totalOwedStroops, { type: 'i128' }),
       nativeToScVal(expirationLedger, { type: 'u32' }),
     ];
-
-    const repayArgs = [Address.fromString(wallet).toScVal()];
 
     const unsignedApproveXdr = await buildUnsignedContractCall(
       wallet,
       contractIds.phpcToken,
       'approve',
       approveArgs,
-    );
-
-    const unsignedRepayXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.lendingPool,
-      'repay',
-      repayArgs,
     );
 
     const summary = {
@@ -167,7 +158,7 @@ router.post(
     type RepayResponse = {
       requiresSignature: true;
       transactions: Array<{
-        type: 'approve' | 'repay';
+        type: 'approve';
         unsignedXdr: string;
         description: string;
       }>;
@@ -179,7 +170,7 @@ router.post(
       };
     };
 
-    logger.info({ wallet, totalOwed: summary.totalOwed }, 'Repay transactions prepared');
+    logger.info({ wallet, totalOwed: summary.totalOwed }, 'Repay approval prepared');
     const response: RepayResponse = {
       requiresSignature: true,
       transactions: [
@@ -188,15 +179,33 @@ router.post(
           unsignedXdr: unsignedApproveXdr,
           description: `Authorize pool to spend ${toPhpAmount(totalOwedStroops)} PHPC`,
         },
-        {
-          type: 'repay',
-          unsignedXdr: unsignedRepayXdr,
-          description: 'Repay loan principal + fee',
-        },
       ],
       summary,
     };
     return res.json(response);
+  }),
+);
+
+router.post(
+  '/repay-xdr',
+  authMiddleware,
+  asyncRoute(async (req: AuthRequest, res) => {
+    const wallet = req.wallet;
+    const loan = await getLoanFromChain(wallet);
+
+    if (!loan || loan.repaid || loan.defaulted) {
+      throw badRequest('No repayable loan found');
+    }
+
+    // Build against the CURRENT sequence number — approve has already settled by now
+    const unsignedRepayXdr = await buildUnsignedContractCall(
+      wallet,
+      contractIds.lendingPool,
+      'repay',
+      [Address.fromString(wallet).toScVal()],
+    );
+
+    res.json({ unsignedXdr: unsignedRepayXdr });
   }),
 );
 

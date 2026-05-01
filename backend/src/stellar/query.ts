@@ -10,6 +10,8 @@ import {
 } from '@stellar/stellar-sdk';
 import { rpcServer, networkPassphrase, issuerKeypair, contractIds } from './client';
 import pLimit from 'p-limit';
+import { sleep } from '../utils/sleep';
+import { paginateEvents } from './events';
 
 export interface LoanState {
   principal: bigint;
@@ -28,10 +30,6 @@ export interface LoanRecordWithBorrower extends LoanState {
   walletAddress: string;
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000): Promise<T> {
   for (let i = 0; i < retries; i++) {
     try {
@@ -44,22 +42,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000)
   throw new Error('unreachable');
 }
 
-function parseLedgerRange(error: unknown) {
-  const message =
-    typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message?: unknown }).message ?? '')
-      : '';
-  const match = message.match(/ledger range:\s*(\d+)\s*-\s*(\d+)/i);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    min: Number(match[1]),
-    max: Number(match[2]),
-  };
-}
-
 async function getAllLendingPoolEvents() {
   const filters: rpc.Api.EventFilter[] = [
     {
@@ -69,53 +51,14 @@ async function getAllLendingPoolEvents() {
   ];
 
   const latestLedger = await withRetry(() => rpcServer.getLatestLedger());
-  const requestedStartLedger = 0;
-  const limit = 200;
-  let cursor: string | undefined;
-  let events: rpc.Api.EventResponse[] = [];
-  let oldestLedger: number | undefined;
+  const requestedStartLedger = Math.max(0, latestLedger.sequence - 250_000); 
 
-  while (true) {
-    const request: rpc.Api.GetEventsRequest = cursor
-      ? { filters, cursor, limit }
-      : { filters, startLedger: requestedStartLedger, limit };
-
-    let page: rpc.Api.GetEventsResponse;
-    try {
-      page = await withRetry(() => rpcServer.getEvents(request));
-    } catch (error) {
-      if (cursor) {
-        throw error;
-      }
-
-      const range = parseLedgerRange(error);
-      if (!range) {
-        throw error;
-      }
-
-      page = await withRetry(() =>
-        rpcServer.getEvents({
-          filters,
-          startLedger: Math.max(range.min, Math.min(requestedStartLedger, range.max)),
-          limit,
-        }),
-      );
-    }
-
-    oldestLedger = page.oldestLedger;
-    events = events.concat(page.events);
-
-    if (page.events.length < limit || page.cursor === cursor) {
-      break;
-    }
-
-    cursor = page.cursor;
-  }
+  const { events, oldestLedger } = await paginateEvents(filters, requestedStartLedger);
 
   return {
     events,
     latestLedger: latestLedger.sequence,
-    oldestLedger: oldestLedger ?? latestLedger.sequence,
+    oldestLedger,
   };
 }
 
@@ -128,6 +71,10 @@ export async function discoverBorrowersFromChain(): Promise<{
   const borrowers = new Set<string>();
 
   for (const event of events) {
+    // P2-4: Filter by event topic[0] === 'disburse' to be precise
+    const topicName = scValToNative(event.topic[0]);
+    if (topicName !== 'disburse') continue;
+
     const borrower = event.topic[1] ? scValToNative(event.topic[1]) : null;
     if (typeof borrower === 'string' && borrower.startsWith('G')) {
       borrowers.add(borrower);

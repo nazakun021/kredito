@@ -35,6 +35,7 @@ router.get(
 
     let failures = 0;
     const total = overdueLoans.length;
+    // Safe: JS is single-threaded; pLimit callbacks interleave but never truly race.
     let breakerTriggered = false;
 
     const processLoan = async (loan: {

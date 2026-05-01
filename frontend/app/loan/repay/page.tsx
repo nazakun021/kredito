@@ -13,6 +13,8 @@ import { QUERY_KEYS } from '@/lib/queryKeys';
 import { tierGradient } from '@/lib/tiers';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
+import CelebrationParticles from '@/components/CelebrationParticles';
+import SummaryRow from '@/components/SummaryRow';
 import { signTx } from '@/lib/freighter';
 
 interface LoanStatusResponse {
@@ -55,8 +57,6 @@ export default function RepayPage() {
   const [txStep, setTxStep] = useState<number>(0);
   const [success, setSuccess] = useState<RepaySuccess | null>(null);
   const [error, setError] = useState('');
-  const [repayUnsignedXdr, setRepayUnsignedXdr] = useState<string | null>(null);
-  const [approvalSubmitted, setApprovalSubmitted] = useState(false);
 
   const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
@@ -82,83 +82,58 @@ export default function RepayPage() {
   const handleRepay = async () => {
     setLoading(true);
     setError('');
-    let approvalCompleted = approvalSubmitted;
     
     try {
       if (!user?.wallet) {
         throw new Error('Wallet not connected.');
       }
 
-      let nextRepayUnsignedXdr = repayUnsignedXdr;
+      setTxStep(1);
+      const { data } = await api.post('/loan/repay');
 
-      if (!approvalCompleted) {
-        setTxStep(1);
-        const { data } = await api.post('/loan/repay');
-
-        if (!data.requiresSignature || !data.transactions) {
-          setTxStep(6);
-          setSuccess(data);
-          return;
-        }
-
-        const txs = data.transactions as Array<{ type: string; unsignedXdr: string }>;
-        const approveTx = txs.find((t) => t.type === 'approve');
-        const repayTx = txs.find((t) => t.type === 'repay');
-
-        if (!approveTx || !repayTx) {
-          throw new Error('Repayment transactions not generated correctly.');
-        }
-
-        nextRepayUnsignedXdr = repayTx.unsignedXdr;
-        setRepayUnsignedXdr(repayTx.unsignedXdr);
-        setTxStep(2);
-        const approveResult = await signTx(approveTx.unsignedXdr, user.wallet);
-        if ('error' in approveResult) {
-          throw new Error(`APPROVAL_SIGN:${approveResult.error}`);
-        }
-
-        setTxStep(3);
-        try {
-          await api.post('/tx/sign-and-submit', {
-            signedInnerXdr: [approveResult.signedXdr],
-            flow: { action: 'repay' },
-          });
-          approvalCompleted = true;
-          setApprovalSubmitted(true);
-        } catch (submitErr) {
-          approvalCompleted = false;
-          setApprovalSubmitted(false);
-          setRepayUnsignedXdr(null);
-          throw submitErr;
-        }
+      if (!data.requiresSignature || !data.transactions) {
+        setTxStep(6);
+        setSuccess(data);
+        return;
       }
 
-      if (!nextRepayUnsignedXdr) {
-        throw new Error('Repayment transaction not prepared.');
+      const txs = data.transactions as Array<{ type: string; unsignedXdr: string }>;
+      const approveTx = txs.find((t) => t.type === 'approve');
+
+      if (!approveTx) {
+        throw new Error('Approval transaction not generated correctly.');
       }
 
+      setTxStep(2);
+      const approveResult = await signTx(approveTx.unsignedXdr, user.wallet);
+      if ('error' in approveResult) {
+        throw new Error(`APPROVAL_SIGN:${approveResult.error}`);
+      }
+
+      setTxStep(3);
+      await api.post('/tx/sign-and-submit', {
+        signedInnerXdr: [approveResult.signedXdr],
+        flow: { action: 'repay', step: 'approve' },
+      });
+
+      // Fetch a freshly-sequenced repay XDR (account seq is now N+1)
       setTxStep(4);
-      const repayResult = await signTx(nextRepayUnsignedXdr, user.wallet);
+      const { data: repayXdrData } = await api.post('/loan/repay-xdr');
+      const repayUnsignedXdr = repayXdrData.unsignedXdr;
+
+      const repayResult = await signTx(repayUnsignedXdr, user.wallet);
       if ('error' in repayResult) {
         throw new Error(`REPAY_SIGN:${repayResult.error}`);
       }
 
       setTxStep(5);
-      try {
-        const finalResult = await api.post('/tx/sign-and-submit', {
-          signedInnerXdr: [repayResult.signedXdr],
-          flow: { action: 'repay' },
-        });
+      const finalResult = await api.post('/tx/sign-and-submit', {
+        signedInnerXdr: [repayResult.signedXdr],
+        flow: { action: 'repay', step: 'repay' },
+      });
 
-        setTxStep(6);
-        approvalCompleted = false;
-        setApprovalSubmitted(false);
-        setRepayUnsignedXdr(null);
-        setSuccess(finalResult.data);
-      } catch (submitErr) {
-        setTxStep(4);
-        throw submitErr;
-      }
+      setTxStep(6);
+      setSuccess(finalResult.data);
 
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.score(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
@@ -167,17 +142,12 @@ export default function RepayPage() {
       const errorMessage = getErrorMessage(err, 'Repayment failed. Please try again.');
 
       if (errorMessage.startsWith('APPROVAL_SIGN:')) {
-        approvalCompleted = false;
-        setApprovalSubmitted(false);
-        setRepayUnsignedXdr(null);
         setError('Approval signing cancelled.');
         setTxStep(0);
         return;
       }
 
       if (errorMessage.startsWith('REPAY_SIGN:')) {
-        approvalCompleted = true;
-        setApprovalSubmitted(true);
         setError('Repayment signing cancelled. Your PHPC approval is still valid — click Repay again to continue.');
         setTxStep(4);
         return;
@@ -199,9 +169,7 @@ export default function RepayPage() {
         }
       }
       setError(errorMessage);
-      if (!approvalCompleted) {
-        setTxStep(0);
-      }
+      setTxStep(0);
     } finally {
       setLoading(false);
     }
@@ -283,15 +251,15 @@ export default function RepayPage() {
 
       <div className="card-elevated animate-fade-up">
         <div className="rounded-xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)' }}>
-          <Row label="Principal" value={`P${status?.loan?.principal ?? '0.00'}`} />
-          <Row label="Fee owed" value={`P${status?.loan?.fee ?? '0.00'}`} />
-          <Row label="Total due" value={`P${status?.loan?.totalOwed ?? '0.00'}`} strong />
-          <Row label="Wallet PHPC" value={`P${status?.loan?.walletBalance ?? '0.00'}`} />
+          <SummaryRow label="Principal" value={`P${status?.loan?.principal ?? '0.00'}`} />
+          <SummaryRow label="Fee owed" value={`P${status?.loan?.fee ?? '0.00'}`} />
+          <SummaryRow label="Total due" value={`P${status?.loan?.totalOwed ?? '0.00'}`} strong />
+          <SummaryRow label="Wallet PHPC" value={`P${status?.loan?.walletBalance ?? '0.00'}`} />
           {status?.loan?.shortfall && status.loan.shortfall !== '0.00' ? (
-            <Row label="Still needed" value={`P${status.loan.shortfall}`} tone="danger" />
+            <SummaryRow label="Still needed" value={`P${status.loan.shortfall}`} tone="danger" />
           ) : null}
-          <Row label="Due date" value={status?.loan?.dueDate ? new Date(status.loan.dueDate).toLocaleDateString() : '-'} />
-          <Row
+          <SummaryRow label="Due date" value={status?.loan?.dueDate ? new Date(status.loan.dueDate).toLocaleDateString() : '-'} />
+          <SummaryRow
             label="Status"
             value={isOverdue ? 'Overdue' : status?.loan ? `${status.loan.daysRemaining} days left` : '-'}
             tone={isOverdue ? 'danger' : status?.loan ? (status.loan.daysRemaining <= 7 ? 'amber' : 'success') : undefined}
@@ -333,37 +301,6 @@ export default function RepayPage() {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  strong,
-  tone,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  tone?: 'success' | 'amber' | 'danger';
-}) {
-  const color =
-    tone === 'danger'
-      ? 'var(--color-danger)'
-      : tone === 'amber'
-        ? 'var(--color-amber)'
-        : tone === 'success'
-          ? 'var(--color-success)'
-          : undefined;
-
-  return (
-    <div
-      className={`flex items-center justify-between text-sm ${strong ? 'mt-4 border-t pt-4 font-bold' : ''}`}
-      style={strong ? { borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' } : { color: 'var(--color-text-secondary)' }}
-    >
-      <span>{label}</span>
-      <span className="tabular-nums font-mono" style={color ? { color } : undefined}>{value}</span>
     </div>
   );
 }
@@ -419,41 +356,6 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function CelebrationParticles() {
-  const [particles] = useState<{ left: string; animationDelay: string; duration: string }[]>(() =>
-    Array.from({ length: 20 }).map(() => ({
-      left: `${Math.random() * 100}%`,
-      animationDelay: `${Math.random() * 2}s`,
-      duration: `${2 + Math.random() * 3}s`,
-    }))
-  );
-
-  return (
-    <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
-      {particles.map((p, i) => (
-        <div
-          key={i}
-          className="absolute h-2 w-2 rounded-full"
-          style={{
-            background: i % 2 === 0 ? 'var(--color-accent)' : 'var(--color-amber)',
-            top: '-20px',
-            left: p.left,
-            animation: `fall ${p.duration} linear infinite`,
-            animationDelay: p.animationDelay,
-            opacity: 0.6,
-          }}
-        />
-      ))}
-      <style jsx>{`
-        @keyframes fall {
-          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(600px) rotate(360deg); opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }
