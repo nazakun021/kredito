@@ -2,6 +2,8 @@
 
 Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar and accessed through Freighter.
 
+![CI](https://github.com/nazakun021/kredito/actions/workflows/ci.yml/badge.svg)
+
 ## Links
 
 🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
@@ -27,6 +29,7 @@ Kredito uses deterministic on-chain transaction history to generate verifiable c
 ### The Scoring Formula
 
 Our scoring engine is completely transparent and verifiable on-chain. Each metric is weighted to reward network presence and financial reliability:
+
 `score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) − (default_count × 25)`
 
 ## Product Flow
@@ -38,7 +41,24 @@ Our scoring engine is completely transparent and verifiable on-chain. Each metri
 
 ---
 
-## User Flow
+## ✅ Submission Checklist
+
+| Requirement                        | Status                                                        |
+| :--------------------------------- | :------------------------------------------------------------ |
+| Public GitHub repository           | ✅                                                            |
+| README with complete documentation | ✅                                                            |
+| Minimum 8+ meaningful commits      | ✅                                                            |
+| Live demo link                     | ✅ [kredito-iota.vercel.app](https://kredito-iota.vercel.app) |
+| Mobile responsive view             | ✅ See screenshot below                                       |
+| CI/CD pipeline running             | ✅ See badge & screenshot below                               |
+| Inter-contract calls working       | ✅ See section below                                          |
+| Custom token deployed              | ✅ PHPC (`CAMZB75T...`)                                       |
+| Pool deployed                      | ✅ Lending Pool (`CDTASHYW...`)                               |
+| Contract addresses                 | ✅ See section below                                          |
+
+---
+
+## 🖼️ User Flow
 
 A complete walkthrough of the Kredito experience — from landing to repayment.
 
@@ -106,6 +126,28 @@ Clicking **Repay ₱25.75** triggers a Freighter popup to sign the repayment. Th
 Repayment is confirmed. The Credit Passport score updates live from **82 → 88**. Each on-time repayment builds toward a higher tier and a larger borrow limit.
 
 ![Repaid on Time](./images/8.png)
+
+---
+
+## 📱 Mobile Responsive
+
+![Mobile View](./images/mobile.png)
+
+The frontend is built with Tailwind CSS and Next.js App Router, with responsive layouts across all screens: landing page, dashboard, borrow flow, and repay flow.
+
+---
+
+## 🔄 CI/CD Pipeline
+
+![CI Pipeline](./images/ci.png)
+
+All checks pass on every push to `main`:
+
+- **Backend** (Node.js) — lint + build
+- **Frontend** (Next.js) — lint + build
+- **Smart Contracts** (Rust) — cargo test
+- **Vercel** — auto-deploy on merge
+- **Railway** — runs after every other CI check is done and passed
 
 ---
 
@@ -339,6 +381,8 @@ The backend handles off-chain scoring and fee-sponsorship.
 - **Linting**: `pnpm run lint` (or `pnpm run lint --fix` to auto-fix issues).
 - **Production Build**: `pnpm build` followed by `pnpm start`.
 
+_Requires `backend/.env` (see `backend/.env.example`). Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
+
 ---
 
 ### 🎨 Frontend Development
@@ -346,8 +390,9 @@ The backend handles off-chain scoring and fee-sponsorship.
 Built with Next.js App Router and Tailwind CSS.
 
 - **Linting**: `pnpm lint`.
-- **Type Checking**: `pnpm type-check` (if configured).
 - **Production Build**: `pnpm build` followed by `pnpm start`.
+
+_Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
 
 ---
 
