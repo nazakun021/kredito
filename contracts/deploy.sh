@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
+set -o pipefail  
 
 NETWORK="testnet"
 SOURCE="${STELLAR_SOURCE_ACCOUNT:-issuer}"
-ISSUER_PUB=$(stellar keys show "$SOURCE" --public-key)
+ISSUER_PUB=$(stellar keys address "$SOURCE")
 WASM_DIR="target/wasm32v1-none/release"
 
 echo "Deploying phpc_token..."
@@ -62,14 +63,27 @@ stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
   --to $ISSUER_PUB \
   --amount 1000000000000000
 
+echo "Fetching current ledger..."
+CURRENT_LEDGER=$(curl -sf https://soroban-testnet.stellar.org \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['sequence'])")
+
+if [[ -z "$CURRENT_LEDGER" || ! "$CURRENT_LEDGER" =~ ^[0-9]+$ ]]; then
+  echo "❌ Failed to fetch current ledger. Check your network connection."
+  exit 1
+fi
+
+EXPIRY_LEDGER=$((CURRENT_LEDGER + 2000000))   # ~115 days of buffer
+echo "Current ledger: $CURRENT_LEDGER → expiry: $EXPIRY_LEDGER"
+
 echo "Approving lending_pool to spend issuer's PHPC..."
-# We use a high expiration ledger for the approval
 stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
   approve \
   --from $ISSUER_PUB \
   --spender $LENDING_POOL_ID \
   --amount 1000000000000000 \
-  --expiration_ledger 5000000
+  --expiration_ledger $EXPIRY_LEDGER
 
 echo "Depositing PHPC into lending_pool..."
 stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \

@@ -6,11 +6,11 @@ Transparent on-chain credit scores and instant micro-loans for the Filipino unba
 
 🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
 
-🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface)**
+🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS?filter=interface)**
 
-🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface)**
+🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6?filter=interface)**
 
-🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface)**
+🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE?filter=interface)**
 
 > **SEA Stellar Hackathon · Track: Payments & Financial Access**
 
@@ -35,9 +35,9 @@ Repayment requires the wallet to hold `principal + fee`.
 
 Example:
 
-- borrow `500 PHPC`
-- fee `25 PHPC`
-- total repayment due `525 PHPC`
+- borrow `100 PHPC`
+- fee `5 PHPC` (500 bps)
+- total repayment due `105 PHPC`
 
 Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
 
@@ -81,17 +81,17 @@ kredito/
 
 Deployed and verified on Stellar testnet:
 
-- **`credit_registry`**: `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
-- **`lending_pool`**: `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
-- **`phpc_token`**: `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
+- **`credit_registry`**: `CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS`
+- **`lending_pool`**: `CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6`
+- **`phpc_token`**: `CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE`
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS?filter=interface
 ![Credit Registry Explorer](./images/img1.png)
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6?filter=interface
 ![Lending Pool Explorer](./images/img2.png)
 
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE?filter=interface
 ![PHPC Token Explorer](./images/img3.png)
 
 ## Contract Functions
