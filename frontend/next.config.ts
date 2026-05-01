@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
-const apiOrigin = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+const apiOrigin = new URL(apiUrl).origin; // strips the /api path for CSP
 const rpcOrigin = "https://soroban-testnet.stellar.org";
 
 const cspHeader = `
