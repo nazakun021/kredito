@@ -109,28 +109,6 @@ Repayment is confirmed. The Credit Passport score updates live from **82 → 88*
 
 ---
 
-## 📱 Mobile Responsive
-
-![Mobile View](./images/mobile.png)
-
-The frontend is built with Tailwind CSS and Next.js App Router, with responsive layouts across all screens: landing page, dashboard, borrow flow, and repay flow.
-
----
-
-## 🔄 CI/CD Pipeline
-
-![CI Pipeline](./images/ci.png)
-
-All checks pass on every push to `main`:
-
-- **Backend** (Node.js) — lint + build
-- **Frontend** (Next.js) — lint + build
-- **Smart Contracts** (Rust) — cargo test
-- **Vercel** — auto-deploy on merge
-- **Railway** — run after every other CI check is done and passed
-
----
-
 ## 🔗 Inter-Contract Calls
 
 Kredito implements **inter-contract calls** between all three Soroban contracts:
