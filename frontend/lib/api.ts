@@ -79,7 +79,11 @@ api.interceptors.response.use(
 
       useAuthStore.getState().clearAuth();
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('kredito-auth');
+        try {
+          localStorage.removeItem('kredito-auth');
+        } catch {
+          /* silent */
+        }
         window.location.href = '/?session=expired';
       }
     }

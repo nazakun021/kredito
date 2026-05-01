@@ -11,6 +11,7 @@ import pinoHttp from 'pino-http';
 import { config } from './config';
 import { errorHandler } from './errors';
 import authRoutes from './routes/auth';
+import adminRoutes from './routes/admin';
 import creditRoutes from './routes/credit';
 import loanRoutes from './routes/loan';
 import txRoutes from './routes/tx';
@@ -66,8 +67,6 @@ app.use(
   }),
 );
 
-import adminRoutes from './routes/admin';
-
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/credit/generate', scoreLimiter);
 app.use('/api/credit', creditRoutes);
@@ -93,7 +92,20 @@ async function verifyConnectivity() {
 }
 
 verifyConnectivity().then(() => {
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`Kredito backend listening at http://localhost:${config.port}`);
   });
+
+  function shutdown(signal: string) {
+    console.log(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
+    });
+    // Force exit after 10s if connections don't drain
+    setTimeout(() => process.exit(1), 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 });

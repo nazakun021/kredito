@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { timingSafeEqual, createHash } from 'crypto';
 import { config } from '../config';
 import { unauthorized } from '../errors';
 
@@ -26,7 +27,16 @@ export function authMiddleware(req: Request, _res: Response, next: NextFunction)
 }
 
 export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  if (token !== config.adminApiSecret) return next(unauthorized('Admin access only'));
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') ?? '';
+  const expected = config.adminApiSecret;
+
+  // Normalize lengths by hashing both — timingSafeEqual requires equal-length buffers
+  const tokenBuf = createHash('sha256').update(token).digest();
+  const expectedBuf = createHash('sha256').update(expected).digest();
+
+  if (!timingSafeEqual(tokenBuf, expectedBuf)) {
+    return next(unauthorized('Admin access only'));
+  }
+
   return next();
 }

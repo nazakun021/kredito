@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK } from '@/lib/constants';
+import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { tierGradient } from '@/lib/tiers';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
@@ -58,7 +58,7 @@ export default function RepayPage() {
   const [success, setSuccess] = useState<RepaySuccess | null>(null);
   const [error, setError] = useState('');
 
-  const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
+  const { isConnected: walletConnected, network, networkPassphrase, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
   const canRepay = walletConnected && isCorrectNetwork;
 
@@ -105,7 +105,11 @@ export default function RepayPage() {
       }
 
       setTxStep(2);
-      const approveResult = await signTx(approveTx.unsignedXdr, user.wallet);
+      const approveResult = await signTx(
+        approveTx.unsignedXdr, 
+        user.wallet, 
+        networkPassphrase ?? TESTNET_PASSPHRASE
+      );
       if ('error' in approveResult) {
         throw new Error(`APPROVAL_SIGN:${approveResult.error}`);
       }
@@ -121,7 +125,11 @@ export default function RepayPage() {
       const { data: repayXdrData } = await api.post('/loan/repay-xdr');
       const repayUnsignedXdr = repayXdrData.unsignedXdr;
 
-      const repayResult = await signTx(repayUnsignedXdr, user.wallet);
+      const repayResult = await signTx(
+        repayUnsignedXdr, 
+        user.wallet, 
+        networkPassphrase ?? TESTNET_PASSPHRASE
+      );
       if ('error' in repayResult) {
         throw new Error(`REPAY_SIGN:${repayResult.error}`);
       }

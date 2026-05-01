@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK } from '@/lib/constants';
+import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
@@ -58,7 +58,7 @@ export default function BorrowPage() {
   const [hasEditedAmount, setHasEditedAmount] = useState(false);
   const [hasAmountInteracted, setHasAmountInteracted] = useState(false);
 
-  const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
+  const { isConnected: walletConnected, network, networkPassphrase, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
   const canBorrow = walletConnected && isCorrectNetwork && agreed;
 
@@ -135,7 +135,11 @@ export default function BorrowPage() {
 
       if (data.requiresSignature) {
         setTxStep(2); // Signing
-        const signResult = await signTx(data.unsignedXdr, user!.wallet!);
+        const signResult = await signTx(
+          data.unsignedXdr, 
+          user!.wallet!, 
+          networkPassphrase ?? TESTNET_PASSPHRASE
+        );
         if ('error' in signResult) throw new Error(signResult.error);
 
         setTxStep(3); // Submitting

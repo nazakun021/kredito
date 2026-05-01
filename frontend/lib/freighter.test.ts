@@ -17,7 +17,7 @@ vi.mock('@stellar/freighter-api', () => ({
 
 describe('Freighter API', () => {
   it('signTx returns { signedXdr } on success', async () => {
-    const result = await signTx('unsigned-xdr', 'G123');
+    const result = await signTx('unsigned-xdr', 'G123', 'Test Net');
     expect(result).toHaveProperty('signedXdr');
     expect((result as { signedXdr: string }).signedXdr).toBe('signed-xdr-content');
   });

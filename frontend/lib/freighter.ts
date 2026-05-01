@@ -93,10 +93,14 @@ export async function getWalletNetwork(): Promise<{ network: string; networkPass
 /**
  * Signs a transaction XDR.
  */
-export async function signTx(xdr: string, address: string): Promise<{ signedXdr: string } | { error: string }> {
+export async function signTx(
+  xdr: string, 
+  address: string, 
+  networkPassphrase: string
+): Promise<{ signedXdr: string } | { error: string }> {
   try {
     const result = await signTransaction(xdr, {
-      networkPassphrase: TESTNET_PASSPHRASE,
+      networkPassphrase,
       address, // Freighter API uses 'address' parameter
     });
 
@@ -127,12 +131,16 @@ export async function loginWithFreighter() {
   if ('error' in connection) throw new Error(connection.error);
 
   const publicKey = connection.address;
+  
+  // Get network details for signing
+  const networkDetails = await getWalletNetwork();
+  const passphrase = networkDetails?.networkPassphrase || TESTNET_PASSPHRASE;
 
   const challengeRes = await authApi.post<{ challenge: string }>('/auth/challenge', {
     wallet: publicKey,
   });
 
-  const signResult = await signTx(challengeRes.data.challenge, publicKey);
+  const signResult = await signTx(challengeRes.data.challenge, publicKey, passphrase);
   if ('error' in signResult) throw new Error(signResult.error);
 
   const loginRes = await authApi.post<{

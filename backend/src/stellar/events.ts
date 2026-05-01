@@ -54,7 +54,7 @@ export async function paginateEvents(
     oldestLedger = page.oldestLedger;
     events = events.concat(page.events);
 
-    if (page.events.length < limit || page.cursor === cursor) {
+    if (page.events.length < limit || !page.cursor || page.cursor === cursor) {
       break;
     }
 

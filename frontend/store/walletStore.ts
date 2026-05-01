@@ -24,6 +24,30 @@ interface WalletState {
   restoreSession: () => Promise<void>;
 }
 
+function safeLocalStorageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* silent */
+  }
+}
+
+function safeLocalStorageRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* silent */
+  }
+}
+
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export const useWalletStore = create<WalletState>((set) => ({
   isConnected: false,
   publicKey: null,
@@ -94,7 +118,7 @@ export const useWalletStore = create<WalletState>((set) => ({
         hasRestored: true,
         connectionError: null
       });
-      localStorage.setItem('kredito_wallet_connected', 'true');
+      safeLocalStorageSet('kredito_wallet_connected', 'true');
       toast.success('Wallet connected');
     } catch (err: unknown) {
       set({ 
@@ -121,13 +145,13 @@ export const useWalletStore = create<WalletState>((set) => ({
       hasRestored: true,
       connectionError: null
     });
-    localStorage.removeItem('kredito_wallet_connected');
+    safeLocalStorageRemove('kredito_wallet_connected');
   },
 
   restoreSession: async () => {
     if (typeof window === 'undefined') return;
     
-    const wasConnected = localStorage.getItem('kredito_wallet_connected');
+    const wasConnected = safeLocalStorageGet('kredito_wallet_connected');
     if (!wasConnected) {
       set({ isRestoring: false, hasRestored: true });
       return;
@@ -150,7 +174,7 @@ export const useWalletStore = create<WalletState>((set) => ({
         });
       } else {
         // If we thought we were connected but can't get address, clear it
-        localStorage.removeItem('kredito_wallet_connected');
+        safeLocalStorageRemove('kredito_wallet_connected');
         set({ isRestoring: false, hasRestored: true });
       }
     } catch (err) {

@@ -7,6 +7,19 @@ set -e
 
 echo "🚀 Setting up Kredito monorepo..."
 
+# Check pnpm
+if ! command -v pnpm &>/dev/null; then
+  echo "❌ pnpm not found. Install it: npm i -g pnpm@10.32.1"
+  exit 1
+fi
+
+REQUIRED_PNPM="10.32.1"
+INSTALLED_PNPM=$(pnpm --version)
+if [ "$INSTALLED_PNPM" != "$REQUIRED_PNPM" ]; then
+  echo "⚠️  pnpm $INSTALLED_PNPM found, expected $REQUIRED_PNPM"
+  echo "   Run: npm i -g pnpm@$REQUIRED_PNPM"
+fi
+
 # Backend Setup
 echo "📦 Setting up Backend..."
 if [ ! -f backend/.env ]; then

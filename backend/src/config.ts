@@ -27,6 +27,7 @@ if (missingVars.length > 0) {
   if (process.env.NODE_ENV !== 'test') {
     console.error(`❌ Missing required environment variables: ${missingVars.join(', ')}`);
     console.error('Please check your .env file.');
+    process.exit(1);
   }
 }
 
