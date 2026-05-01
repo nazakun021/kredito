@@ -31,7 +31,7 @@ target/
 .stellar/
 
 # Repomix
-repomix-output.txt
+repomix-output.md
 repomix.config.json
 
 # --- IDEs ---
