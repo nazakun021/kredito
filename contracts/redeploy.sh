@@ -3,18 +3,34 @@ set -e
 
 NETWORK="testnet"
 SOURCE="issuer"
-ISSUER_PUB=$(stellar keys show "$SOURCE" --public-key)
+ISSUER_PUB=$(stellar keys address "$SOURCE")
 WASM_DIR="target/wasm32v1-none/release"
 
-# The credit_registry is working fine — reuse it.
-REGISTRY_ID="CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ"
-
-echo "=== Step 1: Building fresh WASMs ==="
+# Step 1: Building fresh WASMs
 stellar contract build --package phpc_token
 stellar contract build --package lending_pool
+stellar contract build --package credit_registry
 
 echo ""
-echo "=== Step 2: Deploying new phpc_token ==="
+echo "=== Step 2: Deploying new credit_registry ==="
+REGISTRY_ID=$(stellar contract deploy \
+  --wasm $WASM_DIR/credit_registry.wasm \
+  --source $SOURCE \
+  --network $NETWORK)
+echo "✅ REGISTRY_ID: $REGISTRY_ID"
+
+echo ""
+echo "=== Step 3: Initializing credit_registry ==="
+stellar contract invoke --id $REGISTRY_ID --source $SOURCE --network $NETWORK -- \
+  initialize \
+  --issuer $ISSUER_PUB \
+  --tier1_limit 50000000000 \
+  --tier2_limit 200000000000 \
+  --tier3_limit 500000000000
+echo "✅ credit_registry initialized"
+
+echo ""
+echo "=== Step 4: Deploying new phpc_token ==="
 PHPC_ID=$(stellar contract deploy \
   --wasm $WASM_DIR/phpc_token.wasm \
   --source $SOURCE \
@@ -22,7 +38,7 @@ PHPC_ID=$(stellar contract deploy \
 echo "✅ PHPC_ID: $PHPC_ID"
 
 echo ""
-echo "=== Step 3: Initializing phpc_token ==="
+echo "=== Step 5: Initializing phpc_token ==="
 stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
   initialize \
   --admin $ISSUER_PUB \
@@ -32,7 +48,7 @@ stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
 echo "✅ phpc_token initialized"
 
 echo ""
-echo "=== Step 4: Deploying new lending_pool ==="
+echo "=== Step 6: Deploying new lending_pool ==="
 LENDING_POOL_ID=$(stellar contract deploy \
   --wasm $WASM_DIR/lending_pool.wasm \
   --source $SOURCE \
@@ -40,7 +56,7 @@ LENDING_POOL_ID=$(stellar contract deploy \
 echo "✅ LENDING_POOL_ID: $LENDING_POOL_ID"
 
 echo ""
-echo "=== Step 5: Initializing lending_pool ==="
+echo "=== Step 7: Initializing lending_pool ==="
 stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
   initialize \
   --admin $ISSUER_PUB \
@@ -51,7 +67,7 @@ stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWOR
 echo "✅ lending_pool initialized"
 
 echo ""
-echo "=== Step 6: Minting 100,000,000 PHPC to issuer ==="
+echo "=== Step 8: Minting 100,000,000 PHPC to issuer ==="
 stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
   mint \
   --to $ISSUER_PUB \
@@ -59,7 +75,7 @@ stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
 echo "✅ PHPC minted"
 
 echo ""
-echo "=== Step 7: Approving lending_pool to spend issuer PHPC ==="
+echo "=== Step 9: Approving lending_pool to spend issuer PHPC ==="
 stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
   approve \
   --from $ISSUER_PUB \
@@ -69,14 +85,14 @@ stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
 echo "✅ Approval set"
 
 echo ""
-echo "=== Step 8: Depositing 100,000,000 PHPC into lending_pool ==="
+echo "=== Step 10: Depositing 100,000,000 PHPC into lending_pool ==="
 stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
   deposit \
   --amount 1000000000000000
 echo "✅ Pool funded"
 
 echo ""
-echo "=== Step 9: Saving deployed.json ==="
+echo "=== Step 11: Saving deployed.json ==="
 cat > deployed.json << EOF
 {
   "network": "$NETWORK",

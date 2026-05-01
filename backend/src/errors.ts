@@ -27,8 +27,8 @@ export function notFound(message: string) {
 export function asyncRoute<R = Request>(
   handler: (req: R, res: Response, next: NextFunction) => Promise<unknown>,
 ) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    void handler(req as unknown as R, res, next).catch(next);
+  return (req: any, res: any, next: NextFunction) => {
+    void handler(req as R, res, next).catch(next);
   };
 }
 

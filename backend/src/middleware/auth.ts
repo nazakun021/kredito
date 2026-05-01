@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { timingSafeEqual, createHash } from 'crypto';
 import { config } from '../config';
@@ -8,7 +8,7 @@ export interface AuthRequest extends Request {
   wallet: string;
 }
 
-export function authMiddleware(req: Request, _res: Response, next: NextFunction) {
+export function authMiddleware(req: any, _res: any, next: NextFunction) {
   // Authorization header only
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
@@ -26,7 +26,7 @@ export function authMiddleware(req: Request, _res: Response, next: NextFunction)
   }
 }
 
-export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
+export function adminAuthMiddleware(req: any, _res: any, next: NextFunction) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') ?? '';
   const expected = config.adminApiSecret;
 
