@@ -1,40 +1,52 @@
-# --- General ---
+# --- Dependencies ---
 node_modules/
-.env
-.env.local
-.env.*.local
-*.db
-*.log
-.DS_Store
-Thumbs.db
 .pnpm-store/
-
-# --- Node.js / Frontend ---
-dist/
-build/
-.next/
-out/
-.vercel
-.turbo
 .npm
 .yarn/
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+
+# --- Environment Variables ---
+# Ignore all .env files
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.*
+*.env
+*.env.*
+# But track .env.example files
+!.env.example
+
+# --- Build & Output ---
+dist/
+build/
+.next/
+out/
+.vercel
+.turbo
+target/
 *.tsbuildinfo
 next-env.d.ts
 
-# --- Rust / Soroban ---
-target/
-**/*.rs.bk
-.stellar/
+# --- Logs & Databases ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.db
+*.sqlite
 
-# Repomix
-repomix-output.md
-repomix.config.json
-
-# --- IDEs ---
+# --- OS & IDEs ---
+.DS_Store
+Thumbs.db
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -43,10 +55,17 @@ repomix.config.json
 *.swp
 *.swo
 
+# --- Rust / Soroban ---
+**/*.rs.bk
+.stellar/
+*.xdr
+
 # --- Agents / AI Tools ---
 .agents/
 skills-lock.json
+repomix-output.md
+repomix.config.json
 
-# --- Testing Artifacts ---
-*.xdr
+# --- Testing & Misc ---
 payload.json
+

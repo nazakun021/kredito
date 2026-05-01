@@ -234,78 +234,6 @@ export function parseLedgerRange(error: unknown) {
 }
 ````
 
-## File: backend/src/stellar/events.ts
-````typescript
-import { rpc } from '@stellar/stellar-sdk';
-import { rpcServer } from './client';
-import { sleep } from '../utils/sleep';
-import { parseLedgerRange } from '../lib/parseLedgerRange';
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000): Promise<T> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await sleep(backoffMs * 2 ** i);
-    }
-  }
-  throw new Error('unreachable');
-}
-
-export async function paginateEvents(
-  filters: rpc.Api.EventFilter[],
-  requestedStartLedger: number,
-  limit = 200,
-) {
-  let cursor: string | undefined;
-  let events: rpc.Api.EventResponse[] = [];
-  let oldestLedger: number | undefined;
-
-  while (true) {
-    const request: rpc.Api.GetEventsRequest = cursor
-      ? { filters, cursor, limit }
-      : { filters, startLedger: requestedStartLedger, limit };
-
-    let page: rpc.Api.GetEventsResponse;
-    try {
-      page = await withRetry(() => rpcServer.getEvents(request));
-    } catch (error) {
-      if (cursor) {
-        throw error;
-      }
-
-      const range = parseLedgerRange(error);
-      if (!range) {
-        throw error;
-      }
-
-      page = await withRetry(() =>
-        rpcServer.getEvents({
-          filters,
-          startLedger: Math.max(range.min, Math.min(requestedStartLedger, range.max)),
-          limit,
-        }),
-      );
-    }
-
-    oldestLedger = page.oldestLedger;
-    events = events.concat(page.events);
-
-    if (page.events.length < limit || page.cursor === cursor) {
-      break;
-    }
-
-    cursor = page.cursor;
-  }
-
-  return {
-    events,
-    oldestLedger: oldestLedger ?? requestedStartLedger,
-  };
-}
-````
-
 ## File: backend/src/types/express.d.ts
 ````typescript
 import 'express';
@@ -523,20 +451,6 @@ lto = true
 [profile.release-with-logs]
 inherits = "release"
 debug-assertions = true
-````
-
-## File: contracts/deployed.json
-````json
-{
-  "network": "testnet",
-  "contracts": {
-    "credit_registry": "CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ",
-    "lending_pool": "CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH",
-    "phpc_token": "CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR"
-  },
-  "verifiedAt": "2026-04-29T07:53:00Z",
-  "notes": "PHPC and Lending Pool redeployed to fix UnreachableCodeReached panic in simulation. Credit Registry remains the same."
-}
 ````
 
 ## File: docs/ERROR_CODES.md
@@ -837,48 +751,76 @@ export default config;
 }
 ````
 
-## File: scripts/setup.sh
-````bash
-#!/bin/bash
+## File: backend/src/stellar/events.ts
+````typescript
+import { rpc } from '@stellar/stellar-sdk';
+import { rpcServer } from './client';
+import { sleep } from '../utils/sleep';
+import { parseLedgerRange } from '../lib/parseLedgerRange';
 
-# Kredito Setup Script
-# Copies .env.example files and installs dependencies.
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, backoffMs = 1000): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await sleep(backoffMs * 2 ** i);
+    }
+  }
+  throw new Error('unreachable');
+}
 
-set -e
+export async function paginateEvents(
+  filters: rpc.Api.EventFilter[],
+  requestedStartLedger: number,
+  limit = 200,
+) {
+  let cursor: string | undefined;
+  let events: rpc.Api.EventResponse[] = [];
+  let oldestLedger: number | undefined;
 
-echo "🚀 Setting up Kredito monorepo..."
+  while (true) {
+    const request: rpc.Api.GetEventsRequest = cursor
+      ? { filters, cursor, limit }
+      : { filters, startLedger: requestedStartLedger, limit };
 
-# Backend Setup
-echo "📦 Setting up Backend..."
-if [ ! -f backend/.env ]; then
-  cp backend/.env.example backend/.env
-  echo "✅ Created backend/.env (please edit with your secrets)"
-else
-  echo "ℹ️ backend/.env already exists"
-fi
+    let page: rpc.Api.GetEventsResponse;
+    try {
+      page = await withRetry(() => rpcServer.getEvents(request));
+    } catch (error) {
+      if (cursor) {
+        throw error;
+      }
 
-cd backend
-pnpm install
-cd ..
+      const range = parseLedgerRange(error);
+      if (!range) {
+        throw error;
+      }
 
-# Frontend Setup
-echo "📦 Setting up Frontend..."
-if [ ! -f frontend/.env ]; then
-  if [ -f frontend/.env.example ]; then
-    cp frontend/.env.example frontend/.env
-    echo "✅ Created frontend/.env"
-  else
-    echo "⚠️ frontend/.env.example not found"
-  fi
-else
-  echo "ℹ️ frontend/.env already exists"
-fi
+      page = await withRetry(() =>
+        rpcServer.getEvents({
+          filters,
+          startLedger: Math.max(range.min, Math.min(requestedStartLedger, range.max)),
+          limit,
+        }),
+      );
+    }
 
-cd frontend
-pnpm install
-cd ..
+    oldestLedger = page.oldestLedger;
+    events = events.concat(page.events);
 
-echo "✨ Setup complete! You can now run 'pnpm dev' in both backend/ and frontend/ directories."
+    if (page.events.length < limit || !page.cursor || page.cursor === cursor) {
+      break;
+    }
+
+    cursor = page.cursor;
+  }
+
+  return {
+    events,
+    oldestLedger: oldestLedger ?? requestedStartLedger,
+  };
+}
 ````
 
 ## File: backend/src/types/cors.d.ts
@@ -910,6 +852,20 @@ export default defineConfig({
     },
   },
 });
+````
+
+## File: contracts/deployed.json
+````json
+{
+  "network": "testnet",
+  "contracts": {
+    "credit_registry": "CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS",
+    "lending_pool": "CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6",
+    "phpc_token": "CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE"
+  },
+  "issuer_public": "GBGKIBN3WUKPLUZIODCL7CS3L7QCTU7MAVXHMRX5DGPCTHBGMST47ABV",
+  "deployed_at": "2026-05-01T06:19:32Z"
+}
 ````
 
 ## File: contracts/redeploy.sh
@@ -1464,6 +1420,63 @@ const eslintConfig = defineConfig([
 ]);
 
 export default eslintConfig;
+````
+
+## File: scripts/setup.sh
+````bash
+#!/bin/bash
+
+# Kredito Setup Script
+# Copies .env.example files and installs dependencies.
+
+set -e
+
+echo "🚀 Setting up Kredito monorepo..."
+
+# Check pnpm
+if ! command -v pnpm &>/dev/null; then
+  echo "❌ pnpm not found. Install it: npm i -g pnpm@10.32.1"
+  exit 1
+fi
+
+REQUIRED_PNPM="10.32.1"
+INSTALLED_PNPM=$(pnpm --version)
+if [ "$INSTALLED_PNPM" != "$REQUIRED_PNPM" ]; then
+  echo "⚠️  pnpm $INSTALLED_PNPM found, expected $REQUIRED_PNPM"
+  echo "   Run: npm i -g pnpm@$REQUIRED_PNPM"
+fi
+
+# Backend Setup
+echo "📦 Setting up Backend..."
+if [ ! -f backend/.env ]; then
+  cp backend/.env.example backend/.env
+  echo "✅ Created backend/.env (please edit with your secrets)"
+else
+  echo "ℹ️ backend/.env already exists"
+fi
+
+cd backend
+pnpm install
+cd ..
+
+# Frontend Setup
+echo "📦 Setting up Frontend..."
+if [ ! -f frontend/.env ]; then
+  if [ -f frontend/.env.example ]; then
+    cp frontend/.env.example frontend/.env
+    echo "✅ Created frontend/.env"
+  else
+    echo "⚠️ frontend/.env.example not found"
+  fi
+else
+  echo "ℹ️ frontend/.env already exists"
+fi
+
+cd frontend
+pnpm install
+cd ..
+
+echo "✨ Setup complete! You can now run 'pnpm dev' in both backend/ and frontend/ directories."
 ````
 
 ## File: frontend/app/dashboard/layout.tsx
@@ -3667,269 +3680,6 @@ fn bump_instance_ttl(env: &Env) {
 }
 ````
 
-## File: contracts/deploy.sh
-````bash
-#!/bin/bash
-set -e
-
-NETWORK="testnet"
-SOURCE="${STELLAR_SOURCE_ACCOUNT:-issuer}"
-ISSUER_PUB=$(stellar keys show "$SOURCE" --public-key)
-WASM_DIR="target/wasm32v1-none/release"
-
-echo "Deploying phpc_token..."
-PHPC_ID=$(stellar contract deploy \
-  --wasm $WASM_DIR/phpc_token.wasm \
-  --source $SOURCE \
-  --network $NETWORK)
-echo "PHPC_ID: $PHPC_ID"
-
-echo "Initializing phpc_token..."
-stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
-  initialize \
-  --admin $ISSUER_PUB \
-  --decimal 7 \
-  --name "Philippine Peso Coin" \
-  --symbol "PHPC"
-
-echo "Deploying credit_registry..."
-REGISTRY_ID=$(stellar contract deploy \
-  --wasm $WASM_DIR/credit_registry.wasm \
-  --source $SOURCE \
-  --network $NETWORK)
-echo "REGISTRY_ID: $REGISTRY_ID"
-
-echo "Initializing credit_registry..."
-# tier1_limit = 5,000 PHPC × 10^7 = 50,000,000,000 stroops
-# tier2_limit = 20,000 PHPC × 10^7 = 200,000,000,000 stroops
-# tier3_limit = 50,000 PHPC × 10^7 = 500,000,000,000 stroops
-stellar contract invoke --id $REGISTRY_ID --source $SOURCE --network $NETWORK -- \
-  initialize \
-  --issuer $ISSUER_PUB \
-  --tier1_limit 50000000000 \
-  --tier2_limit 200000000000 \
-  --tier3_limit 500000000000
-
-echo "Deploying lending_pool..."
-LENDING_POOL_ID=$(stellar contract deploy \
-  --wasm $WASM_DIR/lending_pool.wasm \
-  --source $SOURCE \
-  --network $NETWORK)
-echo "LENDING_POOL_ID: $LENDING_POOL_ID"
-
-echo "Initializing lending_pool..."
-# loan_term_ledgers = 30 days × 17,280 ledgers/day = 518,400
-stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
-  initialize \
-  --admin $ISSUER_PUB \
-  --registry_id $REGISTRY_ID \
-  --phpc_token $PHPC_ID \
-  --flat_fee_bps 500 \
-  --loan_term_ledgers 518400
-
-echo "Minting PHPC to issuer..."
-stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
-  mint \
-  --to $ISSUER_PUB \
-  --amount 1000000000000000
-
-echo "Approving lending_pool to spend issuer's PHPC..."
-# We use a high expiration ledger for the approval
-stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
-  approve \
-  --from $ISSUER_PUB \
-  --spender $LENDING_POOL_ID \
-  --amount 1000000000000000 \
-  --expiration_ledger 5000000
-
-echo "Depositing PHPC into lending_pool..."
-stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
-  deposit \
-  --amount 1000000000000000
-
-echo "Saving to deployed.json..."
-cat > deployed.json << EOF
-{
-  "network": "$NETWORK",
-  "contracts": {
-    "credit_registry": "$REGISTRY_ID",
-    "lending_pool": "$LENDING_POOL_ID",
-    "phpc_token": "$PHPC_ID"
-  },
-  "issuer_public": "$ISSUER_PUB",
-  "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-
-echo "Deployment complete!"
-````
-
-## File: frontend/store/walletStore.ts
-````typescript
-import { create } from 'zustand';
-import { 
-  checkFreighterInstalled, 
-  connectWallet, 
-  getConnectedAddress, 
-  getWalletNetwork 
-} from '../lib/freighter';
-import { REQUIRED_NETWORK } from '../lib/constants';
-import { toast } from 'sonner';
-import { useAuthStore } from './auth';
-
-interface WalletState {
-  isConnected: boolean;
-  publicKey: string | null;
-  network: string | null;
-  networkPassphrase: string | null;
-  isConnecting: boolean;
-  isRestoring: boolean;
-  hasRestored: boolean;
-  connectionError: string | null;
-
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  restoreSession: () => Promise<void>;
-}
-
-export const useWalletStore = create<WalletState>((set) => ({
-  isConnected: false,
-  publicKey: null,
-  network: null,
-  networkPassphrase: null,
-  isConnecting: false,
-  isRestoring: true,
-  hasRestored: false,
-  connectionError: null,
-
-  connect: async () => {
-    if (typeof window === 'undefined') return;
-    set({ isConnecting: true, connectionError: null });
-
-    try {
-      const installed = await checkFreighterInstalled();
-      if (!installed) {
-        const error = 'Please install the Freighter extension to connect.';
-        set({ isConnecting: false, connectionError: error });
-        set({ hasRestored: true, isRestoring: false });
-        toast.error(error);
-        return;
-      }
-
-      const connection = await connectWallet();
-      if ('error' in connection) {
-        const error = connection.error.includes('User rejected') 
-          ? 'Connection cancelled. Please try again.' 
-          : connection.error;
-        set({ isConnecting: false, connectionError: error });
-        set({ hasRestored: true, isRestoring: false });
-        toast.error(error);
-        return;
-      }
-
-      const networkDetails = await getWalletNetwork();
-      if (!networkDetails) {
-        const error = 'Failed to retrieve network details.';
-        set({ isConnecting: false, connectionError: error });
-        set({ hasRestored: true, isRestoring: false });
-        toast.error(error);
-        return;
-      }
-
-      if (networkDetails.network !== REQUIRED_NETWORK) {
-        const error = `Switch Freighter to ${REQUIRED_NETWORK} to continue.`;
-        set({
-          isConnected: true,
-          publicKey: connection.address,
-          network: networkDetails.network,
-          networkPassphrase: networkDetails.networkPassphrase,
-          isConnecting: false,
-          isRestoring: false,
-          hasRestored: true,
-          connectionError: error
-        });
-        toast.warning(error);
-        return;
-      }
-
-      set({
-        isConnected: true,
-        publicKey: connection.address,
-        network: networkDetails.network,
-        networkPassphrase: networkDetails.networkPassphrase,
-        isConnecting: false,
-        isRestoring: false,
-        hasRestored: true,
-        connectionError: null
-      });
-      localStorage.setItem('kredito_wallet_connected', 'true');
-      toast.success('Wallet connected');
-    } catch (err: unknown) {
-      set({ 
-        isConnecting: false, 
-        isRestoring: false,
-        hasRestored: true,
-        connectionError: err instanceof Error ? err.message : 'An unexpected error occurred.' 
-      });
-    }
-  },
-
-  disconnect: () => {
-    if (typeof window === 'undefined') return;
-    // P2-5: Clear AuthStore when disconnecting wallet to prevent lingering sessions
-    useAuthStore.getState().clearAuth();
-
-    set({
-      isConnected: false,
-      publicKey: null,
-      network: null,
-      networkPassphrase: null,
-      isConnecting: false,
-      isRestoring: false,
-      hasRestored: true,
-      connectionError: null
-    });
-    localStorage.removeItem('kredito_wallet_connected');
-  },
-
-  restoreSession: async () => {
-    if (typeof window === 'undefined') return;
-    
-    const wasConnected = localStorage.getItem('kredito_wallet_connected');
-    if (!wasConnected) {
-      set({ isRestoring: false, hasRestored: true });
-      return;
-    }
-
-    try {
-      const address = await getConnectedAddress();
-      if (address) {
-        const networkDetails = await getWalletNetwork();
-        set({
-          isConnected: true,
-          publicKey: address,
-          network: networkDetails?.network || null,
-          networkPassphrase: networkDetails?.networkPassphrase || null,
-          isRestoring: false,
-          hasRestored: true,
-          connectionError: networkDetails?.network !== REQUIRED_NETWORK 
-            ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.` 
-            : null
-        });
-      } else {
-        // If we thought we were connected but can't get address, clear it
-        localStorage.removeItem('kredito_wallet_connected');
-        set({ isRestoring: false, hasRestored: true });
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to restore wallet session:', err);
-      set({ isRestoring: false, hasRestored: true });
-    }
-  }
-}));
-````
-
 ## File: frontend/next.config.ts
 ````typescript
 import type { NextConfig } from "next";
@@ -4363,6 +4113,117 @@ router.post(
 export default router;
 ````
 
+## File: contracts/deploy.sh
+````bash
+#!/bin/bash
+set -e
+set -o pipefail  
+
+NETWORK="testnet"
+SOURCE="${STELLAR_SOURCE_ACCOUNT:-issuer}"
+ISSUER_PUB=$(stellar keys address "$SOURCE")
+WASM_DIR="target/wasm32v1-none/release"
+
+echo "Deploying phpc_token..."
+PHPC_ID=$(stellar contract deploy \
+  --wasm $WASM_DIR/phpc_token.wasm \
+  --source $SOURCE \
+  --network $NETWORK)
+echo "PHPC_ID: $PHPC_ID"
+
+echo "Initializing phpc_token..."
+stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
+  initialize \
+  --admin $ISSUER_PUB \
+  --decimal 7 \
+  --name "Philippine Peso Coin" \
+  --symbol "PHPC"
+
+echo "Deploying credit_registry..."
+REGISTRY_ID=$(stellar contract deploy \
+  --wasm $WASM_DIR/credit_registry.wasm \
+  --source $SOURCE \
+  --network $NETWORK)
+echo "REGISTRY_ID: $REGISTRY_ID"
+
+echo "Initializing credit_registry..."
+# tier1_limit = 5,000 PHPC × 10^7 = 50,000,000,000 stroops
+# tier2_limit = 20,000 PHPC × 10^7 = 200,000,000,000 stroops
+# tier3_limit = 50,000 PHPC × 10^7 = 500,000,000,000 stroops
+stellar contract invoke --id $REGISTRY_ID --source $SOURCE --network $NETWORK -- \
+  initialize \
+  --issuer $ISSUER_PUB \
+  --tier1_limit 50000000000 \
+  --tier2_limit 200000000000 \
+  --tier3_limit 500000000000
+
+echo "Deploying lending_pool..."
+LENDING_POOL_ID=$(stellar contract deploy \
+  --wasm $WASM_DIR/lending_pool.wasm \
+  --source $SOURCE \
+  --network $NETWORK)
+echo "LENDING_POOL_ID: $LENDING_POOL_ID"
+
+echo "Initializing lending_pool..."
+# loan_term_ledgers = 30 days × 17,280 ledgers/day = 518,400
+stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
+  initialize \
+  --admin $ISSUER_PUB \
+  --registry_id $REGISTRY_ID \
+  --phpc_token $PHPC_ID \
+  --flat_fee_bps 500 \
+  --loan_term_ledgers 518400
+
+echo "Minting PHPC to issuer..."
+stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
+  mint \
+  --to $ISSUER_PUB \
+  --amount 1000000000000000
+
+echo "Fetching current ledger..."
+CURRENT_LEDGER=$(curl -sf https://soroban-testnet.stellar.org \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['sequence'])")
+
+if [[ -z "$CURRENT_LEDGER" || ! "$CURRENT_LEDGER" =~ ^[0-9]+$ ]]; then
+  echo "❌ Failed to fetch current ledger. Check your network connection."
+  exit 1
+fi
+
+EXPIRY_LEDGER=$((CURRENT_LEDGER + 2000000))   # ~115 days of buffer
+echo "Current ledger: $CURRENT_LEDGER → expiry: $EXPIRY_LEDGER"
+
+echo "Approving lending_pool to spend issuer's PHPC..."
+stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
+  approve \
+  --from $ISSUER_PUB \
+  --spender $LENDING_POOL_ID \
+  --amount 1000000000000000 \
+  --expiration_ledger $EXPIRY_LEDGER
+
+echo "Depositing PHPC into lending_pool..."
+stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
+  deposit \
+  --amount 1000000000000000
+
+echo "Saving to deployed.json..."
+cat > deployed.json << EOF
+{
+  "network": "$NETWORK",
+  "contracts": {
+    "credit_registry": "$REGISTRY_ID",
+    "lending_pool": "$LENDING_POOL_ID",
+    "phpc_token": "$PHPC_ID"
+  },
+  "issuer_public": "$ISSUER_PUB",
+  "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
+echo "Deployment complete!"
+````
+
 ## File: frontend/app/layout.tsx
 ````typescript
 // frontend/app/layout.tsx
@@ -4649,6 +4510,248 @@ function SidebarContent({
 }
 ````
 
+## File: frontend/store/walletStore.ts
+````typescript
+import { create } from 'zustand';
+import { 
+  checkFreighterInstalled, 
+  connectWallet, 
+  getConnectedAddress, 
+  getWalletNetwork 
+} from '../lib/freighter';
+import { REQUIRED_NETWORK } from '../lib/constants';
+import { toast } from 'sonner';
+import { useAuthStore } from './auth';
+
+interface WalletState {
+  isConnected: boolean;
+  publicKey: string | null;
+  network: string | null;
+  networkPassphrase: string | null;
+  isConnecting: boolean;
+  isRestoring: boolean;
+  hasRestored: boolean;
+  connectionError: string | null;
+
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  restoreSession: () => Promise<void>;
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* silent */
+  }
+}
+
+function safeLocalStorageRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* silent */
+  }
+}
+
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export const useWalletStore = create<WalletState>((set) => ({
+  isConnected: false,
+  publicKey: null,
+  network: null,
+  networkPassphrase: null,
+  isConnecting: false,
+  isRestoring: true,
+  hasRestored: false,
+  connectionError: null,
+
+  connect: async () => {
+    if (typeof window === 'undefined') return;
+    set({ isConnecting: true, connectionError: null });
+
+    try {
+      const installed = await checkFreighterInstalled();
+      if (!installed) {
+        const error = 'Please install the Freighter extension to connect.';
+        set({ isConnecting: false, connectionError: error });
+        set({ hasRestored: true, isRestoring: false });
+        toast.error(error);
+        return;
+      }
+
+      const connection = await connectWallet();
+      if ('error' in connection) {
+        const error = connection.error.includes('User rejected') 
+          ? 'Connection cancelled. Please try again.' 
+          : connection.error;
+        set({ isConnecting: false, connectionError: error });
+        set({ hasRestored: true, isRestoring: false });
+        toast.error(error);
+        return;
+      }
+
+      const networkDetails = await getWalletNetwork();
+      if (!networkDetails) {
+        const error = 'Failed to retrieve network details.';
+        set({ isConnecting: false, connectionError: error });
+        set({ hasRestored: true, isRestoring: false });
+        toast.error(error);
+        return;
+      }
+
+      if (networkDetails.network !== REQUIRED_NETWORK) {
+        const error = `Switch Freighter to ${REQUIRED_NETWORK} to continue.`;
+        set({
+          isConnected: true,
+          publicKey: connection.address,
+          network: networkDetails.network,
+          networkPassphrase: networkDetails.networkPassphrase,
+          isConnecting: false,
+          isRestoring: false,
+          hasRestored: true,
+          connectionError: error
+        });
+        toast.warning(error);
+        return;
+      }
+
+      set({
+        isConnected: true,
+        publicKey: connection.address,
+        network: networkDetails.network,
+        networkPassphrase: networkDetails.networkPassphrase,
+        isConnecting: false,
+        isRestoring: false,
+        hasRestored: true,
+        connectionError: null
+      });
+      safeLocalStorageSet('kredito_wallet_connected', 'true');
+      toast.success('Wallet connected');
+    } catch (err: unknown) {
+      set({ 
+        isConnecting: false, 
+        isRestoring: false,
+        hasRestored: true,
+        connectionError: err instanceof Error ? err.message : 'An unexpected error occurred.' 
+      });
+    }
+  },
+
+  disconnect: () => {
+    if (typeof window === 'undefined') return;
+    // P2-5: Clear AuthStore when disconnecting wallet to prevent lingering sessions
+    useAuthStore.getState().clearAuth();
+
+    set({
+      isConnected: false,
+      publicKey: null,
+      network: null,
+      networkPassphrase: null,
+      isConnecting: false,
+      isRestoring: false,
+      hasRestored: true,
+      connectionError: null
+    });
+    safeLocalStorageRemove('kredito_wallet_connected');
+  },
+
+  restoreSession: async () => {
+    if (typeof window === 'undefined') return;
+    
+    const wasConnected = safeLocalStorageGet('kredito_wallet_connected');
+    if (!wasConnected) {
+      set({ isRestoring: false, hasRestored: true });
+      return;
+    }
+
+    try {
+      const address = await getConnectedAddress();
+      if (address) {
+        const networkDetails = await getWalletNetwork();
+        set({
+          isConnected: true,
+          publicKey: address,
+          network: networkDetails?.network || null,
+          networkPassphrase: networkDetails?.networkPassphrase || null,
+          isRestoring: false,
+          hasRestored: true,
+          connectionError: networkDetails?.network !== REQUIRED_NETWORK 
+            ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.` 
+            : null
+        });
+      } else {
+        // If we thought we were connected but can't get address, clear it
+        safeLocalStorageRemove('kredito_wallet_connected');
+        set({ isRestoring: false, hasRestored: true });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to restore wallet session:', err);
+      set({ isRestoring: false, hasRestored: true });
+    }
+  }
+}));
+````
+
+## File: docs/SETUP.md
+````markdown
+# Setup
+
+## Quick Start
+
+The easiest way to set up the project is using the provided setup script:
+
+```bash
+./scripts/setup.sh
+```
+
+This will copy `.env.example` files to `.env` and install all dependencies.
+
+## Backend
+
+If you prefer manual setup, create `backend/.env` from `backend/.env.example` and set:
+
+- `JWT_SECRET` for API auth
+- `ISSUER_SECRET_KEY` for Stellar issuer signing
+- `ADMIN_API_SECRET` for `/api/admin/check-defaults`
+- `WEB_AUTH_SECRET_KEY` for SEP-10 challenge signing
+- `PHPC_ID`, `REGISTRY_ID`, `LENDING_POOL_ID` for deployed contracts
+
+Generate `ADMIN_API_SECRET` as a separate random token. Do not reuse `ISSUER_SECRET_KEY` in HTTP headers or cron jobs.
+
+Optional backend settings:
+
+- `APPROVAL_LEDGER_WINDOW=500` controls how long PHPC approval stays valid during repayment signing
+- `CORS_ORIGINS` should be a comma-separated allowlist in production, not `*`
+
+Run:
+
+```bash
+cd backend
+pnpm install
+pnpm dev
+```
+
+## Frontend
+
+Copy `frontend/.env.example` if needed, then run:
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Use Freighter on Stellar Testnet and point it at the same wallet used for backend auth.
+````
+
 ## File: frontend/lib/freighter.ts
 ````typescript
 'use client';
@@ -4746,10 +4849,14 @@ export async function getWalletNetwork(): Promise<{ network: string; networkPass
 /**
  * Signs a transaction XDR.
  */
-export async function signTx(xdr: string, address: string): Promise<{ signedXdr: string } | { error: string }> {
+export async function signTx(
+  xdr: string, 
+  address: string, 
+  networkPassphrase: string
+): Promise<{ signedXdr: string } | { error: string }> {
   try {
     const result = await signTransaction(xdr, {
-      networkPassphrase: TESTNET_PASSPHRASE,
+      networkPassphrase,
       address, // Freighter API uses 'address' parameter
     });
 
@@ -4780,12 +4887,16 @@ export async function loginWithFreighter() {
   if ('error' in connection) throw new Error(connection.error);
 
   const publicKey = connection.address;
+  
+  // Get network details for signing
+  const networkDetails = await getWalletNetwork();
+  const passphrase = networkDetails?.networkPassphrase || TESTNET_PASSPHRASE;
 
   const challengeRes = await authApi.post<{ challenge: string }>('/auth/challenge', {
     wallet: publicKey,
   });
 
-  const signResult = await signTx(challengeRes.data.challenge, publicKey);
+  const signResult = await signTx(challengeRes.data.challenge, publicKey, passphrase);
   if ('error' in signResult) throw new Error(signResult.error);
 
   const loginRes = await authApi.post<{
@@ -4797,58 +4908,6 @@ export async function loginWithFreighter() {
 
   return loginRes.data;
 }
-````
-
-## File: docs/SETUP.md
-````markdown
-# Setup
-
-## Quick Start
-
-The easiest way to set up the project is using the provided setup script:
-
-```bash
-./scripts/setup.sh
-```
-
-This will copy `.env.example` files to `.env` and install all dependencies.
-
-## Backend
-
-If you prefer manual setup, create `backend/.env` from `backend/.env.example` and set:
-
-- `JWT_SECRET` for API auth
-- `ISSUER_SECRET_KEY` for Stellar issuer signing
-- `ADMIN_API_SECRET` for `/api/admin/check-defaults`
-- `WEB_AUTH_SECRET_KEY` for SEP-10 challenge signing
-- `PHPC_ID`, `REGISTRY_ID`, `LENDING_POOL_ID` for deployed contracts
-
-Generate `ADMIN_API_SECRET` as a separate random token. Do not reuse `ISSUER_SECRET_KEY` in HTTP headers or cron jobs.
-
-Optional backend settings:
-
-- `APPROVAL_LEDGER_WINDOW=500` controls how long PHPC approval stays valid during repayment signing
-- `CORS_ORIGINS` should be a comma-separated allowlist in production, not `*`
-
-Run:
-
-```bash
-cd backend
-pnpm install
-pnpm dev
-```
-
-## Frontend
-
-Copy `frontend/.env.example` if needed, then run:
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-Use Freighter on Stellar Testnet and point it at the same wallet used for backend auth.
 ````
 
 ## File: .gitignore
@@ -4905,124 +4964,6 @@ skills-lock.json
 # --- Testing Artifacts ---
 *.xdr
 payload.json
-````
-
-## File: backend/src/config.ts
-````typescript
-// backend/src/config.ts
-
-import { StrKey } from '@stellar/stellar-sdk';
-
-const missingVars: string[] = [];
-
-function check(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    missingVars.push(name);
-    return '';
-  }
-  return value;
-}
-
-// Check all critical variables at module load
-check('JWT_SECRET');
-check('ISSUER_SECRET_KEY');
-check('ADMIN_API_SECRET');
-check('WEB_AUTH_SECRET_KEY');
-check('PHPC_ID');
-check('REGISTRY_ID');
-check('LENDING_POOL_ID');
-
-if (missingVars.length > 0) {
-  // In dev/test we might want to see all missing vars at once
-  if (process.env.NODE_ENV !== 'test') {
-    console.error(`❌ Missing required environment variables: ${missingVars.join(', ')}`);
-    console.error('Please check your .env file.');
-  }
-}
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-// P2-7: Removed redundant required() calls. Using process.env directly now that check() has verified them.
-export const config = {
-  port: Number(process.env.PORT || 3001),
-  jwtSecret: process.env.JWT_SECRET!,
-  issuerSecretKey: process.env.ISSUER_SECRET_KEY!,
-  adminApiSecret: process.env.ADMIN_API_SECRET!,
-  webAuthSecretKey: process.env.WEB_AUTH_SECRET_KEY!,
-  
-  contractIds: {
-    phpcToken: process.env.PHPC_ID!,
-    creditRegistry: process.env.REGISTRY_ID!,
-    lendingPool: process.env.LENDING_POOL_ID!,
-  },
-
-  stellarNetwork: process.env.STELLAR_NETWORK || 'TESTNET',
-  rpcUrl: process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
-  horizonUrl: process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org',
-  networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
-  
-  homeDomain: process.env.HOME_DOMAIN || 'kredito.finance',
-  webAuthDomain: process.env.WEB_AUTH_DOMAIN || 'api.kredito.finance',
-  
-  corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
-  
-  approvalLedgerWindow: Number(process.env.APPROVAL_LEDGER_WINDOW || 100), // ~10 minutes
-  explorerUrl: process.env.STELLAR_EXPLORER_URL || 'https://stellar.expert/explorer/testnet',
-};
-
-// Derived constants
-export const LEDGERS_PER_DAY = 17280; // Assuming 5s ledger close time
-export const STROOPS_PER_UNIT = 10_000_000n;
-
-// Validate issuer key if present
-if (config.issuerSecretKey && !StrKey.isValidEd25519SecretSeed(config.issuerSecretKey)) {
-  throw new Error('Invalid ISSUER_SECRET_KEY');
-}
-
-if (config.webAuthSecretKey && !StrKey.isValidEd25519SecretSeed(config.webAuthSecretKey)) {
-  throw new Error('Invalid WEB_AUTH_SECRET_KEY');
-}
-
-if (config.adminApiSecret && config.adminApiSecret.length < 32) {
-  throw new Error('ADMIN_API_SECRET must be at least 32 characters');
-}
-````
-
-## File: backend/src/middleware/auth.ts
-````typescript
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
-import { unauthorized } from '../errors';
-
-export interface AuthRequest extends Request {
-  wallet: string;
-}
-
-export function authMiddleware(req: Request, _res: Response, next: NextFunction) {
-  // Authorization header only
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-
-  if (!token) return next(unauthorized('Unauthorized: No token provided'));
-
-  try {
-    const decoded = jwt.verify(token, config.jwtSecret) as { sub: string };
-    if (!decoded.sub) {
-      return next(unauthorized('Unauthorized: Invalid token format'));
-    }
-    (req as AuthRequest).wallet = decoded.sub;
-    return next();
-  } catch {
-    return next(unauthorized('Unauthorized: Invalid token'));
-  }
-}
-
-export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  if (token !== config.adminApiSecret) return next(unauthorized('Admin access only'));
-  return next();
-}
 ````
 
 ## File: backend/src/stellar/feebump.ts
@@ -5368,99 +5309,133 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
 }
 ````
 
-## File: frontend/lib/api.ts
+## File: backend/src/config.ts
 ````typescript
-import axios from 'axios';
-import { useAuthStore } from '../store/auth';
-import { useWalletStore } from '../store/walletStore';
-import { loginWithFreighter } from './freighter';
+// backend/src/config.ts
 
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api",
-  timeout: 90000,
-});
+import { StrKey } from '@stellar/stellar-sdk';
 
-let reauthPromise: Promise<string | null> | null = null;
+const missingVars: string[] = [];
 
-async function ensureWalletAuthToken() {
-  const currentToken = useAuthStore.getState().token;
-  if (currentToken) {
-    return currentToken;
+function check(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    missingVars.push(name);
+    return '';
   }
-
-  const { isConnected } = useWalletStore.getState();
-  if (!isConnected) {
-    return null;
-  }
-
-  if (!reauthPromise) {
-    reauthPromise = loginWithFreighter()
-      .then((data) => {
-        useAuthStore.getState().setAuth({ wallet: data.wallet }, data.token);
-        return data.token;
-      })
-      .catch(() => {
-        useAuthStore.getState().clearAuth();
-        return null;
-      })
-      .finally(() => {
-        reauthPromise = null;
-      });
-  }
-
-  return reauthPromise;
+  return value;
 }
 
-api.interceptors.request.use((config) => {
-  if (config.headers) {
-    config.headers['X-Requested-With'] = 'XMLHttpRequest';
+// Check all critical variables at module load
+check('JWT_SECRET');
+check('ISSUER_SECRET_KEY');
+check('ADMIN_API_SECRET');
+check('WEB_AUTH_SECRET_KEY');
+check('PHPC_ID');
+check('REGISTRY_ID');
+check('LENDING_POOL_ID');
+
+if (missingVars.length > 0) {
+  // In dev/test we might want to see all missing vars at once
+  if (process.env.NODE_ENV !== 'test') {
+    console.error(`❌ Missing required environment variables: ${missingVars.join(', ')}`);
+    console.error('Please check your .env file.');
+    process.exit(1);
   }
+}
 
-  const url = config.url ?? '';
-  const isAuthRoute = url.includes('/auth/challenge') || url.includes('/auth/login');
+const isProduction = process.env.NODE_ENV === 'production';
 
-  if (isAuthRoute) {
-    return config;
-  }
+// P2-7: Removed redundant required() calls. Using process.env directly now that check() has verified them.
+export const config = {
+  port: Number(process.env.PORT || 3001),
+  jwtSecret: process.env.JWT_SECRET!,
+  issuerSecretKey: process.env.ISSUER_SECRET_KEY!,
+  adminApiSecret: process.env.ADMIN_API_SECRET!,
+  webAuthSecretKey: process.env.WEB_AUTH_SECRET_KEY!,
+  
+  contractIds: {
+    phpcToken: process.env.PHPC_ID!,
+    creditRegistry: process.env.REGISTRY_ID!,
+    lendingPool: process.env.LENDING_POOL_ID!,
+  },
 
-  return ensureWalletAuthToken().then((token) => {
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+  stellarNetwork: process.env.STELLAR_NETWORK || 'TESTNET',
+  rpcUrl: process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
+  horizonUrl: process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org',
+  networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
+  
+  homeDomain: process.env.HOME_DOMAIN || 'kredito.finance',
+  webAuthDomain: process.env.WEB_AUTH_DOMAIN || 'api.kredito.finance',
+  
+  corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+  
+  approvalLedgerWindow: Number(process.env.APPROVAL_LEDGER_WINDOW || 100), // ~10 minutes
+  explorerUrl: process.env.STELLAR_EXPLORER_URL || 'https://stellar.expert/explorer/testnet',
+};
+
+// Derived constants
+export const LEDGERS_PER_DAY = 17280; // Assuming 5s ledger close time
+export const STROOPS_PER_UNIT = 10_000_000n;
+
+// Validate issuer key if present
+if (config.issuerSecretKey && !StrKey.isValidEd25519SecretSeed(config.issuerSecretKey)) {
+  throw new Error('Invalid ISSUER_SECRET_KEY');
+}
+
+if (config.webAuthSecretKey && !StrKey.isValidEd25519SecretSeed(config.webAuthSecretKey)) {
+  throw new Error('Invalid WEB_AUTH_SECRET_KEY');
+}
+
+if (config.adminApiSecret && config.adminApiSecret.length < 32) {
+  throw new Error('ADMIN_API_SECRET must be at least 32 characters');
+}
+````
+
+## File: backend/src/middleware/auth.ts
+````typescript
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { timingSafeEqual, createHash } from 'crypto';
+import { config } from '../config';
+import { unauthorized } from '../errors';
+
+export interface AuthRequest extends Request {
+  wallet: string;
+}
+
+export function authMiddleware(req: Request, _res: Response, next: NextFunction) {
+  // Authorization header only
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
+  if (!token) return next(unauthorized('Unauthorized: No token provided'));
+
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret) as { sub: string };
+    if (!decoded.sub) {
+      return next(unauthorized('Unauthorized: Invalid token format'));
     }
-    return config;
-  });
-});
-
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error?.config;
-    const status = error?.response?.status;
-    const url = typeof originalRequest?.url === 'string' ? originalRequest.url : '';
-    const isAuthRoute = url.includes('/auth/challenge') || url.includes('/auth/login');
-
-    if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
-      originalRequest._retry = true;
-      const refreshedToken = await ensureWalletAuthToken();
-
-      if (refreshedToken) {
-        originalRequest.headers = originalRequest.headers ?? {};
-        originalRequest.headers.Authorization = `Bearer ${refreshedToken}`;
-        return api(originalRequest);
-      }
-
-      useAuthStore.getState().clearAuth();
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('kredito-auth');
-        window.location.href = '/?session=expired';
-      }
-    }
-
-    return Promise.reject(error);
+    (req as AuthRequest).wallet = decoded.sub;
+    return next();
+  } catch {
+    return next(unauthorized('Unauthorized: Invalid token'));
   }
-);
+}
 
-export default api;
+export function adminAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') ?? '';
+  const expected = config.adminApiSecret;
+
+  // Normalize lengths by hashing both — timingSafeEqual requires equal-length buffers
+  const tokenBuf = createHash('sha256').update(token).digest();
+  const expectedBuf = createHash('sha256').update(expected).digest();
+
+  if (!timingSafeEqual(tokenBuf, expectedBuf)) {
+    return next(unauthorized('Admin access only'));
+  }
+
+  return next();
+}
 ````
 
 ## File: backend/src/routes/auth.ts
@@ -6168,6 +6143,105 @@ function ScoreArc({ score, isLoading }: { score: number; isLoading: boolean }) {
 }
 ````
 
+## File: frontend/lib/api.ts
+````typescript
+import axios from 'axios';
+import { useAuthStore } from '../store/auth';
+import { useWalletStore } from '../store/walletStore';
+import { loginWithFreighter } from './freighter';
+
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api",
+  timeout: 90000,
+});
+
+let reauthPromise: Promise<string | null> | null = null;
+
+async function ensureWalletAuthToken() {
+  const currentToken = useAuthStore.getState().token;
+  if (currentToken) {
+    return currentToken;
+  }
+
+  const { isConnected } = useWalletStore.getState();
+  if (!isConnected) {
+    return null;
+  }
+
+  if (!reauthPromise) {
+    reauthPromise = loginWithFreighter()
+      .then((data) => {
+        useAuthStore.getState().setAuth({ wallet: data.wallet }, data.token);
+        return data.token;
+      })
+      .catch(() => {
+        useAuthStore.getState().clearAuth();
+        return null;
+      })
+      .finally(() => {
+        reauthPromise = null;
+      });
+  }
+
+  return reauthPromise;
+}
+
+api.interceptors.request.use((config) => {
+  if (config.headers) {
+    config.headers['X-Requested-With'] = 'XMLHttpRequest';
+  }
+
+  const url = config.url ?? '';
+  const isAuthRoute = url.includes('/auth/challenge') || url.includes('/auth/login');
+
+  if (isAuthRoute) {
+    return config;
+  }
+
+  return ensureWalletAuthToken().then((token) => {
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error?.config;
+    const status = error?.response?.status;
+    const url = typeof originalRequest?.url === 'string' ? originalRequest.url : '';
+    const isAuthRoute = url.includes('/auth/challenge') || url.includes('/auth/login');
+
+    if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
+      originalRequest._retry = true;
+      const refreshedToken = await ensureWalletAuthToken();
+
+      if (refreshedToken) {
+        originalRequest.headers = originalRequest.headers ?? {};
+        originalRequest.headers.Authorization = `Bearer ${refreshedToken}`;
+        return api(originalRequest);
+      }
+
+      useAuthStore.getState().clearAuth();
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('kredito-auth');
+        } catch {
+          /* silent */
+        }
+        window.location.href = '/?session=expired';
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+````
+
 ## File: docs/ARCHITECTURE.md
 ````markdown
 # Architecture
@@ -6783,6 +6857,7 @@ import pinoHttp from 'pino-http';
 import { config } from './config';
 import { errorHandler } from './errors';
 import authRoutes from './routes/auth';
+import adminRoutes from './routes/admin';
 import creditRoutes from './routes/credit';
 import loanRoutes from './routes/loan';
 import txRoutes from './routes/tx';
@@ -6838,8 +6913,6 @@ app.use(
   }),
 );
 
-import adminRoutes from './routes/admin';
-
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/credit/generate', scoreLimiter);
 app.use('/api/credit', creditRoutes);
@@ -6865,9 +6938,22 @@ async function verifyConnectivity() {
 }
 
 verifyConnectivity().then(() => {
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`Kredito backend listening at http://localhost:${config.port}`);
   });
+
+  function shutdown(signal: string) {
+    console.log(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
+    });
+    // Force exit after 10s if connections don't drain
+    setTimeout(() => process.exit(1), 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 });
 ````
 
@@ -6885,7 +6971,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK } from '@/lib/constants';
+import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
@@ -6933,7 +7019,7 @@ export default function BorrowPage() {
   const [hasEditedAmount, setHasEditedAmount] = useState(false);
   const [hasAmountInteracted, setHasAmountInteracted] = useState(false);
 
-  const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
+  const { isConnected: walletConnected, network, networkPassphrase, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
   const canBorrow = walletConnected && isCorrectNetwork && agreed;
 
@@ -7010,7 +7096,11 @@ export default function BorrowPage() {
 
       if (data.requiresSignature) {
         setTxStep(2); // Signing
-        const signResult = await signTx(data.unsignedXdr, user!.wallet!);
+        const signResult = await signTx(
+          data.unsignedXdr, 
+          user!.wallet!, 
+          networkPassphrase ?? TESTNET_PASSPHRASE
+        );
         if ('error' in signResult) throw new Error(signResult.error);
 
         setTxStep(3); // Submitting
@@ -7339,7 +7429,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK } from '@/lib/constants';
+import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { tierGradient } from '@/lib/tiers';
 import StepBreadcrumb from '@/components/StepBreadcrumb';
@@ -7389,7 +7479,7 @@ export default function RepayPage() {
   const [success, setSuccess] = useState<RepaySuccess | null>(null);
   const [error, setError] = useState('');
 
-  const { isConnected: walletConnected, network, connectionError: walletError } = useWalletStore();
+  const { isConnected: walletConnected, network, networkPassphrase, connectionError: walletError } = useWalletStore();
   const isCorrectNetwork = network === REQUIRED_NETWORK;
   const canRepay = walletConnected && isCorrectNetwork;
 
@@ -7436,7 +7526,11 @@ export default function RepayPage() {
       }
 
       setTxStep(2);
-      const approveResult = await signTx(approveTx.unsignedXdr, user.wallet);
+      const approveResult = await signTx(
+        approveTx.unsignedXdr, 
+        user.wallet, 
+        networkPassphrase ?? TESTNET_PASSPHRASE
+      );
       if ('error' in approveResult) {
         throw new Error(`APPROVAL_SIGN:${approveResult.error}`);
       }
@@ -7452,7 +7546,11 @@ export default function RepayPage() {
       const { data: repayXdrData } = await api.post('/loan/repay-xdr');
       const repayUnsignedXdr = repayXdrData.unsignedXdr;
 
-      const repayResult = await signTx(repayUnsignedXdr, user.wallet);
+      const repayResult = await signTx(
+        repayUnsignedXdr, 
+        user.wallet, 
+        networkPassphrase ?? TESTNET_PASSPHRASE
+      );
       if ('error' in repayResult) {
         throw new Error(`REPAY_SIGN:${repayResult.error}`);
       }
@@ -8119,183 +8217,6 @@ function SessionExpiredToast({ setError }: { setError: (value: string) => void }
 }
 ````
 
-## File: README.md
-````markdown
-# Kredito
-
-Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar and accessed through Freighter.
-
-## Links
-
-🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
-
-🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface)**
-
-🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface)**
-
-🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface)**
-
-> **SEA Stellar Hackathon · Track: Payments & Financial Access**
-
-## Problem
-
-Small retail business owners in the Philippines (sari-sari stores, online resellers, market vendors) lack traditional credit history, making them "invisible" to banks. They often rely on informal lenders with predatory interest rates or use personal savings, which stunts their growth. Traditional digital wallets have low transaction caps and no path to credit, leaving SMEs without the capital needed for bulk inventory orders.
-
-## Solution
-
-Kredito uses deterministic on-chain transaction history to generate verifiable credit scores. These scores are stored in a Soroban smart contract and used to unlock tiered micro-loans from a decentralized liquidity pool. Settlement happens in seconds with near-zero fees, and users build a portable "Credit Passport" with every on-time repayment.
-
-## Product Flow
-
-1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth challenge.
-2. **Review Credit Passport** — See raw metrics, the exact formula, and your on-chain tier.
-3. **Borrow Instantly** — Pool disburses PHPC to your wallet via smart contract.
-4. **Repay & Level Up** — Repayment pulls PHPC from that same connected wallet, then updates your score live. Higher tier = bigger limit.
-
-## Current Demo Note
-
-Repayment requires the wallet to hold `principal + fee`.
-
-Example:
-
-- borrow `500 PHPC`
-- fee `25 PHPC`
-- total repayment due `525 PHPC`
-
-Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
-
-## Architecture
-
-- **Frontend (Next.js 16)**: Built with React 19, Zustand for state management, and TanStack Query for data fetching.
-- **Backend (Express)**: Handles wallet-auth sessions, score orchestration, fee sponsorship, and fully stateless operation with the chain as the source of truth.
-- **Stellar (Soroban)**: Core financial logic running on the Stellar Testnet.
-- **Client SDK**: `@stellar/stellar-sdk` for transaction building, fee-sponsoring, and RPC interaction.
-
-## Project Structure
-
-```text
-kredito/
-├── contracts/
-│   ├── credit_registry/        # Scoring, tiering, and metrics logic
-│   ├── lending_pool/           # Borrowing, repayment, and pool management
-│   └── phpc_token/             # SEP-41 compliant PHPC stablecoin
-├── backend/
-│   ├── src/
-│   │   ├── routes/             # Auth, Credit, and Loan API endpoints
-│   │   ├── stellar/            # Fee-bump and RPC utilities
-│   │   └── scoring/            # Off-chain score calculation logic
-├── frontend/
-│   ├── app/                    # Next.js App Router (Dashboard, Borrow, Repay)
-│   ├── store/                  # Zustand auth and UI state
-│   └── lib/                    # API clients and Freighter integration
-└── docs/                       # Architecture, Setup, and API specs
-```
-
-## Stellar Features Used
-
-| Feature                    | Usage                                                                |
-| :------------------------- | :------------------------------------------------------------------- |
-| **Soroban Contracts**      | Powering the scoring engine and the lending pool logic.              |
-| **PHPC (Stablecoin)**      | Enabling non-volatile loans pegged to the local currency (PHP).      |
-| **Sponsored Transactions** | Issuer-funded fee-bumps for a seamless, gasless user experience.     |
-| **Stellar RPC**            | Real-time indexing of on-chain activity to calculate credit metrics. |
-
-## Smart Contracts
-
-Deployed and verified on Stellar testnet:
-
-- **`credit_registry`**: `CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ`
-- **`lending_pool`**: `CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH`
-- **`phpc_token`**: `CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR`
-
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CDP3FEVG46ZUH73VZLDFQWHZHEIHITM3FVG26ZR4I3RY34HSWVNWHVPZ?filter=interface
-![Credit Registry Explorer](./images/img1.png)
-
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CDRE2MZVSHOWEITL7UBBTNIHRH6IC5USDKY5K5AFELPJZ7VMEV5LQVWH?filter=interface
-![Lending Pool Explorer](./images/img2.png)
-
-Explorer Link: https://stellar.expert/explorer/testnet/contract/CD2GKG5HM5FMFCN4OMPXKTBHC23N2EFIQGESQV46WJGZAD76FP7SLPJR?filter=interface
-![PHPC Token Explorer](./images/img3.png)
-
-## Contract Functions
-
-| Function         | Contract          | Description                                          |
-| :--------------- | :---------------- | :--------------------------------------------------- |
-| `update_metrics` | `credit_registry` | Submits raw tx/balance metrics to update score.      |
-| `get_tier`       | `credit_registry` | Returns the current user tier (0-3).                 |
-| `borrow`         | `lending_pool`    | Validates tier/limit and disburses PHPC to borrower. |
-| `repay`          | `lending_pool`    | Accepts repayment and triggers score improvement.    |
-| `deposit`        | `lending_pool`    | Allows admins/liquidity providers to fund the pool.  |
-
-## Setup & Installation
-
-### Prerequisites
-
-- Node.js 20+ and `pnpm`
-- Rust (latest stable) and `stellar-cli`
-- Freighter browser extension (set to Testnet)
-
-### Quick Start
-
-```bash
-# Clone the repo and run the setup script
-./scripts/setup.sh
-
-# Start the Backend (in one terminal)
-cd backend && pnpm dev
-
-# Start the Frontend (in another terminal)
-cd frontend && pnpm dev
-```
-
-### Smart Contracts
-
-```bash
-cd contracts
-cargo test --workspace
-stellar contract build
-```
-
-### Backend
-
-```bash
-cd backend
-pnpm install
-pnpm build
-pnpm dev
-```
-
-_Requires `backend/.env` (see `backend/.env.example`). Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
-
-### Frontend
-
-```bash
-cd frontend
-pnpm install
-pnpm lint
-pnpm build
-pnpm dev
-```
-
-_Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
-
-## Documentation
-
-- [DEMO.md](./DEMO.md): presenter runbook and dashboard E2E demo flow
-- [docs/SETUP.md](./docs/SETUP.md): local setup
-- [docs/TESTING.md](./docs/TESTING.md): live E2E testing steps
-- [docs/ERROR_CODES.md](./docs/ERROR_CODES.md): system error codes and handling
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): system architecture
-
-## Why Stellar?
-
-Stellar provides the perfect infrastructure for micro-finance:
-
-- **Sub-cent Fees**: Loans are economically viable even at small amounts.
-- **Instant Settlement**: Borrowers get funds in 3-5 seconds, not days.
-- **Native Compliance**: Stablecoins like PHPC allow for regulatory-friendly settlement in local currency.
-````
-
 ## File: backend/src/routes/loan.ts
 ````typescript
 import { Router } from 'express';
@@ -8595,4 +8516,181 @@ router.get(
 );
 
 export default router;
+````
+
+## File: README.md
+````markdown
+# Kredito
+
+Transparent on-chain credit scores and instant micro-loans for the Filipino unbanked, built on Stellar and accessed through Freighter.
+
+## Links
+
+🔗 **[Live Demo → kredito-iota.vercel.app](https://kredito-iota.vercel.app)**
+
+🔭 **[Credit Registry on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS?filter=interface)**
+
+🔭 **[Lending Pool on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6?filter=interface)**
+
+🔭 **[PHPC Token on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE?filter=interface)**
+
+> **SEA Stellar Hackathon · Track: Payments & Financial Access**
+
+## Problem
+
+Small retail business owners in the Philippines (sari-sari stores, online resellers, market vendors) lack traditional credit history, making them "invisible" to banks. They often rely on informal lenders with predatory interest rates or use personal savings, which stunts their growth. Traditional digital wallets have low transaction caps and no path to credit, leaving SMEs without the capital needed for bulk inventory orders.
+
+## Solution
+
+Kredito uses deterministic on-chain transaction history to generate verifiable credit scores. These scores are stored in a Soroban smart contract and used to unlock tiered micro-loans from a decentralized liquidity pool. Settlement happens in seconds with near-zero fees, and users build a portable "Credit Passport" with every on-time repayment.
+
+## Product Flow
+
+1. **Connect Wallet** — Sign in with Freighter through a wallet-signed Stellar WebAuth challenge.
+2. **Review Credit Passport** — See raw metrics, the exact formula, and your on-chain tier.
+3. **Borrow Instantly** — Pool disburses PHPC to your wallet via smart contract.
+4. **Repay & Level Up** — Repayment pulls PHPC from that same connected wallet, then updates your score live. Higher tier = bigger limit.
+
+## Current Demo Note
+
+Repayment requires the wallet to hold `principal + fee`.
+
+Example:
+
+- borrow `100 PHPC`
+- fee `5 PHPC` (500 bps)
+- total repayment due `105 PHPC`
+
+Because the wallet receives only the borrowed principal, you must top up the extra fee amount before repayment. If you do not, the PHPC token contract rejects repayment with `InsufficientBalance`.
+
+## Architecture
+
+- **Frontend (Next.js 16)**: Built with React 19, Zustand for state management, and TanStack Query for data fetching.
+- **Backend (Express)**: Handles wallet-auth sessions, score orchestration, fee sponsorship, and fully stateless operation with the chain as the source of truth.
+- **Stellar (Soroban)**: Core financial logic running on the Stellar Testnet.
+- **Client SDK**: `@stellar/stellar-sdk` for transaction building, fee-sponsoring, and RPC interaction.
+
+## Project Structure
+
+```text
+kredito/
+├── contracts/
+│   ├── credit_registry/        # Scoring, tiering, and metrics logic
+│   ├── lending_pool/           # Borrowing, repayment, and pool management
+│   └── phpc_token/             # SEP-41 compliant PHPC stablecoin
+├── backend/
+│   ├── src/
+│   │   ├── routes/             # Auth, Credit, and Loan API endpoints
+│   │   ├── stellar/            # Fee-bump and RPC utilities
+│   │   └── scoring/            # Off-chain score calculation logic
+├── frontend/
+│   ├── app/                    # Next.js App Router (Dashboard, Borrow, Repay)
+│   ├── store/                  # Zustand auth and UI state
+│   └── lib/                    # API clients and Freighter integration
+└── docs/                       # Architecture, Setup, and API specs
+```
+
+## Stellar Features Used
+
+| Feature                    | Usage                                                                |
+| :------------------------- | :------------------------------------------------------------------- |
+| **Soroban Contracts**      | Powering the scoring engine and the lending pool logic.              |
+| **PHPC (Stablecoin)**      | Enabling non-volatile loans pegged to the local currency (PHP).      |
+| **Sponsored Transactions** | Issuer-funded fee-bumps for a seamless, gasless user experience.     |
+| **Stellar RPC**            | Real-time indexing of on-chain activity to calculate credit metrics. |
+
+## Smart Contracts
+
+Deployed and verified on Stellar testnet:
+
+- **`credit_registry`**: `CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS`
+- **`lending_pool`**: `CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6`
+- **`phpc_token`**: `CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE`
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CBFTO4553DTNZWAQ2QEXWHITKQEESDOXXYOMLMOLPIRI22G3255YISLS?filter=interface
+![Credit Registry Explorer](./images/img1.png)
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CBNOPIQWQYCJG544YAK7SADN4IWWMW4I6Q5JZRZ2JOC2YRCBL35EDDL6?filter=interface
+![Lending Pool Explorer](./images/img2.png)
+
+Explorer Link: https://stellar.expert/explorer/testnet/contract/CAVNTCGGVAZPHS6UMJTVZIDYK3TABJAV2RKNVGWRHJ7BHHUJCG6IJYTE?filter=interface
+![PHPC Token Explorer](./images/img3.png)
+
+## Contract Functions
+
+| Function         | Contract          | Description                                          |
+| :--------------- | :---------------- | :--------------------------------------------------- |
+| `update_metrics` | `credit_registry` | Submits raw tx/balance metrics to update score.      |
+| `get_tier`       | `credit_registry` | Returns the current user tier (0-3).                 |
+| `borrow`         | `lending_pool`    | Validates tier/limit and disburses PHPC to borrower. |
+| `repay`          | `lending_pool`    | Accepts repayment and triggers score improvement.    |
+| `deposit`        | `lending_pool`    | Allows admins/liquidity providers to fund the pool.  |
+
+## Setup & Installation
+
+### Prerequisites
+
+- Node.js 20+ and `pnpm`
+- Rust (latest stable) and `stellar-cli`
+- Freighter browser extension (set to Testnet)
+
+### Quick Start
+
+```bash
+# Clone the repo and run the setup script
+./scripts/setup.sh
+
+# Start the Backend (in one terminal)
+cd backend && pnpm dev
+
+# Start the Frontend (in another terminal)
+cd frontend && pnpm dev
+```
+
+### Smart Contracts
+
+```bash
+cd contracts
+cargo test --workspace
+stellar contract build
+```
+
+### Backend
+
+```bash
+cd backend
+pnpm install
+pnpm build
+pnpm dev
+```
+
+_Requires `backend/.env` (see `backend/.env.example`). Generate `ADMIN_API_SECRET` as a separate random token; do not reuse the issuer signing key in HTTP auth._
+
+### Frontend
+
+```bash
+cd frontend
+pnpm install
+pnpm lint
+pnpm build
+pnpm dev
+```
+
+_Runs at `http://localhost:3000`. Freighter should be installed and pointed at Stellar Testnet._
+
+## Documentation
+
+- [DEMO.md](./DEMO.md): presenter runbook and dashboard E2E demo flow
+- [docs/SETUP.md](./docs/SETUP.md): local setup
+- [docs/TESTING.md](./docs/TESTING.md): live E2E testing steps
+- [docs/ERROR_CODES.md](./docs/ERROR_CODES.md): system error codes and handling
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): system architecture
+
+## Why Stellar?
+
+Stellar provides the perfect infrastructure for micro-finance:
+
+- **Sub-cent Fees**: Loans are economically viable even at small amounts.
+- **Instant Settlement**: Borrowers get funds in 3-5 seconds, not days.
+- **Native Compliance**: Stablecoins like PHPC allow for regulatory-friendly settlement in local currency.
 ````
