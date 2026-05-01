@@ -23,7 +23,17 @@ export default function DashboardLayout({
     }
   }, [hydrated, router, token, user]);
 
-  if (!hydrated || !user || !token) return null;
+  if (!hydrated) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center h-[calc(100vh-200px)]">
+          <div className="animate-pulse text-muted-foreground font-medium">Loading your profile...</div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!user || !token) return null;
 
   return <AppShell>{children}</AppShell>;
 }

@@ -66,7 +66,14 @@ export default function DashboardPage() {
   // 1. Primary: Get the latest cached score (fast)
   const scoreQuery = useQuery({
     queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
-    queryFn: () => api.get<ScoreResponse>('/credit/score').then((res) => res.data),
+    queryFn: async () => {
+      try {
+        return await api.get<ScoreResponse>('/credit/score').then((res) => res.data);
+      } catch (err: any) {
+        if (err?.response?.status === 404) return null; // no score yet, not an error
+        throw err;
+      }
+    },
     enabled: isAuthenticated,
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -82,16 +89,12 @@ export default function DashboardPage() {
     },
   });
 
-  // 3. Auto-trigger generate only if score is missing
-  const scoreStatus = (
-    scoreQuery.error as { response?: { status?: number } } | null
-  )?.response?.status;
-  const shouldAutoGenerate = scoreStatus === 404;
+  // 3. Auto-trigger generate only if score is missing (null)
+  const isScoreMissing = scoreQuery.data === null;
   const mutate = generateMutation.mutate;
   useEffect(() => {
     if (
-      shouldAutoGenerate &&
-      !scoreQuery.data &&
+      isScoreMissing &&
       !generateMutation.isPending &&
       !generateMutation.data &&
       !generateMutation.isError
@@ -99,8 +102,7 @@ export default function DashboardPage() {
       mutate();
     }
   }, [
-    shouldAutoGenerate,
-    scoreQuery.data,
+    isScoreMissing,
     generateMutation.isPending,
     generateMutation.data,
     generateMutation.isError,
