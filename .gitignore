@@ -65,7 +65,7 @@ Thumbs.db
 skills-lock.json
 repomix-output.md
 repomix.config.json
+.repomixignore
 
 # --- Testing & Misc ---
 payload.json
-
