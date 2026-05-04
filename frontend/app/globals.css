@@ -144,23 +144,20 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
-  padding: 14px 24px;
+  width: fit-content;
+  padding: 12px 24px;
   border-radius: var(--radius-lg);
   font-weight: 700;
   font-size: 14px;
+  line-height: 1.2;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
   border: none;
   position: relative;
   overflow: hidden;
 }
 
-@media (min-width: 640px) {
-  .btn-primary {
-    width: auto;
-  }
-}
+
 
 .btn-primary:active:not(:disabled) {
   transform: scale(0.97);
@@ -193,13 +190,20 @@ body {
   border-color: rgba(148, 163, 184, 0.2);
 }
 
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: var(--radius-md);
+}
+
+
 /* ─── Card Styles ─── */
 .card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   padding: 20px;
-  transition: all var(--transition-normal);
+  transition: background-color var(--transition-normal), border-color var(--transition-normal), transform var(--transition-normal);
 }
 
 .card-elevated {

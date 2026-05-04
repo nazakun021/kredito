@@ -12,7 +12,6 @@ import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
 import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
-import StepBreadcrumb from '@/components/StepBreadcrumb';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
 import CelebrationParticles from '@/components/CelebrationParticles';
 import SummaryRow from '@/components/SummaryRow';
@@ -202,10 +201,15 @@ export default function BorrowPage() {
             View on Stellar Expert ↗
           </a>
 
-          <button onClick={() => router.push('/loan/repay')} className="btn-primary btn-accent mt-8">
-            Continue to Repay
-            <ArrowRight size={16} />
-          </button>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button onClick={() => router.push('/dashboard')} className="btn-primary btn-dark">
+              Go to Dashboard
+            </button>
+            <button onClick={() => router.push('/loan/repay')} className="btn-primary btn-accent">
+              Continue to Payment
+              <ArrowRight size={16} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -214,7 +218,7 @@ export default function BorrowPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-        <StepBreadcrumb step={3} total={4} />
+
         <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Borrow from the pool</h1>
         <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           Eligibility is enforced by the on-chain tier stored in your Credit Passport.
@@ -231,7 +235,7 @@ export default function BorrowPage() {
           {isScoreLoading ? (
             <div className="skeleton mt-4 h-12 w-40" role="status" aria-busy="true" />
           ) : (
-            <p className="mt-4 text-5xl font-extrabold tabular-nums">P{borrowAmount.toFixed(2)}</p>
+            <p className="mt-4 text-4xl font-extrabold tabular-nums sm:text-5xl">P{borrowAmount.toFixed(2)}</p>
           )}
           <p className="mt-2 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
             Max available now: P{borrowLimit.toFixed(2)}
@@ -383,8 +387,8 @@ export default function BorrowPage() {
                 >
                   {loading ? (
                     <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Processing...
+                      <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                      Processing…
                     </>
                   ) : (
                     <>
@@ -433,7 +437,13 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
   ];
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      <div className="text-sm font-semibold text-center text-slate-300">
+        {currentStep === 1 && 'Preparing borrow transaction…'}
+        {currentStep === 2 && 'Sign in Freighter…'}
+        {currentStep === 3 && 'Submitting to network…'}
+        {currentStep === 4 && 'Confirming disbursement…'}
+      </div>
       <div className="flex justify-between">
         {steps.map((s) => (
           <div 
@@ -442,10 +452,10 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
             style={{ opacity: currentStep >= s.id ? 1 : 0.3 }}
           >
             <div 
-              className={`h-1.5 w-12 rounded-full transition-all duration-500 ${currentStep === s.id ? 'pulse-glow' : ''}`}
+              className={`h-1.5 w-8 sm:w-12 rounded-full transition-all duration-500 ${currentStep === s.id ? 'pulse-glow' : ''}`}
               style={{ background: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-bg-elevated)' }}
             />
-            <span className="text-[9px] font-bold uppercase tracking-tighter" style={{ color: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+            <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wide" style={{ color: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
               {s.label}
             </span>
           </div>

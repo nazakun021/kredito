@@ -17,7 +17,7 @@ export default function WalletConnectionBanner() {
 
   return (
     <div 
-      className="flex items-center justify-between gap-4 p-4 rounded-xl border animate-fade-up mb-6"
+      className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border animate-fade-up mb-6"
       style={{ 
         background: 'var(--color-danger-bg)', 
         borderColor: 'var(--color-danger)',
@@ -25,7 +25,7 @@ export default function WalletConnectionBanner() {
       }}
     >
       <div className="flex items-center gap-3">
-        <AlertTriangle size={20} />
+        <AlertTriangle size={20} aria-hidden="true" />
         <p className="text-sm font-medium">
           {message}
         </p>
@@ -35,7 +35,7 @@ export default function WalletConnectionBanner() {
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110"
         style={{ background: 'var(--color-danger)', color: 'white' }}
       >
-        <Wallet size={14} />
+        <Wallet size={14} aria-hidden="true" />
         Connect Wallet
       </button>
     </div>
