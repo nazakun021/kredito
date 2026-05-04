@@ -14,10 +14,13 @@ import {
   X,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
 import ConnectWalletButton from './ConnectWalletButton';
-import NetworkBadge from './NetworkBadge';
+
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -86,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
               aria-label="Close menu"
             >
-              <X size={16} style={{ color: 'var(--color-text-muted)' }} />
+              <X size={16} style={{ color: 'var(--color-text-muted)' }} aria-hidden="true" />
             </button>
             <SidebarContent
               pathname={pathname}
@@ -113,12 +116,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
             aria-label="Open menu"
           >
-            <Menu size={16} style={{ color: 'var(--color-text-secondary)' }} />
+            <Menu size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
           </button>
 
           <div className="flex flex-col lg:hidden">
             <div className="flex items-center gap-2">
-              <ShieldCheck size={14} style={{ color: 'var(--color-accent)' }} />
+              <ShieldCheck size={14} style={{ color: 'var(--color-accent)' }} aria-hidden="true" />
               <span className="text-xs font-bold">Kredito</span>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
@@ -134,21 +137,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="flex-1" />
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:block">
-              <NetworkBadge />
-            </div>
-            <ConnectWalletButton />
-          </div>
+          <ConnectWalletButton />
 
-          <button
-            onClick={handleLogout}
-            className="flex h-9 w-9 items-center justify-center rounded-lg cursor-pointer lg:hidden"
-            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-            aria-label="Disconnect wallet session"
-          >
-            <LogOut size={14} style={{ color: 'var(--color-text-muted)' }} />
-          </button>
+
         </header>
 
         <main className="flex-1 px-6 py-8 lg:px-10 lg:py-10">{children}</main>
@@ -166,7 +157,19 @@ function SidebarContent({
   onLogout: () => void;
   onNavClick?: () => void;
 }) {
+  const user = useAuthStore((s) => s.user);
   const walletAddress = useWalletStore((s) => s.publicKey);
+
+  const { data: loanStatus } = useQuery({
+    queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? ''),
+    queryFn: () => api.get<{ hasActiveLoan: boolean }>('/loan/status').then((res) => res.data),
+    enabled: !!user?.wallet,
+  });
+
+  const filteredNavItems = navItems.filter((item) => {
+    if (item.label === 'Repay') return loanStatus?.hasActiveLoan;
+    return true;
+  });
   return (
     <>
       <div className="flex items-center gap-3 px-6 py-6">
@@ -174,7 +177,7 @@ function SidebarContent({
           className="flex h-10 w-10 items-center justify-center rounded-xl"
           style={{ background: 'var(--color-accent-glow)', border: '1px solid var(--color-border-accent)' }}
         >
-          <ShieldCheck size={20} style={{ color: 'var(--color-accent)' }} />
+          <ShieldCheck size={20} style={{ color: 'var(--color-accent)' }} aria-hidden="true" />
         </div>
         <div>
           <p className="text-base font-bold">Kredito</p>
@@ -185,7 +188,7 @@ function SidebarContent({
       </div>
 
       <nav className="mt-2 flex-1 space-y-1 px-3">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {filteredNavItems.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           return (
             <Link
@@ -199,7 +202,7 @@ function SidebarContent({
                 border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
               }}
             >
-              <Icon size={18} />
+              <Icon size={18} aria-hidden="true" />
               {label}
             </Link>
           );
@@ -220,7 +223,7 @@ function SidebarContent({
           className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium cursor-pointer transition-colors"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          <LogOut size={16} />
+          <LogOut size={16} aria-hidden="true" />
           Disconnect Wallet
         </button>
       </div>

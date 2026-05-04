@@ -305,6 +305,26 @@ export async function getTierLimit(tier: number) {
 
 export async function buildScoreSummary(address: string) {
   const metrics = await buildWalletMetrics(address);
+
+  // P2-11: Fetch existing on-chain metrics to use as a floor.
+  // This prevents losing historical repayments/defaults when ledger events expire.
+  try {
+    const onChain = await queryContract<{
+      repayment_count?: number | bigint;
+      default_count?: number | bigint;
+    }>(contractIds.creditRegistry, 'get_metrics', [Address.fromString(address).toScVal()]);
+
+    if (onChain) {
+      metrics.repaymentCount = Math.max(
+        metrics.repaymentCount,
+        Number(onChain.repayment_count ?? 0),
+      );
+      metrics.defaultCount = Math.max(metrics.defaultCount, Number(onChain.default_count ?? 0));
+    }
+  } catch {
+    // Ignore errors fetching on-chain metrics, fallback to detected ones
+  }
+
   const score = calculateScore(metrics);
   const tier = scoreToTier(score);
   const tierLimit = await getTierLimit(tier);

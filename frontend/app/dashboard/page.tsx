@@ -143,7 +143,7 @@ export default function DashboardPage() {
     : 100;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl pb-6">
       <div className="mb-8 animate-fade-up">
         <h1 className="text-2xl font-extrabold lg:text-3xl">Dashboard</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
@@ -160,7 +160,7 @@ export default function DashboardPage() {
             boxShadow: 'var(--shadow-card)',
           }}
         >
-          <div className="flex items-start justify-between gap-4 relative z-10">
+          <div className="flex flex-wrap items-start justify-between gap-4 relative z-10">
             <div className="flex items-center gap-6">
               <div className="relative flex items-center justify-center h-32 w-32">
                 <ScoreArc score={score?.score ?? 0} isLoading={isLoading} />
@@ -226,9 +226,9 @@ export default function DashboardPage() {
           <button
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending || (!score && isLoading)}
-            className="btn-primary btn-dark mt-6 relative z-10"
+            className="btn-primary btn-dark mt-6 relative z-10 w-full sm:w-auto"
           >
-            <RefreshCw size={16} className={generateMutation.isPending ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={generateMutation.isPending ? 'animate-spin' : ''} aria-hidden="true" />
             {generateMutation.isPending ? 'Refreshing on-chain score...' : 'Refresh On-Chain Score'}
           </button>
           {scoreError ? (
@@ -278,7 +278,7 @@ export default function DashboardPage() {
                 </div>
                 <button onClick={() => router.push('/loan/repay')} className="btn-primary btn-accent mt-4">
                   Repay Active Loan
-                  <ArrowRight size={16} />
+                  <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </div>
             ) : (
@@ -288,7 +288,7 @@ export default function DashboardPage() {
                 className="btn-primary btn-accent mt-5"
               >
                 {score?.tier === 0 ? 'Tier too low to borrow' : `Borrow P${score?.borrowLimit ?? '0.00'}`}
-                {score?.tier === 0 ? null : <ArrowRight size={16} />}
+                {score?.tier === 0 ? null : <ArrowRight size={16} aria-hidden="true" />}
               </button>
             )}
             {score?.tier === 0 && (
@@ -298,7 +298,7 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <div className="grid grid-cols-2 gap-4 animate-fade-up">
+          <div className="grid grid-cols-2 gap-3 animate-fade-up">
             <InfoCard
               icon={Clock}
               title="Last Updated"
@@ -314,7 +314,7 @@ export default function DashboardPage() {
         <section className="card-elevated animate-fade-up">
           <div className="mb-5 flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--color-bg-elevated)' }}>
-              <ChartColumn size={16} style={{ color: 'var(--color-text-secondary)' }} />
+              <ChartColumn size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
             </div>
             <div>
               <h2 className="text-sm font-bold">Score formula</h2>
@@ -331,8 +331,8 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : score ? (
-            <div className="rounded-2xl p-6 font-mono text-sm leading-8" style={{ background: 'var(--color-bg-card)' }}>
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-x-4 max-w-sm">
+            <div className="rounded-2xl p-6 font-mono text-sm leading-8 overflow-x-auto" style={{ background: 'var(--color-bg-card)' }}>
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-x-2 max-w-sm text-sm">
                 <span>score</span> <span className="text-slate-500">=</span> <span className="text-right">({score.metrics.txCount} x 2) = {score.formula.txComponent}</span>
                 <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.repaymentCount} x 10) = {score.formula.repaymentComponent}</span>
                 <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.xlmBalanceFactor} x 5) = {score.formula.balanceComponent}</span>
@@ -347,7 +347,7 @@ export default function DashboardPage() {
         <section className="card-elevated animate-fade-up">
           <div className="mb-5 flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--color-bg-elevated)' }}>
-              <TrendingUp size={16} style={{ color: 'var(--color-text-secondary)' }} />
+              <TrendingUp size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
             </div>
             <div>
               <h2 className="text-sm font-bold">Raw metrics</h2>
@@ -417,7 +417,7 @@ function InfoCard({
 }) {
   return (
     <div className="card-elevated">
-      <Icon size={16} style={{ color: 'var(--color-text-secondary)' }} />
+      <Icon size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
       <p className="mt-3 text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
         {title}
       </p>

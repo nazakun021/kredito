@@ -11,7 +11,7 @@ import { useWalletStore } from '@/store/walletStore';
 import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { tierGradient } from '@/lib/tiers';
-import StepBreadcrumb from '@/components/StepBreadcrumb';
+
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
 import CelebrationParticles from '@/components/CelebrationParticles';
 import SummaryRow from '@/components/SummaryRow';
@@ -193,7 +193,7 @@ export default function RepayPage() {
               <CheckCircle2 size={32} style={{ color: 'var(--color-success)' }} />
             </div>
 
-            <StepBreadcrumb step={4} total={4} />
+
             <h1 className="mt-2 text-3xl font-extrabold">Repaid on time</h1>
             <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               The loan is closed and your Credit Passport can now unlock a stronger tier.
@@ -202,7 +202,7 @@ export default function RepayPage() {
 
           <div className="mt-8 rounded-xl p-6 text-left" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
             <div className="flex items-center gap-2 mb-4" style={{ color: 'var(--color-accent)' }}>
-              <TrendingUp size={16} />
+              <TrendingUp size={16} aria-hidden="true" />
               <p className="text-xs font-bold uppercase tracking-wider">Live score result</p>
             </div>
             <div className="flex items-end justify-between">
@@ -235,8 +235,8 @@ export default function RepayPage() {
           </a>
 
           <button onClick={() => router.push('/dashboard')} className="btn-primary btn-accent mt-8 w-full">
-            Back to Passport
-            <ArrowRight size={16} />
+            Continue to Dashboard
+            <ArrowRight size={16} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -248,7 +248,7 @@ export default function RepayPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-        <StepBreadcrumb step={3} total={4} />
+
         <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Active Loan</h1>
         <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           Timely repayment feeds into the next metrics refresh and upgrades your Credit Passport.
@@ -300,7 +300,7 @@ export default function RepayPage() {
           >
             {loading ? (
               <>
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                 {getTransactionStepLabel(txStep)}
               </>
             ) : (
@@ -316,19 +316,19 @@ export default function RepayPage() {
 function getTransactionStepLabel(step: number) {
   switch (step) {
     case 1:
-      return 'Preparing repayment...';
+      return 'Preparing repayment…';
     case 2:
-      return 'Sign approval in Freighter...';
+      return 'Sign approval in Freighter…';
     case 3:
-      return 'Submitting approval...';
+      return 'Submitting approval…';
     case 4:
-      return 'Sign repayment in Freighter...';
+      return 'Sign repayment in Freighter…';
     case 5:
-      return 'Submitting repayment...';
+      return 'Submitting repayment…';
     case 6:
-      return 'Confirming settlement...';
+      return 'Confirming settlement…';
     default:
-      return 'Processing...';
+      return 'Processing…';
   }
 }
 
@@ -355,10 +355,10 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
             style={{ opacity: currentStep >= s.id ? 1 : 0.3 }}
           >
             <div 
-              className={`h-1.5 w-12 rounded-full transition-all duration-500 ${currentStep === s.id ? 'pulse-glow' : ''}`}
+              className={`h-1.5 w-6 sm:w-12 rounded-full transition-all duration-500 ${currentStep === s.id ? 'pulse-glow' : ''}`}
               style={{ background: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-bg-elevated)' }}
             />
-            <span className="text-[9px] font-bold uppercase tracking-tighter" style={{ color: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+            <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wide" style={{ color: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
               {s.label}
             </span>
           </div>

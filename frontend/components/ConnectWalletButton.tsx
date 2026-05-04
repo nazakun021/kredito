@@ -40,7 +40,7 @@ export default function ConnectWalletButton() {
   }
 
   if (isConnected && publicKey) {
-    const truncated = `${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`;
+    const truncated = `${publicKey.slice(0, 4)}…${publicKey.slice(-4)}`;
     
     return (
       <div className="relative">
@@ -48,11 +48,11 @@ export default function ConnectWalletButton() {
           onClick={() => setShowDropdown(!showDropdown)}
           aria-expanded={showDropdown}
           aria-haspopup="menu"
-          className="btn-primary btn-dark flex items-center gap-2 px-4 py-2 text-sm font-medium"
+          className="btn-primary btn-dark btn-sm flex w-auto items-center gap-2 px-4 py-2 text-sm font-medium"
         >
-          <Wallet size={16} style={{ color: 'var(--color-accent)' }} />
+          <Wallet size={16} style={{ color: 'var(--color-accent)' }} aria-hidden="true" />
           <span className="font-mono">{truncated}</span>
-          <ChevronDown size={14} className={`transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+          <ChevronDown size={14} className={`transition-transform ${showDropdown ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>
 
         {showDropdown && (
@@ -70,16 +70,16 @@ export default function ConnectWalletButton() {
     <button
       onClick={() => connect()}
       disabled={isConnecting}
-      className="btn-primary btn-accent"
+      className="btn-primary btn-accent btn-sm w-auto"
     >
       {isConnecting ? (
         <>
-          <Loader2 size={16} className="animate-spin" />
-          <span>Connecting...</span>
+          <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+          <span>Connecting…</span>
         </>
       ) : (
         <>
-          <Wallet size={16} />
+          <Wallet size={16} aria-hidden="true" />
           <span>Connect Wallet</span>
         </>
       )}
@@ -116,7 +116,7 @@ function DropdownMenu({
         role="menu"
         aria-orientation="vertical"
         aria-labelledby="wallet-dropdown-button"
-        className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
+        className="absolute right-0 mt-2 w-52 sm:w-56 overflow-hidden rounded-xl border shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
       >
         <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
