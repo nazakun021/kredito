@@ -5,12 +5,17 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  ArrowLeftRight,
   ChartColumn,
   CreditCard,
   LayoutDashboard,
   LogOut,
   Menu,
+  PiggyBank,
   ShieldCheck,
+  TrendingUp,
+  UserCheck,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -23,9 +28,13 @@ import ConnectWalletButton from './ConnectWalletButton';
 
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'Credit Score', icon: LayoutDashboard },
+  { href: '/wallet', label: 'Wallet', icon: Wallet },
   { href: '/loan/borrow', label: 'Borrow', icon: CreditCard },
-  { href: '/loan/repay', label: 'Repay', icon: ChartColumn },
+  { href: '/loan/repay', label: 'Repay', icon: ArrowLeftRight },
+  { href: '/staking', label: 'Stake & Earn', icon: TrendingUp },
+  { href: '/deposit', label: 'Time Deposit', icon: PiggyBank },
+  { href: '/kyc', label: 'Get Verified', icon: UserCheck },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

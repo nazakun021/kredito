@@ -56,6 +56,15 @@ export async function updateOnChainMetrics(walletAddress: string, metrics: Walle
   return { metricsTxHash, scoreTxHash };
 }
 
+export async function setKycVerified(walletAddress: string, verified: boolean) {
+  const wallet = Address.fromString(walletAddress).toScVal();
+  const txHash = await invokeIssuerContractSingle('set_kyc_verified', [
+    wallet,
+    nativeToScVal(verified, { type: 'bool' }),
+  ]);
+  return txHash;
+}
+
 export async function queryCreditRegistry<T = unknown>(functionName: string, args: xdr.ScVal[]) {
   return queryContract<T>(contractIds.creditRegistry, functionName, args);
 }
@@ -63,8 +72,8 @@ export async function queryCreditRegistry<T = unknown>(functionName: string, arg
 export async function getOnChainCreditSnapshot(walletAddress: string) {
   const wallet = Address.fromString(walletAddress).toScVal();
 
-  // P2-9: Run initial 4 queries in parallel to reduce sequential round-trips
-  const [score, tier, metrics, tierLimitForTier0] = await Promise.all([
+  // P2-9: Run initial 5 queries in parallel to reduce sequential round-trips
+  const [score, tier, metrics, tierLimitForTier0, kycVerified, horizonMetrics] = await Promise.all([
     queryCreditRegistry<bigint | number>('get_score', [wallet]),
     queryCreditRegistry<bigint | number>('get_tier', [wallet]),
     queryCreditRegistry<{
@@ -76,6 +85,8 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
     queryCreditRegistry<bigint | number | string>('get_tier_limit', [
       nativeToScVal(0, { type: 'u32' }),
     ]),
+    queryCreditRegistry<boolean>('get_kyc_verified', [wallet]),
+    import('../scoring/engine').then((m) => m.fetchHorizonMetrics(walletAddress)),
   ]);
 
   // If tier is 0, we already have the limit. Otherwise fetch it.
@@ -97,6 +108,8 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
       xlmBalance: Number(metrics?.avg_balance ?? 0),
       defaultCount: Number(metrics?.default_count ?? 0),
     },
+    horizonMetrics,
+    kycVerified,
     source: 'onchain',
     tierLabel: tierLabel(finalTier),
   });

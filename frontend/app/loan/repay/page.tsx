@@ -88,60 +88,30 @@ export default function RepayPage() {
         throw new Error('Wallet not connected.');
       }
 
-      setTxStep(1);
+      setTxStep(1); // Preparing
       const { data } = await api.post('/loan/repay');
 
-      if (!data.requiresSignature || !data.transactions) {
-        setTxStep(6);
+      if (data.requiresSignature) {
+        setTxStep(2); // Signing
+        const signResult = await signTx(
+          data.unsignedXdr, 
+          user.wallet, 
+          networkPassphrase ?? TESTNET_PASSPHRASE
+        );
+        if ('error' in signResult) throw new Error(signResult.error);
+
+        setTxStep(3); // Submitting
+        const result = await api.post('/tx/sign-and-submit', {
+          signedInnerXdr: [signResult.signedXdr],
+          flow: { action: 'repay' },
+        });
+
+        setTxStep(4); // Confirming
+        setSuccess(result.data);
+      } else {
+        setTxStep(4); // Confirming
         setSuccess(data);
-        return;
       }
-
-      const txs = data.transactions as Array<{ type: string; unsignedXdr: string }>;
-      const approveTx = txs.find((t) => t.type === 'approve');
-
-      if (!approveTx) {
-        throw new Error('Approval transaction not generated correctly.');
-      }
-
-      setTxStep(2);
-      const approveResult = await signTx(
-        approveTx.unsignedXdr, 
-        user.wallet, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
-      );
-      if ('error' in approveResult) {
-        throw new Error(`APPROVAL_SIGN:${approveResult.error}`);
-      }
-
-      setTxStep(3);
-      await api.post('/tx/sign-and-submit', {
-        signedInnerXdr: [approveResult.signedXdr],
-        flow: { action: 'repay', step: 'approve' },
-      });
-
-      // Fetch a freshly-sequenced repay XDR (account seq is now N+1)
-      setTxStep(4);
-      const { data: repayXdrData } = await api.post('/loan/repay-xdr');
-      const repayUnsignedXdr = repayXdrData.unsignedXdr;
-
-      const repayResult = await signTx(
-        repayUnsignedXdr, 
-        user.wallet, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
-      );
-      if ('error' in repayResult) {
-        throw new Error(`REPAY_SIGN:${repayResult.error}`);
-      }
-
-      setTxStep(5);
-      const finalResult = await api.post('/tx/sign-and-submit', {
-        signedInnerXdr: [repayResult.signedXdr],
-        flow: { action: 'repay', step: 'repay' },
-      });
-
-      setTxStep(6);
-      setSuccess(finalResult.data);
 
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.score(user?.wallet ?? '') });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.loanStatus(user?.wallet ?? '') });
@@ -149,22 +119,16 @@ export default function RepayPage() {
     } catch (err: unknown) {
       const errorMessage = getErrorMessage(err, 'Repayment failed. Please try again.');
 
-      if (errorMessage.startsWith('APPROVAL_SIGN:')) {
-        setError('Approval signing cancelled.');
+      if (/user rejected|cancelled/i.test(errorMessage)) {
+        setError('Repayment signing cancelled.');
         setTxStep(0);
-        return;
-      }
-
-      if (errorMessage.startsWith('REPAY_SIGN:')) {
-        setError('Repayment signing cancelled. Your PHPC approval is still valid — click Repay again to continue.');
-        setTxStep(4);
         return;
       }
 
       if (err && typeof err === 'object' && 'response' in err) {
         const resp = (err as { response: { status: number; data: { error: string; shortfall: string } } }).response;
          if (resp?.status === 422 && resp?.data?.error === 'InsufficientBalance') {
-          setError(`Insufficient balance. Shortfall: P${resp.data.shortfall}`);
+          setError(`Insufficient balance. Shortfall: ◎${resp.data.shortfall}`);
           setTxStep(0);
           setLoading(false);
           return;
@@ -219,7 +183,7 @@ export default function RepayPage() {
                 {success.previousScore !== null ? `Score: ${success.previousScore} → ${success.newScore}` : 'Score refreshed on-chain'}
               </p>
               <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                Borrow limit now: <span className="font-bold" style={{ color: 'var(--color-text-primary)' }}>P{success.newBorrowLimit}</span>
+                Borrow limit now: <span className="font-bold" style={{ color: 'var(--color-text-primary)' }}>◎{success.newBorrowLimit}</span>
               </p>
             </div>
           </div>
@@ -259,12 +223,12 @@ export default function RepayPage() {
 
       <div className="card-elevated animate-fade-up">
         <div className="rounded-xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)' }}>
-          <SummaryRow label="Principal" value={`P${status?.loan?.principal ?? '0.00'}`} />
-          <SummaryRow label="Fee owed" value={`P${status?.loan?.fee ?? '0.00'}`} />
-          <SummaryRow label="Total due" value={`P${status?.loan?.totalOwed ?? '0.00'}`} strong />
-          <SummaryRow label="Wallet PHPC" value={`P${status?.loan?.walletBalance ?? '0.00'}`} />
+          <SummaryRow label="Principal" value={`◎${status?.loan?.principal ?? '0.00'}`} />
+          <SummaryRow label="Fee owed" value={`◎${status?.loan?.fee ?? '0.00'}`} />
+          <SummaryRow label="Total due" value={`◎${status?.loan?.totalOwed ?? '0.00'}`} strong />
+          <SummaryRow label="Wallet XLM" value={`◎${status?.loan?.walletBalance ?? '0.00'}`} />
           {status?.loan?.shortfall && status.loan.shortfall !== '0.00' ? (
-            <SummaryRow label="Still needed" value={`P${status.loan.shortfall}`} tone="danger" />
+            <SummaryRow label="Still needed" value={`◎${status.loan.shortfall}`} tone="danger" />
           ) : null}
           <SummaryRow label="Due date" value={status?.loan?.dueDate ? new Date(status.loan.dueDate).toLocaleDateString() : '-'} />
           <SummaryRow
@@ -277,7 +241,7 @@ export default function RepayPage() {
         {status?.loan?.shortfall && status.loan.shortfall !== '0.00' ? (
           <div className="mt-4 rounded-xl px-4 py-3 text-sm font-medium flex gap-3" style={{ background: 'rgba(245, 158, 11, 0.08)', color: 'var(--color-amber)' }}>
             <Info size={18} className="shrink-0" />
-            <p>Top up at least P{status.loan.shortfall} more PHPC in this wallet before repaying — the fee is not auto-funded.</p>
+            <p>Top up at least ◎{status.loan.shortfall} more XLM in this wallet before repaying — the fee is not auto-funded.</p>
           </div>
         ) : null}
 
@@ -304,7 +268,7 @@ export default function RepayPage() {
                 {getTransactionStepLabel(txStep)}
               </>
             ) : (
-              `Repay P${status?.loan?.totalOwed ?? '0.00'}`
+              `Repay ◎${status?.loan?.totalOwed ?? '0.00'}`
             )}
           </button>
         </div>
@@ -318,14 +282,10 @@ function getTransactionStepLabel(step: number) {
     case 1:
       return 'Preparing repayment…';
     case 2:
-      return 'Sign approval in Freighter…';
+      return 'Sign in Freighter…';
     case 3:
-      return 'Submitting approval…';
+      return 'Submitting to network…';
     case 4:
-      return 'Sign repayment in Freighter…';
-    case 5:
-      return 'Submitting repayment…';
-    case 6:
       return 'Confirming settlement…';
     default:
       return 'Processing…';
@@ -335,11 +295,9 @@ function getTransactionStepLabel(step: number) {
 function TransactionStepper({ currentStep }: { currentStep: number }) {
   const steps = [
     { label: 'Preparing', id: 1 },
-    { label: 'Sign Approval', id: 2 },
-    { label: 'Submit Approval', id: 3 },
-    { label: 'Sign Repayment', id: 4 },
-    { label: 'Submit Repayment', id: 5 },
-    { label: 'Confirm', id: 6 },
+    { label: 'Signing', id: 2 },
+    { label: 'Submitting', id: 3 },
+    { label: 'Confirming', id: 4 },
   ];
 
   return (
@@ -355,7 +313,7 @@ function TransactionStepper({ currentStep }: { currentStep: number }) {
             style={{ opacity: currentStep >= s.id ? 1 : 0.3 }}
           >
             <div 
-              className={`h-1.5 w-6 sm:w-12 rounded-full transition-all duration-500 ${currentStep === s.id ? 'pulse-glow' : ''}`}
+              className={`h-1.5 w-8 sm:w-12 rounded-full transition-all duration-500 ${currentStep === s.id ? 'pulse-glow' : ''}`}
               style={{ background: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-bg-elevated)' }}
             />
             <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wide" style={{ color: currentStep >= s.id ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>

@@ -2,6 +2,8 @@
 
 export function tierGradient(tier: number): string {
   switch (tier) {
+    case 4: // Diamond / Elite
+      return 'linear-gradient(135deg, #A855F7 0%, #7C3AED 100%)';
     case 3: // Gold
       return 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)';
     case 2: // Silver
@@ -15,6 +17,7 @@ export function tierGradient(tier: number): string {
 
 export function tierLabel(tier: number): string {
   switch (tier) {
+    case 4: return 'Verified';
     case 3: return 'Gold';
     case 2: return 'Silver';
     case 1: return 'Bronze';
@@ -23,14 +26,26 @@ export function tierLabel(tier: number): string {
 }
 
 export function tierContextPhrase(score: number): string {
+  if (score >= 160) return 'Excellent';
   if (score >= 120) return 'Excellent';
   if (score >= 80) return 'Good standing';
   if (score >= 40) return 'On track';
   return 'Building credit';
 }
 
+export function tierLimit(tier: number): number {
+  switch (tier) {
+    case 4: return 100;
+    case 3: return 20;
+    case 2: return 5;
+    case 1: return 1;
+    default: return 0;
+  }
+}
+
 export function getTierFromLabel(label: string): number {
   switch (label) {
+    case 'Verified': return 4;
     case 'Gold': return 3;
     case 'Silver': return 2;
     case 'Bronze': return 1;

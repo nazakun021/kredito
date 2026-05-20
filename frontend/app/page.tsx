@@ -199,7 +199,7 @@ export default function Page() {
               }}
             >
               <Globe size={12} aria-hidden="true" />
-              Built on Stellar · Testnet
+              Built on Stellar · {REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet'}
             </div>
 
             <h1 className="mt-8 text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-5xl lg:text-7xl">
@@ -235,7 +235,7 @@ export default function Page() {
                   }}
                 >
                   <TrendingUp size={20} aria-hidden="true" />
-                  {isWrongNetwork ? 'Switch Freighter to Testnet' : 'Go to Dashboard'}
+                  {isWrongNetwork ? `Switch Freighter to ${REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet'}` : 'Go to Dashboard'}
                   {!isWrongNetwork && <ArrowRight size={20} aria-hidden="true" />}
                 </button>
               ) : freighterReady || checkingFreighter ? (
@@ -323,7 +323,7 @@ export default function Page() {
 
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { label: 'Borrow limit', value: 'P20,000' },
+                    { label: 'Borrow limit', value: '◎20,000' },
                     { label: 'Interest', value: '3.0%' },
                   ].map((s) => (
                     <div key={s.label} className="rounded-2xl p-5 border border-slate-800/50 bg-slate-900/30">
@@ -360,7 +360,7 @@ export default function Page() {
             {
               icon: Eye,
               title: 'Fully visible scoring',
-              copy: 'Every metric, weight, and formula input is shown transparently before you borrow a single peso.',
+              copy: 'Every metric, weight, and formula input is shown transparently before you borrow a single stroop.',
             },
             {
               icon: TrendingUp,
@@ -375,7 +375,7 @@ export default function Page() {
             {
               icon: Zap,
               title: 'Instant disbursement',
-              copy: 'Borrowing and repayment happen against the live testnet pool with visible transaction hashes.',
+              copy: `Borrowing and repayment happen against the live ${REQUIRED_NETWORK === 'PUBLIC' ? 'mainnet' : 'testnet'} pool with visible transaction hashes.`,
             },
             {
               icon: Globe,

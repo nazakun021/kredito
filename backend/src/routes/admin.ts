@@ -134,7 +134,6 @@ router.get(
       defaulted: 0,
       skipped: 0,
       skipped_idempotent: 0,
-      error: 0,
       errors: 0,
       defaultedWallets: [] as string[],
     };
@@ -158,7 +157,7 @@ router.get(
           acc.skipped_idempotent += 1;
           break;
         case 'error':
-          acc.error += 1;
+          acc.errors += 1;
           break;
       }
       return acc;

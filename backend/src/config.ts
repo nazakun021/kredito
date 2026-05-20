@@ -18,7 +18,7 @@ check('JWT_SECRET');
 check('ISSUER_SECRET_KEY');
 check('ADMIN_API_SECRET');
 check('WEB_AUTH_SECRET_KEY');
-check('PHPC_ID');
+check('XLM_SAC_ID');
 check('REGISTRY_ID');
 check('LENDING_POOL_ID');
 
@@ -40,7 +40,7 @@ export const config = {
   webAuthSecretKey: process.env.WEB_AUTH_SECRET_KEY!,
 
   contractIds: {
-    phpcToken: process.env.PHPC_ID!,
+    xlmSac: process.env.XLM_SAC_ID!,
     creditRegistry: process.env.REGISTRY_ID!,
     lendingPool: process.env.LENDING_POOL_ID!,
   },

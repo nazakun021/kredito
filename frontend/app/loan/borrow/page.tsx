@@ -107,14 +107,14 @@ export default function BorrowPage() {
   const isAmountValid = borrowAmount > 0 && borrowAmount <= borrowLimit;
   const amountError =
     hasAmountInteracted && borrowLimit > 0 && !isAmountValid
-      ? `Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`
+      ? `Enter an amount between ◎0.01 and ◎${borrowLimit.toFixed(2)}.`
       : '';
   const summaryRows = useMemo(
     () => [
       { label: 'Tier', value: score?.tierLabel || 'Unrated' },
       { label: 'Fee', value: `${(score?.feeRate || 0).toFixed(2)}%` },
       { label: 'Term', value: '30 days' },
-      { label: 'Repayment', value: `P${(borrowAmount + fee).toFixed(2)}`, strong: true },
+      { label: 'Repayment', value: `◎${(borrowAmount + fee).toFixed(2)}`, strong: true },
     ],
     [borrowAmount, fee, score?.feeRate, score?.tierLabel],
   );
@@ -122,7 +122,7 @@ export default function BorrowPage() {
   const handleBorrow = async () => {
     if (!isAmountValid) {
       setHasAmountInteracted(true);
-      setError(`Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`);
+      setError(`Enter an amount between ◎0.01 and ◎${borrowLimit.toFixed(2)}.`);
       return;
     }
 
@@ -186,9 +186,9 @@ export default function BorrowPage() {
           </div>
 
           <div className="mt-8 rounded-xl p-5 text-left" style={{ background: 'var(--color-bg-card)' }}>
-            <SummaryRow label="Amount" value={`P${success.amount}`} />
-            <SummaryRow label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`P${success.fee}`} />
-            <SummaryRow label="Total owed" value={`P${success.totalOwed}`} strong />
+            <SummaryRow label="Amount" value={`◎${success.amount}`} />
+            <SummaryRow label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`◎${success.fee}`} />
+            <SummaryRow label="Total owed" value={`◎${success.totalOwed}`} strong />
           </div>
 
           <a 
@@ -235,10 +235,10 @@ export default function BorrowPage() {
           {isScoreLoading ? (
             <div className="skeleton mt-4 h-12 w-40" role="status" aria-busy="true" />
           ) : (
-            <p className="mt-4 text-4xl font-extrabold tabular-nums sm:text-5xl">P{borrowAmount.toFixed(2)}</p>
+            <p className="mt-4 text-4xl font-extrabold tabular-nums sm:text-5xl">◎{borrowAmount.toFixed(2)}</p>
           )}
           <p className="mt-2 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-            Max available now: P{borrowLimit.toFixed(2)}
+            Max available now: ◎{borrowLimit.toFixed(2)}
           </p>
           <div className="mt-6 space-y-3" style={{ color: 'var(--color-text-secondary)' }}>
             {isScoreLoading
@@ -298,7 +298,7 @@ export default function BorrowPage() {
               <div className="flex gap-3 rounded-xl p-4 text-sm mb-4" style={{ background: 'var(--color-accent-glow)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-accent)' }}>
                 <Info className="mt-0.5 shrink-0" size={16} style={{ color: 'var(--color-accent)' }} />
                 <p>
-                  After borrowing P{borrowAmount.toFixed(2)}, you will need to top up at least P{fee.toFixed(2)} PHPC before repayment so your wallet can cover the fee.
+                  After borrowing ◎{borrowAmount.toFixed(2)}, you will need to top up at least ◎{fee.toFixed(2)} XLM before repayment so your wallet can cover the fee.
                 </p>
               </div>
               {amountError && (
@@ -344,7 +344,7 @@ export default function BorrowPage() {
                   checked={agreed}
                   onChange={(event) => setAgreed(event.target.checked)}
                 />
-                <span>I confirm I want to borrow P{borrowAmount.toFixed(2)} and agree to repay within 30 days.</span>
+                <span>I confirm I want to borrow ◎{borrowAmount.toFixed(2)} and agree to repay within 30 days.</span>
               </label>
 
               {error || (walletConnected && !isCorrectNetwork ? walletError : null) ? (
@@ -363,7 +363,7 @@ export default function BorrowPage() {
               {walletConnected && !isCorrectNetwork && (
                 <div className="mt-4 flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
                   <Info size={14} />
-                  Switch Freighter to Testnet
+                  Switch Freighter to {REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet'}
                 </div>
               )}
 
@@ -392,7 +392,7 @@ export default function BorrowPage() {
                     </>
                   ) : (
                     <>
-                      Confirm Borrow P{borrowAmount.toFixed(2)}
+                      Confirm Borrow ◎{borrowAmount.toFixed(2)}
                       <ArrowRight size={16} />
                     </>
                   )}
@@ -418,7 +418,7 @@ function getBorrowErrorMessage(err: unknown, borrowLimit: number) {
   }
 
   if (message === 'Amount exceeds tier limit') {
-    return `Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`;
+    return `Enter an amount between ◎0.01 and ◎${borrowLimit.toFixed(2)}.`;
   }
 
   if (message === 'Active loan already exists') {

@@ -137,6 +137,15 @@ export async function buildUnsignedContractCall(
 
 export async function submitSponsoredSignedXdr(signedInnerXdr: string, retries = 2) {
   const innerTx = TransactionBuilder.fromXDR(signedInnerXdr, networkPassphrase) as Transaction;
+  
+  // Check if it's a Soroban transaction
+  const isSoroban = innerTx.operations.some(
+    (op) =>
+      op.type === 'invokeHostFunction' ||
+      op.type === 'extendFootprintTtl' ||
+      op.type === 'restoreFootprint',
+  );
+
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     issuerKeypair,
     SPONSORED_BASE_FEE,
@@ -148,16 +157,21 @@ export async function submitSponsoredSignedXdr(signedInnerXdr: string, retries =
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await rpcServer.sendTransaction(feeBump);
-      if (response.status !== 'PENDING') {
-        throw new Error(
-          `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
-        );
-      }
+      if (isSoroban) {
+        const response = await rpcServer.sendTransaction(feeBump);
+        if (response.status !== 'PENDING') {
+          throw new Error(
+            `Transaction submission failed: ${JSON.stringify(response.errorResult ?? response)}`,
+          );
+        }
 
-      logger.info({ txHash: response.hash, attempt }, 'Transaction submitted, polling...');
-      await withTimeout(pollTransaction(response.hash), 30000);
-      return response.hash;
+        logger.info({ txHash: response.hash, attempt }, 'Transaction submitted, polling...');
+        await withTimeout(pollTransaction(response.hash), 30000);
+        return response.hash;
+      } else {
+        const response = await horizonServer.submitTransaction(feeBump);
+        return response.hash;
+      }
     } catch (error) {
       if (attempt === retries) {
         logger.error(

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: 'Kredito — On-Chain Credit Passport',
   description:
     'Transparent on-chain credit scores and instant micro-loans for the unbanked, built on Stellar. Generate a score, unlock a loan, and build your Credit Passport.',
-  keywords: ['credit', 'stellar', 'soroban', 'micro-lending', 'on-chain', 'credit passport', 'PHPC'],
+  keywords: ['credit', 'stellar', 'soroban', 'micro-lending', 'on-chain', 'credit passport', 'XLM'],
   openGraph: {
     title: 'Kredito — Credit Passport on Stellar',
     description: 'Instant micro-loans for the Filipino unbanked, powered by Soroban.',

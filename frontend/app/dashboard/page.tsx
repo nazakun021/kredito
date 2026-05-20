@@ -11,6 +11,7 @@ import {
   ChartColumn,
   Clock,
   RefreshCw,
+  ShieldCheck,
   TrendingUp,
   Wallet,
 } from 'lucide-react';
@@ -30,6 +31,7 @@ interface ScoreResponse {
   nextTier: string | null;
   nextTierThreshold: number | null;
   progressToNext: number;
+  kycVerified: boolean;
   formula: {
     expression: string;
     txComponent: number;
@@ -44,6 +46,14 @@ interface ScoreResponse {
     xlmBalance: number;
     xlmBalanceFactor: number;
     defaultCount: number;
+  };
+  horizonMetrics?: {
+    walletAgeDays: number;
+    txCount: number;
+    currentBalanceXlm: string;
+    inboundPaymentCount: number;
+    activitySpanDays: number;
+    hasRegularActivity: boolean;
   };
 }
 
@@ -124,10 +134,26 @@ export default function DashboardPage() {
     staleTime: 30 * 1000,
   });
 
+  const stakingPositionQuery = useQuery({
+    queryKey: ['staking-position', user?.wallet],
+    queryFn: () => api.get<{ stakedAmount: string }>('/staking/position').then((res) => res.data),
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
+
+  const depositPositionQuery = useQuery({
+    queryKey: ['deposit-position', user?.wallet],
+    queryFn: () => api.get<{ amount: string } | null>('/deposit/position').then((res) => res.data),
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
+
   if (!isAuthenticated) return null;
 
   const score = scoreQuery.data ?? generateMutation.data;
   const loanStatus = loanStatusQuery.data;
+  const position = stakingPositionQuery.data;
+  const deposit = depositPositionQuery.data;
   const isLoading = !score && (scoreQuery.isLoading || generateMutation.isPending);
   const scoreError =
     scoreQuery.isError && !isScoreMissing
@@ -135,7 +161,7 @@ export default function DashboardPage() {
       : generateMutation.isError
         ? getErrorMessage(generateMutation.error, 'Unable to generate your on-chain score right now.')
         : '';
-  const poolValue = poolQuery.isError ? 'Pool balance unavailable' : `P${poolQuery.data?.poolBalance ?? '0.00'}`;
+  const poolValue = poolQuery.isError ? 'Pool balance unavailable' : `◎${poolQuery.data?.poolBalance ?? '0.00'}`;
   const loanStatusUnavailable = loanStatusQuery.isError;
   
   const nextTierProgress = score?.nextTierThreshold
@@ -190,15 +216,35 @@ export default function DashboardPage() {
               </div>
             </div>
             <div
-              className="rounded-xl px-4 py-2 text-sm font-bold shadow-lg"
+              className="rounded-xl px-4 py-2 text-sm font-bold shadow-lg flex items-center gap-2"
               style={{ background: tierGradient(score?.tier ?? 0), color: '#020617' }}
             >
+              {score?.kycVerified && <ShieldCheck size={16} />}
               {score?.tierLabel ?? 'Unrated'}
             </div>
           </div>
 
+          {!score?.kycVerified && (
+            <div 
+              className="mt-6 flex items-center justify-between rounded-xl p-4 transition-all hover:brightness-110 cursor-pointer"
+              style={{ background: 'var(--color-accent-glow)', border: '1px solid var(--color-border-accent)' }}
+              onClick={() => router.push('/kyc')}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                  <TrendingUp size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold">Boost your limit</p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Verify KYC to unlock Tier 4 Diamond</p>
+                </div>
+              </div>
+              <ArrowRight size={16} style={{ color: 'var(--color-accent)' }} />
+            </div>
+          )}
+
           <div className="mt-8 grid gap-3 sm:grid-cols-2 relative z-10">
-            <Metric label="Borrow limit" value={`P${score?.borrowLimit ?? '0.00'}`} loading={isLoading} />
+            <Metric label="Borrow limit" value={`◎${score?.borrowLimit ?? '0.00'}`} loading={isLoading} />
             <Metric label="Fee rate" value={`${(score?.feeRate ?? 0).toFixed(2)}%`} loading={isLoading} />
             <Metric label="Transactions" value={`${score?.metrics.txCount ?? 0}`} loading={isLoading} />
             <Metric label="Repayments" value={`${score?.metrics.repaymentCount ?? 0}`} loading={isLoading} />
@@ -243,7 +289,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
-                  Pool status
+                  XLM Lending Pool
                 </p>
                 <h2 className="mt-1 text-lg font-extrabold">{poolValue}</h2>
               </div>
@@ -274,7 +320,7 @@ export default function DashboardPage() {
             ) : loanStatus?.hasActiveLoan ? (
               <div className="mt-5">
                 <div className="rounded-xl p-3 text-sm" style={{ background: 'var(--color-bg-card)' }}>
-                  Outstanding: <span className="font-bold">P{loanStatus.loan?.totalOwed ?? '0.00'}</span>
+                  Outstanding: <span className="font-bold">◎{loanStatus.loan?.totalOwed ?? '0.00'}</span>
                 </div>
                 <button onClick={() => router.push('/loan/repay')} className="btn-primary btn-accent mt-4">
                   Repay Active Loan
@@ -287,18 +333,32 @@ export default function DashboardPage() {
                 disabled={!score || score.tier === 0 || isLoading}
                 className="btn-primary btn-accent mt-5"
               >
-                {score?.tier === 0 ? 'Tier too low to borrow' : `Borrow P${score?.borrowLimit ?? '0.00'}`}
+                {score?.tier === 0 ? 'Tier too low to borrow' : `Borrow ◎${score?.borrowLimit ?? '0.00'}`}
                 {score?.tier === 0 ? null : <ArrowRight size={16} aria-hidden="true" />}
               </button>
             )}
-            {score?.tier === 0 && (
-              <p className="mt-3 text-center text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                Your current tier doesn&apos;t qualify for borrowing. Complete more on-chain transactions to build your score.
-              </p>
-            )}
           </section>
 
-          <div className="grid grid-cols-2 gap-3 animate-fade-up">
+          {/* Quick Stats Row */}
+          <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: '100ms' }}>
+            <QuickStat 
+              label="Staked" 
+              value={`◎${position?.stakedAmount ?? '0.0'}`} 
+              href="/staking" 
+            />
+            <QuickStat 
+              label="Deposits" 
+              value={deposit?.amount ? '1 Active' : '0'} 
+              href="/deposit" 
+            />
+            <QuickStat 
+              label="Loans" 
+              value={loanStatus?.hasActiveLoan ? '1 Active' : '0'} 
+              href="/loan/borrow" 
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '200ms' }}>
             <InfoCard
               icon={Clock}
               title="Last Updated"
@@ -350,9 +410,9 @@ export default function DashboardPage() {
               <TrendingUp size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-sm font-bold">Raw metrics</h2>
+              <h2 className="text-sm font-bold">Horizon metrics</h2>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Deterministic inputs read from Horizon and on-chain events.
+                Deterministic inputs read directly from the Stellar network.
               </p>
             </div>
           </div>
@@ -361,10 +421,12 @@ export default function DashboardPage() {
             {isLoading
               ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-24" role="status" aria-busy="true" />)
               : [
-                  { label: 'XLM balance', value: `${score?.metrics.xlmBalance ?? 0} XLM` },
-                  { label: 'Balance factor', value: `${score?.metrics.xlmBalanceFactor ?? 0}` },
-                  { label: 'Defaults', value: `${score?.metrics.defaultCount ?? 0}` },
-                  { label: 'Status', value: score?.tier === 0 ? 'Building' : 'Active' },
+                  { label: 'Account Age', value: `${score?.horizonMetrics?.walletAgeDays ?? 0} days` },
+                  { label: 'Activity Span', value: `${score?.horizonMetrics?.activitySpanDays ?? 0} days` },
+                  { label: 'Payments In', value: `${score?.horizonMetrics?.inboundPaymentCount ?? 0}` },
+                  { label: 'XLM Balance', value: `◎${score?.horizonMetrics?.currentBalanceXlm ?? '0.00'}` },
+                  { label: 'Consistency', value: score?.horizonMetrics?.hasRegularActivity ? 'Regular' : 'Low' },
+                  { label: 'KYC Status', value: score?.kycVerified ? 'Verified' : 'Pending' },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl p-4" style={{ background: 'var(--color-bg-card)' }}>
                     <p className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
@@ -400,6 +462,21 @@ function Metric({ label, value, loading }: { label: string; value: string; loadi
         {label}
       </p>
       {loading ? <div className="skeleton mt-3 h-7 w-20" /> : <p className="mt-2 text-lg font-bold tabular-nums">{value}</p>}
+    </div>
+  );
+}
+
+function QuickStat({ label, value, href }: { label: string; value: string; href: string }) {
+  const router = useRouter();
+  return (
+    <div 
+      onClick={() => router.push(href)}
+      className="card-elevated cursor-pointer hover:brightness-110 transition-all p-4"
+    >
+      <p className="text-[10px] font-semibold tracking-widest uppercase opacity-40">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-bold tabular-nums">{value}</p>
     </div>
   );
 }

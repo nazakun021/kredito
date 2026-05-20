@@ -142,8 +142,7 @@ impl LendingPool {
 
         let xlm_token = get_xlm_token(&env);
         let client = token::Client::new(&env, &xlm_token);
-        client.transfer_from(
-            &env.current_contract_address(),
+        client.transfer(
             &admin,
             &env.current_contract_address(),
             &amount,
@@ -267,8 +266,7 @@ impl LendingPool {
         
         let xlm_token = get_xlm_token(&env);
         let token_client = token::Client::new(&env, &xlm_token);
-        token_client.transfer_from(
-            &env.current_contract_address(),
+        token_client.transfer(
             &borrower,
             &env.current_contract_address(),
             &total_owed,
@@ -362,6 +360,16 @@ impl LendingPool {
             .unwrap_or(0)
     }
 
+    pub fn get_total_staked(env: Env) -> i128 {
+        bump_instance_ttl(&env);
+        get_total_staked(&env)
+    }
+
+    pub fn get_total_reward_pool(env: Env) -> i128 {
+        bump_instance_ttl(&env);
+        get_total_reward_pool(&env)
+    }
+
     pub fn get_flat_fee_bps(env: Env) -> u32 {
         read_flat_fee_bps(&env)
     }
@@ -411,8 +419,7 @@ impl LendingPool {
 
         let xlm_token = get_xlm_token(&env);
         let client = token::Client::new(&env, &xlm_token);
-        client.transfer_from(
-            &env.current_contract_address(),
+        client.transfer(
             &staker,
             &env.current_contract_address(),
             &amount,
@@ -550,8 +557,7 @@ impl LendingPool {
 
         let xlm_token = get_xlm_token(&env);
         let client = token::Client::new(&env, &xlm_token);
-        client.transfer_from(
-            &env.current_contract_address(),
+        client.transfer(
             &depositor,
             &env.current_contract_address(),
             &amount,

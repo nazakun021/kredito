@@ -15,6 +15,15 @@ export interface WalletMetrics {
   defaultCount: number;
 }
 
+export interface HorizonMetrics {
+  walletAgeDays: number;
+  currentBalanceXlm: number;
+  txCount: number;
+  inboundPaymentCount: number;
+  activitySpanDays: number;
+  hasRegularActivity: boolean;
+}
+
 export interface ScoreFactor {
   key: string;
   label: string;
@@ -23,18 +32,27 @@ export interface ScoreFactor {
   points: number;
 }
 
-export function calculateScore(metrics: WalletMetrics): number {
+export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics): number {
   const xlmBalanceFactor = Math.min(Math.floor(metrics.xlmBalance / 100), 10);
-  return Math.max(
-    0,
+  let score =
     metrics.txCount * 2 +
-      metrics.repaymentCount * 10 +
-      xlmBalanceFactor * 5 -
-      metrics.defaultCount * 25,
-  );
+    metrics.repaymentCount * 10 +
+    xlmBalanceFactor * 5 -
+    metrics.defaultCount * 25;
+
+  if (horizon) {
+    if (horizon.walletAgeDays > 365) score += 20;
+    else if (horizon.walletAgeDays > 180) score += 10;
+
+    if (horizon.inboundPaymentCount > 50) score += 15;
+    if (horizon.hasRegularActivity) score += 10;
+  }
+
+  return Math.max(0, score);
 }
 
-export function scoreToTier(score: number): 0 | 1 | 2 | 3 {
+export function scoreToTier(score: number): 0 | 1 | 2 | 3 | 4 {
+  if (score >= 200) return 4;
   if (score >= 120) return 3;
   if (score >= 80) return 2;
   if (score >= 40) return 1;
@@ -43,6 +61,8 @@ export function scoreToTier(score: number): 0 | 1 | 2 | 3 {
 
 export function tierLabel(tier: number) {
   switch (tier) {
+    case 4:
+      return 'Platinum (KYC)';
     case 3:
       return 'Gold';
     case 2:
@@ -56,6 +76,8 @@ export function tierLabel(tier: number) {
 
 export function tierFeeBps(tier: number) {
   switch (tier) {
+    case 4:
+      return 0; // 0% fee for Platinum? Or 50 bps. TODO says saturating_sub(500) from 500 = 0.
     case 3:
       return 150;
     case 2:
@@ -71,10 +93,11 @@ export function nextTier(score: number) {
   if (score < 40) return { threshold: 40, label: 'Bronze' };
   if (score < 80) return { threshold: 80, label: 'Silver' };
   if (score < 120) return { threshold: 120, label: 'Gold' };
+  if (score < 200) return { threshold: 200, label: 'Platinum' };
   return null;
 }
 
-export function toPhpAmount(value: bigint | number) {
+export function toXlmAmount(value: bigint | number) {
   const amount = typeof value === 'bigint' ? value : BigInt(value);
   const whole = amount / STROOPS_PER_UNIT;
   const fraction = amount % STROOPS_PER_UNIT;
@@ -88,8 +111,8 @@ export function toPhpAmount(value: bigint | number) {
   return `${whole.toString()}.${trimmedFraction.padEnd(2, '0')}`;
 }
 
-export function toPhpNumber(value: bigint | number) {
-  return Number(toPhpAmount(value));
+export function toXlmNumber(value: bigint | number) {
+  return Number(toXlmAmount(value));
 }
 
 export function toStroops(amount: number) {
@@ -138,6 +161,8 @@ export function buildScorePayload(
     tier: number;
     tierLimit: bigint;
     metrics: WalletMetrics;
+    horizonMetrics?: HorizonMetrics;
+    kycVerified?: boolean;
     source: 'generated' | 'onchain';
     tierLabel?: string;
     txHashes?: { metricsTxHash?: string; scoreTxHash?: string };
@@ -154,13 +179,15 @@ export function buildScorePayload(
     tier: input.tier,
     tierNumeric: input.tier,
     tierLabel: input.tierLabel ?? tierLabel(input.tier),
-    borrowLimit: toPhpAmount(input.tierLimit),
+    borrowLimit: toXlmAmount(input.tierLimit),
     borrowLimitRaw: input.tierLimit.toString(),
     feeRate: tierFeeBps(input.tier) / 100,
     feeBps: tierFeeBps(input.tier),
     progressToNext: upcomingTier ? Math.max(0, upcomingTier.threshold - input.score) : 0,
     nextTier: upcomingTier?.label ?? null,
     nextTierThreshold: upcomingTier?.threshold ?? null,
+    kycVerified: !!input.kycVerified,
+    horizonMetrics: input.horizonMetrics,
     metrics: {
       txCount: input.metrics.txCount,
       repaymentCount: input.metrics.repaymentCount,
@@ -170,7 +197,7 @@ export function buildScorePayload(
     },
     formula: {
       expression:
-        'score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) - (default_count × 25)',
+        'score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) - (default_count × 25) + (horizon_bonus)',
       txComponent: input.metrics.txCount * 2,
       repaymentComponent: input.metrics.repaymentCount * 10,
       balanceComponent: xlmBalanceFactor * 5,
@@ -180,6 +207,64 @@ export function buildScorePayload(
     factors,
     txHashes: input.txHashes ?? {},
   };
+}
+
+export async function fetchHorizonMetrics(wallet: string): Promise<HorizonMetrics> {
+  try {
+    const account = await horizonServer.loadAccount(wallet);
+    const nativeBalance = account.balances.find((b) => b.asset_type === 'native');
+    const currentBalanceXlm = Number(nativeBalance?.balance || 0);
+
+    const firstTxPage = await horizonServer
+      .transactions()
+      .forAccount(wallet)
+      .limit(1)
+      .order('asc')
+      .call();
+    const firstTx = firstTxPage.records[0];
+    const walletAgeDays = firstTx
+      ? Math.floor((Date.now() - new Date(firstTx.created_at).getTime()) / (24 * 60 * 60 * 1000))
+      : 0;
+
+    const payments = await horizonServer
+      .payments()
+      .forAccount(wallet)
+      .limit(200)
+      .order('desc')
+      .call();
+
+    const inboundPaymentCount = payments.records.filter((p: any) => p.to === wallet).length;
+    const txCount = payments.records.length;
+
+    const activitySpanDays =
+      payments.records.length > 1
+        ? Math.floor(
+            (new Date(payments.records[0].created_at).getTime() -
+              new Date(payments.records[payments.records.length - 1].created_at).getTime()) /
+              (24 * 60 * 60 * 1000),
+          )
+        : 0;
+
+    const hasRegularActivity = activitySpanDays > 30 && txCount > 10;
+
+    return {
+      walletAgeDays,
+      currentBalanceXlm,
+      txCount,
+      inboundPaymentCount,
+      activitySpanDays,
+      hasRegularActivity,
+    };
+  } catch {
+    return {
+      walletAgeDays: 0,
+      currentBalanceXlm: 0,
+      txCount: 0,
+      inboundPaymentCount: 0,
+      activitySpanDays: 0,
+      hasRegularActivity: false,
+    };
+  }
 }
 
 export async function fetchTxCount(address: string): Promise<number> {
@@ -210,8 +295,7 @@ export async function fetchTxCount(address: string): Promise<number> {
 }
 
 /**
- * Returns the wallet's native XLM balance in whole units, not PHPC.
- * This remains the current scoring input so UI copy must label it as XLM.
+ * Returns the wallet's native XLM balance in whole units.
  */
 export async function fetchXlmBalance(address: string): Promise<number> {
   try {
@@ -304,7 +388,13 @@ export async function getTierLimit(tier: number) {
 }
 
 export async function buildScoreSummary(address: string) {
-  const metrics = await buildWalletMetrics(address);
+  const [metrics, horizonMetrics, kycVerified] = await Promise.all([
+    buildWalletMetrics(address),
+    fetchHorizonMetrics(address),
+    queryContract<boolean>(contractIds.creditRegistry, 'get_kyc_verified', [
+      Address.fromString(address).toScVal(),
+    ]),
+  ]);
 
   // P2-11: Fetch existing on-chain metrics to use as a floor.
   // This prevents losing historical repayments/defaults when ledger events expire.
@@ -325,8 +415,8 @@ export async function buildScoreSummary(address: string) {
     // Ignore errors fetching on-chain metrics, fallback to detected ones
   }
 
-  const score = calculateScore(metrics);
-  const tier = scoreToTier(score);
+  const score = calculateScore(metrics, horizonMetrics);
+  const tier = kycVerified && score >= 40 ? 4 : scoreToTier(score);
   const tierLimit = await getTierLimit(tier);
 
   return buildScorePayload(address, {
@@ -334,6 +424,8 @@ export async function buildScoreSummary(address: string) {
     tier,
     tierLimit,
     metrics,
+    horizonMetrics,
+    kycVerified,
     source: 'generated',
   });
 }
@@ -347,7 +439,7 @@ export async function getPoolSnapshot() {
     )) ?? 0,
   );
   return {
-    poolBalance: toPhpAmount(poolBalanceRaw),
+    poolBalance: toXlmAmount(poolBalanceRaw),
     poolBalanceRaw: poolBalanceRaw.toString(),
   };
 }

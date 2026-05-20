@@ -10,9 +10,9 @@ const api = axios.create({
 
 let reauthPromise: Promise<string | null> | null = null;
 
-async function ensureWalletAuthToken() {
+async function ensureWalletAuthToken(forceRefresh = false) {
   const currentToken = useAuthStore.getState().token;
-  if (currentToken) {
+  if (currentToken && !forceRefresh) {
     return currentToken;
   }
 
@@ -22,6 +22,11 @@ async function ensureWalletAuthToken() {
   }
 
   if (!reauthPromise) {
+    // Clear current invalid token if forcing refresh
+    if (forceRefresh) {
+      useAuthStore.getState().clearAuth();
+    }
+
     reauthPromise = loginWithFreighter()
       .then((data) => {
         useAuthStore.getState().setAuth({ wallet: data.wallet }, data.token);
@@ -51,7 +56,7 @@ api.interceptors.request.use((config) => {
     return config;
   }
 
-  return ensureWalletAuthToken().then((token) => {
+  return ensureWalletAuthToken(false).then((token) => {
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -69,7 +74,7 @@ api.interceptors.response.use(
 
     if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
-      const refreshedToken = await ensureWalletAuthToken();
+      const refreshedToken = await ensureWalletAuthToken(true); // FORCE REFRESH
 
       if (refreshedToken) {
         originalRequest.headers = originalRequest.headers ?? {};

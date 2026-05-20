@@ -35,7 +35,7 @@ vi.mock('../stellar/feebump', () => ({
 
 vi.mock('../scoring/engine', () => ({
   buildScoreSummary: vi.fn(),
-  toPhpAmount: vi.fn((v) => (Number(v) / 10_000_000).toFixed(2)),
+  toXlmAmount: vi.fn((v) => (Number(v) / 10_000_000).toFixed(2)),
 }));
 
 vi.mock('../stellar/issuer', () => ({

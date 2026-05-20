@@ -15,6 +15,9 @@ import adminRoutes from './routes/admin';
 import creditRoutes from './routes/credit';
 import loanRoutes from './routes/loan';
 import txRoutes from './routes/tx';
+import stakingRoutes from './routes/staking';
+import walletRoutes from './routes/wallet';
+import depositRoutes from './routes/deposit';
 import { AuthRequest } from './middleware/auth';
 import { rpcServer, horizonServer, issuerKeypair } from './stellar/client';
 
@@ -72,6 +75,9 @@ app.use('/api/credit/generate', scoreLimiter);
 app.use('/api/credit', creditRoutes);
 app.use('/api/loan', loanRoutes);
 app.use('/api/tx', txRoutes);
+app.use('/api/staking', stakingRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/deposit', depositRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/health', (req, res) => {

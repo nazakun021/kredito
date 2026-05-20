@@ -1,14 +1,23 @@
 import { Router } from 'express';
 import { Address } from '@stellar/stellar-sdk';
+import { z } from 'zod';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { asyncRoute, notFound } from '../errors';
+import { asyncRoute, notFound, badRequest } from '../errors';
 import { buildScoreSummary, getPoolSnapshot } from '../scoring/engine';
-import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
+import { getOnChainCreditSnapshot, updateOnChainMetrics, setKycVerified } from '../stellar/issuer';
 import { queryContract } from '../stellar/query';
 import { contractIds } from '../stellar/client';
 import { logger } from '../utils/logger';
 
 const router = Router();
+
+const kycSchema = z.object({
+  fullName: z.string().min(2),
+  email: z.string().email(),
+  idType: z.string().min(1),
+  idNumber: z.string().min(1),
+  consent: z.literal(true),
+});
 
 router.post(
   '/generate',
@@ -23,6 +32,30 @@ router.post(
 
     logger.info({ wallet: req.wallet, score: summary.score }, 'Generated new credit score');
     res.json(payload);
+  }),
+);
+
+router.post(
+  '/kyc-submit',
+  authMiddleware,
+  asyncRoute(async (req: AuthRequest, res) => {
+    const parsed = kycSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest('Invalid KYC data');
+    }
+
+    const wallet = req.wallet;
+    logger.info({ wallet, name: parsed.data.fullName }, 'KYC submission received');
+
+    // In production, you would store PII in a secure off-chain database.
+    // For this demo, we proceed directly to unlocking Tier 4 on-chain.
+    const txHash = await setKycVerified(wallet, true);
+
+    res.json({
+      success: true,
+      tier: 4,
+      txHash,
+    });
   }),
 );
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { asyncRoute, badRequest } from '../errors';
-import { buildScoreSummary, toPhpAmount } from '../scoring/engine';
+import { buildScoreSummary, toXlmAmount } from '../scoring/engine';
 import { submitSponsoredSignedXdr } from '../stellar/feebump';
 import { getOnChainCreditSnapshot, updateOnChainMetrics } from '../stellar/issuer';
 import { getLoanFromChain, hasActiveLoan, waitForLoanRepayment } from '../stellar/query';
@@ -123,8 +123,8 @@ router.post(
       }
 
       if (loan) {
-        const principal = Number(toPhpAmount(loan.principal));
-        const fee = Number(toPhpAmount(loan.fee));
+        const principal = Number(toXlmAmount(loan.principal));
+        const fee = Number(toXlmAmount(loan.fee));
         const borrowResponse: BorrowResponse = {
           ...basePayload,
           amount: principal.toFixed(2),
@@ -147,7 +147,7 @@ router.post(
 
       const repayResponse: RepayResponse = {
         ...basePayload,
-        amountRepaid: toPhpAmount(settledLoan.principal + settledLoan.fee),
+        amountRepaid: toXlmAmount(settledLoan.principal + settledLoan.fee),
         previousScore: previousSnapshot?.score ?? null,
         newScore: refreshed.score,
         newTier: refreshed.tierLabel,

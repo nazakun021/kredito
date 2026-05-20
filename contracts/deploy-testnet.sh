@@ -1,25 +1,31 @@
 #!/bin/bash
 set -e
 
+# Phase 4A: Testnet Deployment Script
+# Deploys credit_registry and lending_pool to Stellar Testnet
+
 NETWORK="testnet"
 SOURCE="issuer"
 ISSUER_PUB=$(stellar keys address "$SOURCE")
 WASM_DIR="target/wasm32v1-none/release"
 
-XLM_SAC_TESTNET="CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
-XLM_SAC_MAINNET="CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA"
-if [ "$NETWORK" == "mainnet" ]; then
-  XLM_SAC="$XLM_SAC_MAINNET"
-else
-  XLM_SAC="$XLM_SAC_TESTNET"
-fi
+# Native XLM SAC ID for Testnet
+XLM_SAC="CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+
+# Change to contracts directory if not already there
+cd "$(dirname "$0")"
+
+echo "🚀 Starting Testnet Deployment..."
+echo "Issuer: $ISSUER_PUB"
 
 # Step 1: Building fresh WASMs
+echo ""
+echo "=== Step 1: Building Contracts ==="
 stellar contract build --package lending_pool
 stellar contract build --package credit_registry
 
 echo ""
-echo "=== Step 2: Deploying new credit_registry ==="
+echo "=== Step 2: Deploying credit_registry ==="
 REGISTRY_ID=$(stellar contract deploy \
   --wasm $WASM_DIR/credit_registry.wasm \
   --source $SOURCE \
@@ -28,6 +34,7 @@ echo "✅ REGISTRY_ID: $REGISTRY_ID"
 
 echo ""
 echo "=== Step 3: Initializing credit_registry ==="
+# Tier limits: 1 XLM, 5 XLM, 20 XLM, and 100 XLM (KYC)
 stellar contract invoke --id $REGISTRY_ID --source $SOURCE --network $NETWORK -- \
   initialize \
   --issuer $ISSUER_PUB \
@@ -38,7 +45,7 @@ stellar contract invoke --id $REGISTRY_ID --source $SOURCE --network $NETWORK --
 echo "✅ credit_registry initialized"
 
 echo ""
-echo "=== Step 4: Deploying new lending_pool ==="
+echo "=== Step 4: Deploying lending_pool ==="
 LENDING_POOL_ID=$(stellar contract deploy \
   --wasm $WASM_DIR/lending_pool.wasm \
   --source $SOURCE \
@@ -57,14 +64,28 @@ stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWOR
 echo "✅ lending_pool initialized"
 
 echo ""
-echo "=== Step 6: Depositing 1,000 XLM into lending_pool ==="
+echo "=== Step 6: Approving lending_pool to spend issuer XLM ==="
+# Get current ledger for expiration
+CURRENT_LEDGER=$(stellar ledger latest --network $NETWORK --output json | jq -r '.sequence')
+EXPIRY_LEDGER=$((CURRENT_LEDGER + 2000000))
+
+stellar contract invoke --id $XLM_SAC --source $SOURCE --network $NETWORK -- \
+  approve \
+  --from $ISSUER_PUB \
+  --spender $LENDING_POOL_ID \
+  --amount 10000000000 \
+  --expiration_ledger $EXPIRY_LEDGER
+echo "✅ Approval set"
+
+echo ""
+echo "=== Step 7: Depositing 1,000 XLM into lending_pool ==="
 stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
   deposit \
   --amount 10000000000
 echo "✅ Pool funded"
 
 echo ""
-echo "=== Step 7: Saving deployed.json ==="
+echo "=== Step 8: Saving deployed.json ==="
 cat > deployed.json << EOF
 {
   "network": "$NETWORK",
@@ -75,18 +96,15 @@ cat > deployed.json << EOF
   "xlm_sac": "$XLM_SAC",
   "issuer_public": "$ISSUER_PUB",
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "notes": "lending_pool and credit_registry redeployed for Hackathon 2026."
+  "notes": "Testnet deployment for Hackathon 2026."
 }
 EOF
 echo "✅ deployed.json updated"
 
 echo ""
-echo "=== ✅ REDEPLOYMENT COMPLETE ==="
+echo "=== ✨ TESTNET DEPLOYMENT COMPLETE ==="
 echo "LENDING_POOL_ID:  $LENDING_POOL_ID"
 echo "REGISTRY_ID:      $REGISTRY_ID"
 echo "XLM_SAC:          $XLM_SAC"
 echo ""
-echo "=== Update your backend/.env with: ==="
-echo "LENDING_POOL_ID=$LENDING_POOL_ID"
-echo "REGISTRY_ID=$REGISTRY_ID"
-echo "XLM_SAC_ID=$XLM_SAC"
+echo "=== Next: Update your .env files ==="
