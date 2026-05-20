@@ -141,6 +141,21 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "AccRewardPerShare"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 0
+                          }
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Admin"
                             }
                           ]
@@ -204,7 +219,67 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "TokenId"
+                              "symbol": "ReservedInterest"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 0
+                          }
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "StakedPool"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 0
+                          }
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "TotalRewardPool"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 0
+                          }
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "TotalStaked"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 0
+                          }
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "XlmToken"
                             }
                           ]
                         },
@@ -219,7 +294,7 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
         ]
       ],
       [
@@ -240,7 +315,7 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
         ]
       ]
     ]

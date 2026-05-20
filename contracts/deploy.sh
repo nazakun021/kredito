@@ -7,20 +7,13 @@ SOURCE="${STELLAR_SOURCE_ACCOUNT:-issuer}"
 ISSUER_PUB=$(stellar keys address "$SOURCE")
 WASM_DIR="target/wasm32v1-none/release"
 
-echo "Deploying phpc_token..."
-PHPC_ID=$(stellar contract deploy \
-  --wasm $WASM_DIR/phpc_token.wasm \
-  --source $SOURCE \
-  --network $NETWORK)
-echo "PHPC_ID: $PHPC_ID"
-
-echo "Initializing phpc_token..."
-stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
-  initialize \
-  --admin $ISSUER_PUB \
-  --decimal 7 \
-  --name "Philippine Peso Coin" \
-  --symbol "PHPC"
+XLM_SAC_TESTNET="CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+XLM_SAC_MAINNET="CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA"
+if [ "$NETWORK" == "mainnet" ]; then
+  XLM_SAC="$XLM_SAC_MAINNET"
+else
+  XLM_SAC="$XLM_SAC_TESTNET"
+fi
 
 echo "Deploying credit_registry..."
 REGISTRY_ID=$(stellar contract deploy \
@@ -30,15 +23,13 @@ REGISTRY_ID=$(stellar contract deploy \
 echo "REGISTRY_ID: $REGISTRY_ID"
 
 echo "Initializing credit_registry..."
-# tier1_limit = 5,000 PHPC × 10^7 = 50,000,000,000 stroops
-# tier2_limit = 20,000 PHPC × 10^7 = 200,000,000,000 stroops
-# tier3_limit = 50,000 PHPC × 10^7 = 500,000,000,000 stroops
 stellar contract invoke --id $REGISTRY_ID --source $SOURCE --network $NETWORK -- \
   initialize \
   --issuer $ISSUER_PUB \
-  --tier1_limit 50000000000 \
-  --tier2_limit 200000000000 \
-  --tier3_limit 500000000000
+  --tier1_limit 10000000 \
+  --tier2_limit 50000000 \
+  --tier3_limit 200000000 \
+  --kyc_tier_limit 1000000000
 
 echo "Deploying lending_pool..."
 LENDING_POOL_ID=$(stellar contract deploy \
@@ -48,47 +39,37 @@ LENDING_POOL_ID=$(stellar contract deploy \
 echo "LENDING_POOL_ID: $LENDING_POOL_ID"
 
 echo "Initializing lending_pool..."
-# loan_term_ledgers = 30 days × 17,280 ledgers/day = 518,400
 stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
   initialize \
   --admin $ISSUER_PUB \
   --registry_id $REGISTRY_ID \
-  --phpc_token $PHPC_ID \
+  --xlm_token $XLM_SAC \
   --flat_fee_bps 500 \
   --loan_term_ledgers 518400
 
-echo "Minting PHPC to issuer..."
-stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
-  mint \
-  --to $ISSUER_PUB \
-  --amount 1000000000000000
-
 echo "Fetching current ledger..."
-CURRENT_LEDGER=$(curl -sf https://soroban-testnet.stellar.org \
-  -X POST -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['sequence'])")
+CURRENT_LEDGER=$(stellar ledger latest --network $NETWORK --output json | jq -r '.sequence')
 
 if [[ -z "$CURRENT_LEDGER" || ! "$CURRENT_LEDGER" =~ ^[0-9]+$ ]]; then
   echo "❌ Failed to fetch current ledger. Check your network connection."
   exit 1
 fi
 
-EXPIRY_LEDGER=$((CURRENT_LEDGER + 2000000))   # ~115 days of buffer
+EXPIRY_LEDGER=$((CURRENT_LEDGER + 2000000))
 echo "Current ledger: $CURRENT_LEDGER → expiry: $EXPIRY_LEDGER"
 
-echo "Approving lending_pool to spend issuer's PHPC..."
-stellar contract invoke --id $PHPC_ID --source $SOURCE --network $NETWORK -- \
+echo "Approving lending_pool to spend issuer's XLM..."
+stellar contract invoke --id $XLM_SAC --source $SOURCE --network $NETWORK -- \
   approve \
   --from $ISSUER_PUB \
   --spender $LENDING_POOL_ID \
-  --amount 1000000000000000 \
+  --amount 10000000000 \
   --expiration_ledger $EXPIRY_LEDGER
 
-echo "Depositing PHPC into lending_pool..."
+echo "Depositing XLM into lending_pool..."
 stellar contract invoke --id $LENDING_POOL_ID --source $SOURCE --network $NETWORK -- \
   deposit \
-  --amount 1000000000000000
+  --amount 10000000000
 
 echo "Saving to deployed.json..."
 cat > deployed.json << EOF
@@ -96,9 +77,9 @@ cat > deployed.json << EOF
   "network": "$NETWORK",
   "contracts": {
     "credit_registry": "$REGISTRY_ID",
-    "lending_pool": "$LENDING_POOL_ID",
-    "phpc_token": "$PHPC_ID"
+    "lending_pool": "$LENDING_POOL_ID"
   },
+  "xlm_sac": "$XLM_SAC",
   "issuer_public": "$ISSUER_PUB",
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }

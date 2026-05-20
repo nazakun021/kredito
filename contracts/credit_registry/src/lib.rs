@@ -13,7 +13,7 @@ const MAX_AVG_BALANCE_FACTOR: u32 = 10;
 const AVG_BALANCE_STEP: u32 = 100;
 const DEFAULT_PENALTY: u32 = 25;
 const MIN_TTL: u32 = 100_000;
-const MAX_TTL: u32 = 200_000;
+const MAX_TTL: u32 = 1_000_000;
 const TIER_EXPIRY_LEDGERS: u32 = 518_400;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,6 +37,8 @@ pub enum DataKey {
     CreditTier(Address),
     TierTimestamp(Address),
     TierExpiry(Address),
+    KycVerified(Address),
+    KycTierLimit,
 }
 
 #[contract]
@@ -62,15 +64,16 @@ impl CreditRegistry {
         tier1_limit: i128,
         tier2_limit: i128,
         tier3_limit: i128,
+        kyc_tier_limit: i128,
     ) {
         if env.storage().instance().has(&DataKey::Issuer) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
         issuer.require_auth();
-        if tier1_limit <= 0 || tier2_limit <= 0 || tier3_limit <= 0 {
+        if tier1_limit <= 0 || tier2_limit <= 0 || tier3_limit <= 0 || kyc_tier_limit <= 0 {
             panic_with_error!(&env, Error::InvalidTierLimits);
         }
-        if tier2_limit < tier1_limit || tier3_limit < tier2_limit {
+        if tier2_limit < tier1_limit || tier3_limit < tier2_limit || kyc_tier_limit < tier3_limit {
             panic_with_error!(&env, Error::TierOrderInvalid);
         }
         env.storage().instance().set(&DataKey::Issuer, &issuer);
@@ -83,6 +86,9 @@ impl CreditRegistry {
         env.storage()
             .instance()
             .set(&DataKey::Tier3Limit, &tier3_limit);
+        env.storage()
+            .instance()
+            .set(&DataKey::KycTierLimit, &kyc_tier_limit);
         bump_instance_ttl(&env);
     }
 
@@ -91,7 +97,8 @@ impl CreditRegistry {
         issuer.require_auth();
 
         let score = Self::compute_score(env.clone(), metrics.clone());
-        let tier = score_to_tier(score);
+        let kyc = Self::get_kyc_verified(env.clone(), wallet.clone());
+        let tier = score_to_tier(score, kyc);
         store_credit_state(&env, wallet.clone(), metrics, score, tier);
         score
     }
@@ -122,7 +129,8 @@ impl CreditRegistry {
 
         let metrics = Self::get_metrics(env.clone(), wallet.clone());
         let score = Self::compute_score(env.clone(), metrics.clone());
-        let tier = score_to_tier(score);
+        let kyc = Self::get_kyc_verified(env.clone(), wallet.clone());
+        let tier = score_to_tier(score, kyc);
         store_credit_state(&env, wallet, metrics, score, tier);
         score
     }
@@ -131,7 +139,7 @@ impl CreditRegistry {
         let issuer = get_issuer(&env);
         issuer.require_auth();
 
-        if !(1..=3).contains(&tier) {
+        if !(1..=4).contains(&tier) {
             panic_with_error!(&env, Error::InvalidTier);
         }
 
@@ -161,6 +169,10 @@ impl CreditRegistry {
     pub fn revoke_tier(env: Env, wallet: Address) {
         let issuer = get_issuer(&env);
         issuer.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::KycVerified(wallet.clone()), &false);
 
         env.storage()
             .persistent()
@@ -238,8 +250,36 @@ impl CreditRegistry {
                 .instance()
                 .get(&DataKey::Tier3Limit)
                 .unwrap_or(0),
+            4 => env
+                .storage()
+                .instance()
+                .get(&DataKey::KycTierLimit)
+                .unwrap_or(0),
             _ => 0,
         }
+    }
+
+    pub fn set_kyc_verified(env: Env, wallet: Address, verified: bool) {
+        let issuer = get_issuer(&env);
+        issuer.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::KycVerified(wallet.clone()), &verified);
+        maybe_extend_persistent_ttl(&env, &DataKey::KycVerified(wallet.clone()));
+
+        // Trigger score/tier update if KYC status changes
+        let score = Self::get_score(env.clone(), wallet.clone());
+        let tier = score_to_tier(score, verified);
+        let metrics = Self::get_metrics(env.clone(), wallet.clone());
+        store_credit_state(&env, wallet, metrics, score, tier);
+    }
+
+    pub fn get_kyc_verified(env: Env, wallet: Address) -> bool {
+        let key = DataKey::KycVerified(wallet);
+        let verified = env.storage().persistent().get(&key).unwrap_or(false);
+        maybe_extend_persistent_ttl(&env, &key);
+        verified
     }
 
     pub fn is_tier_current(env: Env, wallet: Address) -> bool {
@@ -294,8 +334,10 @@ fn store_credit_state(env: &Env, wallet: Address, metrics: Metrics, score: u32, 
     );
 }
 
-fn score_to_tier(score: u32) -> u32 {
-    if score >= GOLD_MIN_SCORE {
+fn score_to_tier(score: u32, kyc: bool) -> u32 {
+    if kyc && score >= BRONZE_MIN_SCORE {
+        4
+    } else if score >= GOLD_MIN_SCORE {
         3
     } else if score >= SILVER_MIN_SCORE {
         2

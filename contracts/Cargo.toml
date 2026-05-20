@@ -2,7 +2,6 @@
 members = [
     "credit_registry",
     "lending_pool",
-    "phpc_token",
 ]
 resolver = "2"
 

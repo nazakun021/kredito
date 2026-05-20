@@ -34,6 +34,12 @@
                     "hi": 0,
                     "lo": 500000000000
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 2500000000000
+                  }
                 }
               ]
             }
@@ -97,6 +103,7 @@
         }
       ]
     ],
+    [],
     [],
     [],
     [],
@@ -276,7 +283,52 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "KycVerified"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "KycVerified"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bool": false
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
         ]
       ],
       [
@@ -354,7 +406,7 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
         ]
       ],
       [
@@ -399,7 +451,7 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
         ]
       ],
       [
@@ -435,6 +487,21 @@
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "KycTierLimit"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 2500000000000
+                          }
                         }
                       },
                       {
@@ -489,7 +556,7 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
         ]
       ],
       [
@@ -510,7 +577,7 @@
             },
             "ext": "v0"
           },
-          200000
+          1000000
         ]
       ]
     ]
