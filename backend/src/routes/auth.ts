@@ -47,6 +47,7 @@ router.post(
 
     res.json({
       challenge: challengeXdr,
+      network: config.stellarNetwork,
       networkPassphrase: config.networkPassphrase,
       expiresAt: Math.floor(Date.now() / 1000) + CHALLENGE_TIMEOUT_SECONDS,
     });
