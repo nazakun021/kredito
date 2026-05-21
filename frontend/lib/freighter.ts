@@ -8,7 +8,7 @@ import {
   requestAccess,
   signTransaction,
 } from '@stellar/freighter-api';
-import { NETWORK_PASSPHRASE } from './constants';
+
 
 const authApi = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
@@ -131,14 +131,15 @@ export async function loginWithFreighter() {
   if ('error' in connection) throw new Error(connection.error);
 
   const publicKey = connection.address;
-  
-  // Get network details for signing
-  const networkDetails = await getWalletNetwork();
-  const passphrase = networkDetails?.networkPassphrase || NETWORK_PASSPHRASE;
 
-  const challengeRes = await authApi.post<{ challenge: string }>('/auth/challenge', {
+  const challengeRes = await authApi.post<{ challenge: string; networkPassphrase: string }>('/auth/challenge', {
     wallet: publicKey,
   });
+
+  // Use the passphrase the backend used to build the challenge.
+  // This guarantees the signing hash matches what the backend will verify,
+  // regardless of frontend env vars or Freighter wallet settings.
+  const passphrase = challengeRes.data.networkPassphrase;
 
   const signResult = await signTx(challengeRes.data.challenge, publicKey, passphrase);
   if ('error' in signResult) throw new Error(signResult.error);

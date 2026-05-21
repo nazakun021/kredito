@@ -27,6 +27,7 @@ describe('Auth Routes', () => {
       .send({ wallet: Keypair.random().publicKey() });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('challenge');
+    expect(res.body).toHaveProperty('networkPassphrase');
     expect(res.body).toHaveProperty('expiresAt');
   });
 
