@@ -85,7 +85,9 @@ router.post(
       );
     } catch (err: any) {
       console.error('❌ Authentication verification failed:', err);
-      throw unauthorized(`Wallet signature could not be verified or challenge expired: ${err.message || err}`);
+      throw unauthorized(
+        `Wallet signature could not be verified or challenge expired: ${err.message || err}`,
+      );
     }
 
     const token = issueToken(clientAccountID);
