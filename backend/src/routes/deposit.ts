@@ -64,6 +64,8 @@ router.get(
       (deposit.amount * BigInt(deposit.apy_bps) * BigInt(deposit.term_ledgers)) /
       (10000n * BigInt(365 * LEDGERS_PER_DAY));
 
+    const penaltyStroops = deposit.amount / 100n; // 1% of principal
+
     return res.json({
       amount: toXlmAmount(deposit.amount),
       depositedAt: deposit.deposited_at,
@@ -76,6 +78,7 @@ router.get(
       daysRemaining,
       estimatedReturn: toXlmAmount(estimatedReturn),
       canWithdraw: isMatured,
+      earlyWithdrawalPenaltyXlm: toXlmAmount(penaltyStroops),
       progress: Math.min(
         100,
         Math.floor(((currentLedger - deposit.deposited_at) / deposit.term_ledgers) * 100),
@@ -120,6 +123,16 @@ router.post(
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
     const wallet = req.wallet;
+
+    // Enforce KYC check before allowing time deposit withdrawal
+    const kycVerified = await queryContract<boolean>(
+      contractIds.creditRegistry,
+      'get_kyc_verified',
+      [Address.fromString(wallet).toScVal()]
+    );
+    if (!kycVerified) {
+      throw badRequest('KYC verification required before withdrawing time deposits');
+    }
 
     const unsignedXdr = await buildUnsignedContractCall(
       wallet,

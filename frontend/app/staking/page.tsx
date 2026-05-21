@@ -57,7 +57,7 @@ export default function StakingPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="animate-fade-up">
+      <div className="mb-8 animate-fade-up">
         <h1 className="text-2xl font-extrabold lg:text-3xl">Stake & Earn</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Provide liquidity to the lending pool and earn a share of the fees.
@@ -145,15 +145,15 @@ export default function StakingPage() {
           <h3 className="font-bold mb-4">How it works</h3>
           <ul className="space-y-4 opacity-70">
             <li className="flex gap-3">
-              <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-bg-elevated)' }}>1</div>
               <p>Stake XLM into the lending pool. Your funds are never lent out (they remain in the contract as a safety reserve).</p>
             </li>
             <li className="flex gap-3">
-              <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">2</div>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-bg-elevated)' }}>2</div>
               <p>When borrowers repay their loans, 50% of the flat fee is distributed to the staking pool.</p>
             </li>
             <li className="flex gap-3">
-              <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">3</div>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-bg-elevated)' }}>3</div>
               <p>Rewards accumulate in real-time based on your share of the pool. Unstake anytime to claim principal + rewards.</p>
             </li>
           </ul>
@@ -247,7 +247,7 @@ function StakeModal({ onClose }: { onClose: () => void }) {
       <div className="card-elevated w-full max-w-md animate-scale-in">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-extrabold">Stake XLM</h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -328,7 +328,7 @@ function UnstakeModal({ onClose, position }: { onClose: () => void; position?: S
       <div className="card-elevated w-full max-w-md animate-scale-in">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-extrabold">Unstake XLM</h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
             <X size={20} />
           </button>
         </div>

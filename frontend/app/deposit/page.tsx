@@ -12,7 +12,8 @@ import {
   PiggyBank, 
   ShieldCheck, 
   TrendingUp, 
-  X 
+  X,
+  ShieldAlert
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -39,6 +40,7 @@ interface ActiveDeposit {
   progress: number;
   canWithdraw: boolean;
   daysRemaining: number;
+  earlyWithdrawalPenaltyXlm: string;
 }
 
 export default function DepositPage() {
@@ -47,6 +49,12 @@ export default function DepositPage() {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState<DepositTerm | null>(null);
+
+  const { data: score } = useQuery({
+    queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
+    queryFn: () => api.get<any>('/credit/score').then((res) => res.data),
+    enabled: !!user?.wallet,
+  });
 
   const { data: terms, isLoading: isTermsLoading } = useQuery<DepositTerm[]>({
     queryKey: ['deposit-terms'],
@@ -62,8 +70,10 @@ export default function DepositPage() {
   const withdrawMutation = useMutation({
     mutationFn: async () => {
       if (!active?.canWithdraw) {
+        const penalty = active?.earlyWithdrawalPenaltyXlm ?? '0.00';
+        const netAmount = (Number(active?.amount ?? 0) - Number(penalty)).toFixed(4);
         const confirmed = window.confirm(
-          'Withdrawing before maturity will forfeit all accrued interest. You will only receive your principal amount. Continue?'
+          `Early Withdrawal Warning:\n\nWithdrawing before maturity will forfeit all accrued interest and deduct a simulated 1% early withdrawal penalty of ◎${penalty} XLM.\n\nYou will receive a net amount of ◎${netAmount} XLM instead of ◎${active?.amount ?? 0} XLM.\n\nAre you sure you want to proceed with early withdrawal?`
         );
         if (!confirmed) return;
       }
@@ -91,7 +101,7 @@ export default function DepositPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="animate-fade-up">
+      <div className="mb-8 animate-fade-up">
         <h1 className="text-2xl font-extrabold lg:text-3xl">Time Deposit</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Lock your XLM for a fixed term and earn guaranteed interest.
@@ -134,32 +144,62 @@ export default function DepositPage() {
                   </span>
                   <span className="opacity-40">{Math.round(active.progress)}%</span>
                 </div>
-                <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden mb-6">
+                <div className="h-2 w-full rounded-full overflow-hidden mb-6" style={{ background: 'var(--color-bg-elevated)' }}>
                   <div 
-                    className="h-full rounded-full transition-all duration-1000 bg-emerald-500" 
+                    className="h-full rounded-full transition-all duration-1000 bg-emerald-500 progress-animated" 
                     style={{ width: `${active.progress}%` }} 
                   />
                 </div>
 
+                {!active.canWithdraw && score?.kycVerified && (
+                  <div className="mb-6 rounded-xl p-4 bg-amber-500/10 border border-amber-500/20 flex gap-3 text-amber-500">
+                    <Info size={20} className="shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-extrabold">Early Withdrawal Warning</p>
+                      <p className="text-xs mt-1 opacity-80">
+                        Withdrawing before maturity will forfeit all accrued interest and charge a simulated early withdrawal penalty of <strong className="font-extrabold text-white">1% (◎{active.earlyWithdrawalPenaltyXlm} XLM)</strong>. You will receive ◎{(Number(active.amount) - Number(active.earlyWithdrawalPenaltyXlm)).toFixed(4)} XLM.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {score && !score.kycVerified && (
+                  <div className="mb-6 rounded-xl p-4 bg-red-500/10 border border-red-500/20 flex gap-3 text-red-400">
+                    <ShieldAlert size={20} className="shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-extrabold">Identity Verification Required to Withdraw</p>
+                      <p className="text-xs mt-1 opacity-80">
+                        Please complete your KYC verification to unlock withdrawals for your time deposit principal and earnings.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <button 
-                  disabled={withdrawMutation.isPending}
+                  disabled={withdrawMutation.isPending || (score && !score.kycVerified)}
                   onClick={() => withdrawMutation.mutate()}
-                  className={`btn-primary w-full ${active.canWithdraw ? 'btn-accent' : 'btn-dark'}`}
+                  className={`btn-primary w-full ${score && !score.kycVerified ? 'bg-red-950/20 text-red-500/50 cursor-not-allowed border border-red-900/30' : active.canWithdraw ? 'btn-accent' : 'btn-dark'}`}
                 >
                   {withdrawMutation.isPending ? (
                     <Loader2 className="animate-spin" />
+                  ) : score && !score.kycVerified ? (
+                    <ShieldAlert size={18} />
                   ) : active.canWithdraw ? (
                     <TrendingUp size={18} />
                   ) : (
                     <X size={18} />
                   )}
-                  {active.canWithdraw ? 'Withdraw Principal + Interest' : 'Withdraw Principal Only (Early)'}
+                  {score && !score.kycVerified 
+                    ? 'KYC Verification Required to Withdraw'
+                    : active.canWithdraw 
+                      ? 'Withdraw Principal + Interest' 
+                      : 'Withdraw Principal Only (Early)'}
                 </button>
               </div>
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
-              <div className="h-16 w-16 rounded-2xl bg-slate-800 flex items-center justify-center mb-4">
+              <div className="h-16 w-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'var(--color-bg-elevated)' }}>
                 <PiggyBank size={32} className="opacity-20" />
               </div>
               <p className="text-sm opacity-40 max-w-xs">You don&apos;t have any active deposits. Choose a term below to start earning.</p>
@@ -172,11 +212,11 @@ export default function DepositPage() {
           <h3 className="font-bold mb-4">Deposit Terms</h3>
           <ul className="space-y-4 opacity-70">
             <li className="flex gap-3">
-              <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">!</div>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-bg-elevated)' }}>!</div>
               <p>Withdrawing before maturity returns your principal only — accrued interest is forfeited.</p>
             </li>
             <li className="flex gap-3">
-              <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">!</div>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold" style={{ background: 'var(--color-bg-elevated)' }}>!</div>
               <p>Interest is guaranteed and reserved from the pool at the time of deposit.</p>
             </li>
           </ul>

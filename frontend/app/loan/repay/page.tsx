@@ -212,9 +212,8 @@ export default function RepayPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-
-        <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Active Loan</h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <h1 className="text-2xl font-extrabold lg:text-3xl">Active Loan</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Timely repayment feeds into the next metrics refresh and upgrades your Credit Passport.
         </p>
       </div>

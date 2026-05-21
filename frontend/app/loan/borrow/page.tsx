@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, Loader2, TimerReset, Info, Wallet } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, TimerReset, Info, Wallet, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
@@ -24,6 +24,7 @@ interface ScoreResponse {
   borrowLimit: string;
   feeRate: number;
   feeBps: number;
+  kycVerified: boolean;
 }
 
 interface LoanStatusResponse {
@@ -170,6 +171,32 @@ export default function BorrowPage() {
     }
   };
 
+  if (score && !score.kycVerified && score.tier >= 2) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative animate-fade-up">
+        <div className="card-elevated w-full p-8 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-yellow-500 via-amber-500 to-red-500" />
+          <div className="flex flex-col items-center">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
+              <ShieldCheck size={32} />
+            </div>
+            <h1 className="text-2xl font-extrabold">Identity Verification Required</h1>
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+              Your {score.tierLabel} tier requires KYC verification before accessing the lending pool. Bronze tier users can borrow without KYC.
+            </p>
+          </div>
+
+          <button
+            onClick={() => router.push('/kyc')}
+            className="btn-primary btn-accent mt-8 w-full justify-center"
+          >
+            Verify Identity
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (success) {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative">
@@ -218,9 +245,8 @@ export default function BorrowPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-
-        <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Borrow from the pool</h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <h1 className="text-2xl font-extrabold lg:text-3xl">Borrow from the pool</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Eligibility is enforced by the on-chain tier stored in your Credit Passport.
         </p>
       </div>

@@ -1,4 +1,5 @@
-// frontend/app/kyc/layout.tsx
+import { AppShell } from '@/components/app-shell';
+
 export default function KycLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <AppShell>{children}</AppShell>;
 }

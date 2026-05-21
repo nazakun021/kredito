@@ -1,4 +1,5 @@
-// frontend/app/staking/layout.tsx
+import { AppShell } from '@/components/app-shell';
+
 export default function StakingLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <AppShell>{children}</AppShell>;
 }

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Loader2, ShieldCheck, UserCheck } from 'lucide-react';
+import { CheckCircle2, Loader2, ShieldCheck, UserCheck, Lock } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { QUERY_KEYS } from '@/lib/queryKeys';
@@ -62,6 +62,33 @@ export default function KycPage() {
     );
   }
 
+  if (score && score.tier < 3 && !score.kycVerified) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative animate-fade-up">
+        <div className="card-elevated w-full p-8 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+          <div className="flex flex-col items-center">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400">
+              <Lock size={32} />
+            </div>
+            <h1 className="text-2xl font-extrabold">KYC Verification Locked</h1>
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+              You need to reach <strong className="text-indigo-400">Tier 3 (Prime)</strong> with a Credit Score of at least <strong className="text-indigo-400">120</strong> before applying for Tier 4 Diamond Verified status.
+            </p>
+            <div className="mt-4 rounded-xl p-4 w-full flex items-center justify-between text-xs font-mono" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
+              <span className="opacity-60">Current Score:</span>
+              <span className="font-bold text-indigo-400">{score.score} / 120</span>
+            </div>
+          </div>
+
+          <button onClick={() => router.push('/dashboard')} className="btn-primary btn-accent mt-8 w-full">
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (score?.kycVerified || success) {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative">
@@ -89,7 +116,7 @@ export default function KycPage() {
     <div className="mx-auto max-w-2xl">
       <div className="mb-8 animate-fade-up">
         <h1 className="text-2xl font-extrabold lg:text-3xl">Get Verified</h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Unlock Tier 4 Diamond status by verifying your identity.
         </p>
       </div>
@@ -135,7 +162,7 @@ export default function KycPage() {
               <select
                 value={formData.idType}
                 onChange={(e) => setFormData({ ...formData, idType: e.target.value })}
-                className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-colors"
+                className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-colors appearance-none"
                 style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
               >
                 <option>National ID</option>
@@ -160,7 +187,7 @@ export default function KycPage() {
             </label>
           </div>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl p-4 text-xs transition-colors" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl p-4 text-xs transition-colors hover:bg-slate-800/50 group" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
             <input
               type="checkbox"
               required
@@ -168,7 +195,7 @@ export default function KycPage() {
               checked={formData.consent}
               onChange={(e) => setFormData({ ...formData, consent: e.target.checked })}
             />
-            <span style={{ color: 'var(--color-text-secondary)' }}>
+            <span style={{ color: 'var(--color-text-secondary)' }} className="group-hover:text-white transition-colors">
               I hereby consent to the processing of my personal data for the purpose of identity verification in accordance with the Data Privacy Act.
             </span>
           </label>
@@ -176,7 +203,7 @@ export default function KycPage() {
           <button
             type="submit"
             disabled={loading || !formData.consent}
-            className="btn-primary btn-accent w-full"
+            className="btn-primary btn-accent w-full justify-center"
           >
             {loading ? (
               <>

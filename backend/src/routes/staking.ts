@@ -15,8 +15,8 @@ router.get(
   asyncRoute(async (req, res) => {
     const [poolBalanceRaw, totalStakedRaw, totalRewardPoolRaw] = await Promise.all([
       queryContract<bigint>(contractIds.lendingPool, 'get_pool_balance', []),
-      queryContract<bigint>(contractIds.lendingPool, 'get_total_staked_pub', []),
-      queryContract<bigint>(contractIds.lendingPool, 'get_total_reward_pool_pub', []),
+      queryContract<bigint>(contractIds.lendingPool, 'get_total_staked', []),
+      queryContract<bigint>(contractIds.lendingPool, 'get_total_reward_pool', []),
     ]);
 
     const totalRewardNum = Number(toXlmAmount(totalRewardPoolRaw ?? 0n));

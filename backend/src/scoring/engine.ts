@@ -35,10 +35,10 @@ export interface ScoreFactor {
 export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics): number {
   const xlmBalanceFactor = Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
   let score =
-    metrics.txCount * 2 +
-    metrics.repaymentCount * 10 +
+    metrics.txCount * 1 +
+    metrics.repaymentCount * 15 +
     xlmBalanceFactor * 5 -
-    metrics.defaultCount * 25;
+    metrics.defaultCount * 30;
 
   if (horizon) {
     if (horizon.walletAgeDays > 365) score += 20;
@@ -52,7 +52,7 @@ export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics)
 }
 
 export function scoreToTier(score: number, kycVerified = false): 0 | 1 | 2 | 3 | 4 {
-  if (kycVerified && score >= 40) return 4; // Any passing score with KYC = Tier 4
+  if (kycVerified && score >= 200) return 4; // Platinum requires score >= 200 + KYC
   if (score >= 120) return 3;
   if (score >= 80) return 2;
   if (score >= 40) return 1;
@@ -62,7 +62,7 @@ export function scoreToTier(score: number, kycVerified = false): 0 | 1 | 2 | 3 |
 export function tierLabel(tier: number) {
   switch (tier) {
     case 4:
-      return 'Platinum (KYC)';
+      return 'Platinum';
     case 3:
       return 'Gold';
     case 2:
@@ -77,7 +77,7 @@ export function tierLabel(tier: number) {
 export function tierFeeBps(tier: number) {
   switch (tier) {
     case 4:
-      return 0; // 0% fee for Platinum? Or 50 bps. TODO says saturating_sub(500) from 500 = 0.
+      return 50; // 0.5% fee for Platinum
     case 3:
       return 150;
     case 2:
@@ -91,13 +91,17 @@ export function tierFeeBps(tier: number) {
 
 export function nextTier(score: number, kycVerified = false) {
   if (kycVerified) {
-    if (score < 40) return { threshold: 40, label: 'Platinum (KYC)' };
+    if (score < 40) return { threshold: 40, label: 'Bronze' };
+    if (score < 80) return { threshold: 80, label: 'Silver' };
+    if (score < 120) return { threshold: 120, label: 'Gold' };
+    if (score < 200) return { threshold: 200, label: 'Platinum' };
     return null;
   }
 
   if (score < 40) return { threshold: 40, label: 'Bronze' };
   if (score < 80) return { threshold: 80, label: 'Silver' };
   if (score < 120) return { threshold: 120, label: 'Gold' };
+  if (score < 200) return { threshold: 200, label: 'Platinum (requires KYC)' };
   return null;
 }
 
@@ -133,15 +137,15 @@ export function buildScoreFactors(metrics: WalletMetrics, source: 'generated' | 
       key: 'txCount',
       label: 'Transaction count',
       value: metrics.txCount,
-      weight: 'tx_count × 2',
-      points: metrics.txCount * 2,
+      weight: 'tx_count × 1',
+      points: metrics.txCount * 1,
     },
     {
       key: 'repaymentCount',
       label: 'Repayments',
       value: metrics.repaymentCount,
-      weight: 'repayment_count × 10',
-      points: metrics.repaymentCount * 10,
+      weight: 'repayment_count × 15',
+      points: metrics.repaymentCount * 15,
     },
     {
       key: 'xlmBalanceFactor',
@@ -154,8 +158,8 @@ export function buildScoreFactors(metrics: WalletMetrics, source: 'generated' | 
       key: 'defaultCount',
       label: 'Defaults penalty',
       value: metrics.defaultCount,
-      weight: 'default_count × -25',
-      points: metrics.defaultCount * -25,
+      weight: 'default_count × -30',
+      points: metrics.defaultCount * -30,
     },
   ];
 }
@@ -215,11 +219,11 @@ export function buildScorePayload(
     },
     formula: {
       expression:
-        'score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) - (default_count × 25) + (horizon_bonus)',
-      txComponent: input.metrics.txCount * 2,
-      repaymentComponent: input.metrics.repaymentCount * 10,
+        'score = (tx_count × 1) + (repayment_count × 15) + (xlm_balance_factor × 5) - (default_count × 30) + (horizon_bonus)',
+      txComponent: input.metrics.txCount * 1,
+      repaymentComponent: input.metrics.repaymentCount * 15,
       balanceComponent: xlmBalanceFactor * 5,
-      defaultPenalty: input.metrics.defaultCount * 25,
+      defaultPenalty: input.metrics.defaultCount * 30,
       horizonBonus: input.source === 'onchain' ? 0 : horizonBonus,
       total: input.score,
     },

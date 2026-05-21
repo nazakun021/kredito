@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import { calculateScore } from './engine';
 
-// Test vectors derived from the Rust contract (contracts/credit_registry/src/lib.rs)
+// Test vectors derived from the updated Rust contract
+// New formula: score = (tx_count × 1) + (repayment_count × 15) + (min(xlmBalance*2/100, 10) × 5) - (default_count × 30)
 const fixtures = [
   {
     metrics: {
@@ -11,7 +12,7 @@ const fixtures = [
       xlmBalance: 500,
       defaultCount: 0,
     },
-    expected: 180, // (50*2) + (3*10) + (min(500*2/100, 10)*5) - (0*25) = 100 + 30 + 50 - 0 = 180
+    expected: 145, // (50*1) + (3*15) + (min(500*2/100, 10)*5) - (0*30) = 50 + 45 + 50 - 0 = 145
   },
   {
     metrics: {
@@ -20,7 +21,7 @@ const fixtures = [
       xlmBalance: 50,
       defaultCount: 1,
     },
-    expected: 0, // (10*2) + (0*10) + (min(50*2/100, 10)*5) - (1*25) = 20 + 0 + 5 - 25 = 0
+    expected: 0, // (10*1) + (0*15) + (min(50*2/100, 10)*5) - (1*30) = 10 + 0 + 5 - 30 = -15 → clamped to 0
   },
   {
     metrics: {
@@ -29,7 +30,7 @@ const fixtures = [
       xlmBalance: 200,
       defaultCount: 0,
     },
-    expected: 80, // (20*2) + (2*10) + (min(200*2/100, 10)*5) - (0*25) = 40 + 20 + 20 - 0 = 80
+    expected: 70, // (20*1) + (2*15) + (min(200*2/100, 10)*5) - (0*30) = 20 + 30 + 20 - 0 = 70
   },
   {
     metrics: {
@@ -38,7 +39,7 @@ const fixtures = [
       xlmBalance: 2000, // Balance factor caps at 10
       defaultCount: 0,
     },
-    expected: 300, // (100*2) + (5*10) + (10*5) - 0 = 200 + 50 + 50 = 300
+    expected: 225, // (100*1) + (5*15) + (10*5) - 0 = 100 + 75 + 50 = 225
   },
 ];
 

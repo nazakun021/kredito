@@ -52,13 +52,14 @@ pub struct TimeDepositRecord {
     pub deposited_at: u32,    // ledger sequence
     pub term_ledgers: u32,    // e.g., 518400 ≈ 30 days
     pub apy_bps: u32,         // fixed APY in basis points (e.g., 500 = 5%)
+    pub projected_interest: i128,
 }
 
 #[contract]
 pub struct LendingPool;
 
 const MIN_TTL: u32 = 100_000;
-const MAX_TTL: u32 = 1_000_000;
+const MAX_TTL: u32 = 6_312_000;
 const REWARD_SCALE: i128 = 10_000_000; // 1e7 for precision
 const LEDGERS_PER_YEAR: i128 = 6_307_200;
 
@@ -87,6 +88,7 @@ pub enum Error {
     InsufficientStake = 19,
     TimeDepositExists = 20,
     TimeDepositNotFound = 21,
+    KycRequired = 22,
 }
 
 mod registry {
@@ -124,12 +126,7 @@ impl LendingPool {
         env.storage()
             .instance()
             .set(&DataKey::LoanTermLedgers, &loan_term_ledgers);
-        env.storage().instance().set(&DataKey::PoolBalance, &0i128);
-        env.storage().instance().set(&DataKey::TotalStaked, &0i128);
-        env.storage().instance().set(&DataKey::AccRewardPerShare, &0i128);
-        env.storage().instance().set(&DataKey::TotalRewardPool, &0i128);
-        env.storage().instance().set(&DataKey::StakedPool, &0i128);
-        env.storage().instance().set(&DataKey::ReservedInterest, &0i128);
+        
         bump_instance_ttl(&env);
     }
 
@@ -177,17 +174,21 @@ impl LendingPool {
 
         let registry_id = get_registry_id(&env);
         let registry_client = registry::Client::new(&env, &registry_id);
-        let tier = registry_client.get_tier(&borrower);
-        if !registry_client.is_tier_current(&borrower) {
+        // Fail-Fast: Retrieve tier and limit in a single optimized inter-contract call
+        let (tier, limit) = registry_client.get_active_tier_and_limit(&borrower);
+        if tier < 1 || limit <= 0 {
             panic_with_error!(&env, Error::NoCreditTier);
         }
-        if tier < 1 {
-            panic_with_error!(&env, Error::NoCreditTier);
-        }
-
-        let limit = registry_client.get_tier_limit(&tier);
         if amount > limit {
             panic_with_error!(&env, Error::BorrowLimitExceeded);
+        }
+
+        // KYC enforcement: Silver (2), Gold (3), Platinum (4) require KYC
+        if tier >= 2 {
+            let kyc_verified = registry_client.get_kyc_verified(&borrower);
+            if !kyc_verified {
+                panic_with_error!(&env, Error::KycRequired);
+            }
         }
 
         let mut balance: i128 = env
@@ -263,22 +264,17 @@ impl LendingPool {
             .principal
             .checked_add(loan.fee)
             .unwrap_or_else(|| panic_with_error!(&env, Error::RepaymentOverflow));
-        
-        let xlm_token = get_xlm_token(&env);
-        let token_client = token::Client::new(&env, &xlm_token);
-        token_client.transfer(
-            &borrower,
-            &env.current_contract_address(),
-            &total_owed,
-        );
 
+        // --- EFFECTS: update all state before any external call ---
+
+        // 1. Mark loan repaid
         loan.repaid = true;
         env.storage().persistent().set(&loan_key, &loan);
         env.storage()
             .persistent()
             .extend_ttl(&loan_key, MIN_TTL, MAX_TTL);
 
-        // Distribute fees: 50% stays in pool, 50% to stakers if any
+        // 2. Distribute fees: 50% stays in pool, 50% to stakers if any
         let total_staked = get_total_staked(&env);
         let (staker_fee, pool_gain) = if total_staked > 0 {
             let s_fee = loan.fee / 2;
@@ -291,6 +287,7 @@ impl LendingPool {
             distribute_fee_to_stakers(&env, staker_fee);
         }
 
+        // 3. Credit pool balance
         let mut balance: i128 = env
             .storage()
             .instance()
@@ -304,9 +301,19 @@ impl LendingPool {
             .set(&DataKey::PoolBalance, &balance);
         bump_instance_ttl(&env);
 
+        // 4. Emit event
         env.events().publish(
-            (symbol_short!("repaid"), borrower),
+            (symbol_short!("repaid"), borrower.clone()),
             (total_owed, env.ledger().timestamp()),
+        );
+
+        // --- INTERACTION: external token transfer happens last ---
+        let xlm_token = get_xlm_token(&env);
+        let token_client = token::Client::new(&env, &xlm_token);
+        token_client.transfer(
+            &borrower,
+            &env.current_contract_address(),
+            &total_owed,
         );
     }
 
@@ -339,6 +346,7 @@ impl LendingPool {
 
         env.events()
             .publish((symbol_short!("defaulted"), borrower), loan.principal);
+        bump_instance_ttl(&env);
     }
 
     pub fn get_loan(env: Env, borrower: Address) -> Option<LoanRecord> {
@@ -349,6 +357,7 @@ impl LendingPool {
                 .persistent()
                 .extend_ttl(&key, MIN_TTL, MAX_TTL);
         }
+        bump_instance_ttl(&env);
         loan
     }
 
@@ -365,22 +374,13 @@ impl LendingPool {
         get_total_staked(&env)
     }
 
-    pub fn get_total_staked_pub(env: Env) -> i128 {
-        bump_instance_ttl(&env);
-        get_total_staked(&env)
-    }
-
     pub fn get_total_reward_pool(env: Env) -> i128 {
         bump_instance_ttl(&env);
         get_total_reward_pool(&env)
     }
 
-    pub fn get_total_reward_pool_pub(env: Env) -> i128 {
-        bump_instance_ttl(&env);
-        get_total_reward_pool(&env)
-    }
-
     pub fn get_flat_fee_bps(env: Env) -> u32 {
+        bump_instance_ttl(&env);
         read_flat_fee_bps(&env)
     }
 
@@ -400,7 +400,6 @@ impl LendingPool {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
 
-        // Bug #2 / Bug #1 Option B / Bug #3: Ensure admin doesn't drain staker or depositor funds
         let xlm_token = get_xlm_token(&env);
         let token_client = token::Client::new(&env, &xlm_token);
         let contract_balance = token_client.balance(&env.current_contract_address());
@@ -435,10 +434,12 @@ impl LendingPool {
             &amount,
         );
 
-        let mut staker_balance = get_staker_balance(&env, &staker);
+        // Reuse key construction
+        let staker_balance_key = DataKey::StakerBalance(staker.clone());
+        let mut staker_balance = env.storage().persistent().get(&staker_balance_key).unwrap_or(0);
         staker_balance += amount;
-        env.storage().persistent().set(&DataKey::StakerBalance(staker.clone()), &staker_balance);
-        env.storage().persistent().extend_ttl(&DataKey::StakerBalance(staker.clone()), MIN_TTL, MAX_TTL);
+        env.storage().persistent().set(&staker_balance_key, &staker_balance);
+        env.storage().persistent().extend_ttl(&staker_balance_key, MIN_TTL, MAX_TTL);
 
         let mut total_staked = get_total_staked(&env);
         total_staked += amount;
@@ -469,7 +470,9 @@ impl LendingPool {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
 
-        let mut staker_balance = get_staker_balance(&env, &staker);
+        // Reuse key construction
+        let staker_balance_key = DataKey::StakerBalance(staker.clone());
+        let mut staker_balance = env.storage().persistent().get(&staker_balance_key).unwrap_or(0);
         if amount > staker_balance {
             panic_with_error!(&env, Error::InsufficientStake);
         }
@@ -491,8 +494,8 @@ impl LendingPool {
         }
 
         staker_balance -= amount;
-        env.storage().persistent().set(&DataKey::StakerBalance(staker.clone()), &staker_balance);
-        env.storage().persistent().extend_ttl(&DataKey::StakerBalance(staker.clone()), MIN_TTL, MAX_TTL);
+        env.storage().persistent().set(&staker_balance_key, &staker_balance);
+        env.storage().persistent().extend_ttl(&staker_balance_key, MIN_TTL, MAX_TTL);
         
         let mut total_staked = get_total_staked(&env);
         total_staked -= amount;
@@ -527,6 +530,8 @@ impl LendingPool {
             0
         };
 
+        bump_instance_ttl(&env);
+
         StakeInfo {
             staked_amount: staker_balance,
             pending_rewards: total_pending,
@@ -552,7 +557,7 @@ impl LendingPool {
             500
         };
 
-        // Projected interest at maturity
+        // Projected interest at maturity (Cached optimization)
         let projected_interest = (amount * apy_bps as i128 * term_ledgers as i128)
             / (10_000 * LEDGERS_PER_YEAR);
 
@@ -562,7 +567,6 @@ impl LendingPool {
             .get(&DataKey::PoolBalance)
             .unwrap_or(0);
         
-        // Bug #3 fix: interest must be reservable from current PoolBalance
         if balance < projected_interest {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
@@ -592,6 +596,7 @@ impl LendingPool {
             deposited_at: env.ledger().sequence(),
             term_ledgers,
             apy_bps,
+            projected_interest,
         };
 
         env.storage().persistent().set(&key, &record);
@@ -619,8 +624,7 @@ impl LendingPool {
         let current_ledger = env.ledger().sequence();
         let matured = current_ledger >= record.deposited_at + record.term_ledgers;
 
-        let projected_interest = (record.amount * record.apy_bps as i128 * record.term_ledgers as i128)
-            / (10_000 * LEDGERS_PER_YEAR);
+        let projected_interest = record.projected_interest;
 
         let actual_interest = if matured {
             let ledgers_elapsed = (current_ledger - record.deposited_at) as i128;
@@ -631,7 +635,14 @@ impl LendingPool {
             0
         };
 
-        let total_payout = record.amount + actual_interest;
+        // Early withdrawal penalty: 1% of principal if not matured
+        let penalty = if !matured {
+            record.amount / 100
+        } else {
+            0
+        };
+
+        let total_payout = record.amount + actual_interest - penalty;
 
         let mut balance: i128 = env
             .storage()
@@ -639,7 +650,6 @@ impl LendingPool {
             .get(&DataKey::PoolBalance)
             .unwrap_or(0);
         
-        // Principal is in PoolBalance, Interest is in ReservedInterest
         if record.amount > balance {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
@@ -665,13 +675,15 @@ impl LendingPool {
         client.transfer(&env.current_contract_address(), &depositor, &total_payout);
 
         env.events()
-            .publish((symbol_short!("twithdraw"), depositor), (record.amount, actual_interest));
+            .publish((symbol_short!("twithdraw"), depositor), (record.amount, actual_interest, penalty));
         bump_instance_ttl(&env);
     }
 
     pub fn get_time_deposit(env: Env, depositor: Address) -> Option<TimeDepositRecord> {
         let key = DataKey::TimeDeposit(depositor);
-        env.storage().persistent().get(&key)
+        let record = env.storage().persistent().get(&key);
+        bump_instance_ttl(&env);
+        record
     }
 }
 
@@ -688,33 +700,28 @@ fn get_instance_value<
 }
 
 fn get_admin(env: &Env) -> Address {
-    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::Admin)
 }
 
 fn get_registry_id(env: &Env) -> Address {
-    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::RegistryId)
 }
 
 fn get_xlm_token(env: &Env) -> Address {
-    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::XlmToken)
 }
 
 fn read_flat_fee_bps(env: &Env) -> u32 {
-    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::FlatFeeBps)
 }
 
 fn get_loan_term_ledgers(env: &Env) -> u32 {
-    bump_instance_ttl(env);
     get_instance_value(env, &DataKey::LoanTermLedgers)
 }
 
 fn tier_fee_bps(base_fee_bps: u32, tier: u32) -> u32 {
     match tier {
-        4 => base_fee_bps.saturating_sub(500),
+        4 => base_fee_bps.saturating_sub(450), // 50 bps = 0.5%
         3 => base_fee_bps.saturating_sub(350),
         2 => base_fee_bps.saturating_sub(200),
         _ => base_fee_bps,

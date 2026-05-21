@@ -16,7 +16,10 @@ import {
   TrendingUp,
   Wallet as WalletIcon,
   CheckCircle2,
-  X
+  X,
+  ShieldAlert,
+  PiggyBank,
+  Sparkles,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import api from '@/lib/api';
@@ -30,6 +33,7 @@ import { NETWORK_PASSPHRASE } from '@/lib/constants';
 interface Transaction {
   id: string;
   type: string;
+  label: string;
   amount: string;
   from?: string;
   to?: string;
@@ -57,6 +61,7 @@ export default function WalletPage() {
 
   const { networkPassphrase } = useWalletStore();
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showKycWarningModal, setShowKycWarningModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showGcashModal, setShowGcashModal] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -66,6 +71,21 @@ export default function WalletPage() {
     queryFn: () => api.get('/wallet/balance').then((res) => res.data),
     enabled: !!user?.wallet,
     refetchInterval: 30000,
+  });
+
+  const { data: score } = useQuery({
+    queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
+    queryFn: async () => {
+      try {
+        return await api.get<any>('/credit/score').then((res) => res.data);
+      } catch (err: unknown) {
+        const error = err as { response?: { status?: number } };
+        if (error?.response?.status === 404) return null;
+        throw err;
+      }
+    },
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: transactions, isLoading: isTxLoading } = useQuery<Transaction[]>({
@@ -89,12 +109,22 @@ export default function WalletPage() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success('Address copied!');
+    toast.success('Copied!');
   };
+
+  // Group transactions by date
+  const groupedTransactions = transactions?.reduce<Record<string, Transaction[]>>((acc, tx) => {
+    const date = new Date(tx.timestamp).toLocaleDateString('en-US', { 
+      month: 'short', day: 'numeric', year: 'numeric' 
+    });
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(tx);
+    return acc;
+  }, {});
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="animate-fade-up">
+      <div className="mb-8 animate-fade-up">
         <h1 className="text-2xl font-extrabold lg:text-3xl">Wallet</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Manage your XLM and track on-chain activity.
@@ -102,37 +132,69 @@ export default function WalletPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Balance Hero */}
-        <div className="lg:col-span-2 card-elevated animate-fade-up flex flex-col justify-between min-h-[240px] relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10">
-            <WalletIcon size={120} />
+        {/* Balance Hero Card — Glassmorphism */}
+        <div className="lg:col-span-2 glass-hero rounded-2xl p-8 animate-fade-up flex flex-col justify-between min-h-[280px] relative overflow-hidden shimmer-overlay">
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-[0.03]" 
+            style={{ background: 'radial-gradient(circle, var(--color-accent) 0%, transparent 70%)', transform: 'translate(30%, -30%)' }} 
+          />
+          <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full opacity-[0.02]"
+            style={{ background: 'radial-gradient(circle, #A855F7 0%, transparent 70%)', transform: 'translate(-30%, 30%)' }}
+          />
+          
+          {/* Address Pill */}
+          <div className="flex items-center justify-between mb-6 relative z-10">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-emerald-500 pulse-glow" />
+              <span className="text-[11px] font-semibold tracking-wider uppercase" style={{ color: 'var(--color-text-muted)' }}>Stellar Mainnet</span>
+            </div>
+            <button 
+              onClick={() => copyToClipboard(user?.wallet ?? '')}
+              className="gradient-border rounded-lg px-3 py-1.5 text-[11px] font-mono tracking-wider font-bold flex items-center gap-2 transition-all hover:bg-white/5 group"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              {user?.wallet?.slice(0, 6)}…{user?.wallet?.slice(-4)}
+              <Copy size={12} className="opacity-40 group-hover:opacity-100 transition-opacity" />
+            </button>
           </div>
           
-          <div className="relative z-10">
-            <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="relative z-10 flex-1 flex flex-col justify-center">
+            <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--color-text-muted)' }}>
               Total Balance
             </p>
             {isBalanceLoading ? (
-              <div className="skeleton mt-4 h-12 w-48" />
+              <div className="skeleton h-14 w-56" />
             ) : (
-              <div className="mt-4">
-                <h2 className="text-5xl font-extrabold tabular-nums">◎{balance?.xlmBalance ?? '0.0000'}</h2>
-                <p className="mt-2 text-lg font-bold opacity-60">≈ ₱{balance?.phpEquivalent ?? '0.00'}</p>
+              <div className="animate-count-up">
+                <h2 className="text-5xl font-extrabold tabular-nums tracking-tight">
+                  ◎{Number(balance?.xlmBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                </h2>
+                <p className="mt-2 text-lg font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                  ≈ ₱{Number(balance?.phpEquivalent ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
             )}
           </div>
 
-          <div className="mt-8 flex gap-3 relative z-10">
+          <div className="mt-6 flex gap-3 relative z-10">
             <button 
-              onClick={() => setShowSendModal(true)}
-              className="btn-primary btn-accent flex-1"
+              onClick={() => {
+                if (score && !score.kycVerified) {
+                  setShowKycWarningModal(true);
+                } else {
+                  setShowSendModal(true);
+                }
+              }}
+              className="btn-primary btn-accent flex-1 justify-center"
+              style={{ borderRadius: 'var(--radius-lg)' }}
             >
               <ArrowUpRight size={18} />
               Send
             </button>
             <button 
               onClick={() => setShowReceiveModal(true)}
-              className="btn-primary btn-dark flex-1"
+              className="btn-primary btn-dark flex-1 justify-center"
+              style={{ borderRadius: 'var(--radius-lg)' }}
             >
               <ArrowDownLeft size={18} />
               Receive
@@ -143,74 +205,81 @@ export default function WalletPage() {
         {/* Quick Actions Card */}
         <div className="card-elevated animate-fade-up" style={{ animationDelay: '100ms' }}>
           <h3 className="text-sm font-bold flex items-center gap-2 mb-6">
-            <Send size={16} style={{ color: 'var(--color-accent)' }} />
+            <Sparkles size={16} style={{ color: 'var(--color-accent)' }} />
             Quick Actions
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <button 
+            <ActionButton 
               onClick={() => router.push('/staking')}
-              className="flex flex-col items-center justify-center p-4 rounded-xl transition-all hover:bg-slate-800/50 group"
-              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-            >
-              <TrendingUp size={24} className="mb-2 text-emerald-500 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-bold">Stake XLM</span>
-            </button>
-            <button 
+              icon={<TrendingUp size={22} className="text-emerald-500" />}
+              label="Stake XLM"
+            />
+            <ActionButton 
               onClick={() => router.push('/loan/borrow')}
-              className="flex flex-col items-center justify-center p-4 rounded-xl transition-all hover:bg-slate-800/50 group"
-              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-            >
-              <WalletIcon size={24} className="mb-2 text-indigo-500 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-bold">Borrow XLM</span>
-            </button>
-            <button 
+              icon={<WalletIcon size={22} className="text-indigo-500" />}
+              label="Borrow"
+            />
+            <ActionButton 
+              onClick={() => router.push('/deposit')}
+              icon={<PiggyBank size={22} className="text-amber-500" />}
+              label="Deposit"
+            />
+            <ActionButton 
               onClick={() => setShowGcashModal(true)}
-              className="flex flex-col items-center justify-center p-4 rounded-xl transition-all hover:bg-slate-800/50 group"
-              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-            >
-              <div className="h-6 w-6 mb-2 rounded bg-blue-600 flex items-center justify-center text-[10px] font-extrabold text-white group-hover:scale-110 transition-transform">G</div>
-              <span className="text-xs font-bold">Connect GCash</span>
-            </button>
-            <button 
-              className="flex flex-col items-center justify-center p-4 rounded-xl opacity-40 cursor-not-allowed"
-              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-            >
-              <div className="h-6 w-6 mb-2 rounded-full bg-slate-700" />
-              <span className="text-xs font-bold">USDC (Soon)</span>
-            </button>
+              icon={<div className="h-[22px] w-[22px] rounded bg-blue-600 flex items-center justify-center text-[10px] font-extrabold text-white">G</div>}
+              label="GCash"
+            />
           </div>
-        </div>
-
-        {/* Platforms Card */}
-        <div className="card-elevated animate-fade-up" style={{ animationDelay: '200ms' }}>
-          <h3 className="text-sm font-bold flex items-center gap-2 mb-6">
-            <Globe size={16} style={{ color: 'var(--color-accent)' }} />
-            Connected Platforms
-          </h3>
-          <div className="space-y-3">
-            <PlatformItem name="Stellar Network" status="Live" icon={CheckCircle2} isLive />
-            <PlatformItem name="GCash" status="Soon" icon={Clock} />
-            <PlatformItem name="USDC" status="Soon" icon={Clock} />
-            <PlatformItem name="Maya" status="Soon" icon={Clock} />
+          
+          {/* Connected Platforms */}
+          <div className="mt-6 pt-6" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <h3 className="text-[10px] font-bold tracking-widest uppercase mb-4" style={{ color: 'var(--color-text-muted)' }}>
+              Connected
+            </h3>
+            <div className="space-y-2">
+              <PlatformItem name="Stellar Network" status="Live" icon={CheckCircle2} isLive />
+              <PlatformItem name="GCash" status="Soon" icon={Clock} />
+              <PlatformItem name="USDC" status="Soon" icon={Clock} />
+              <PlatformItem name="Maya" status="Soon" icon={Clock} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Transactions */}
-      <div className="card-elevated animate-fade-up" style={{ animationDelay: '300ms' }}>
-        <h3 className="text-sm font-bold mb-6">Recent Activity</h3>
+      {/* Transactions — Grouped by Date */}
+      <div className="card-elevated animate-fade-up" style={{ animationDelay: '200ms' }}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-sm font-bold">Recent Activity</h3>
+          {transactions && transactions.length > 0 && (
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md" 
+              style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-muted)' }}>
+              {transactions.length} transactions
+            </span>
+          )}
+        </div>
         <div className="space-y-1">
           {isTxLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="skeleton h-16 w-48 mx-auto" />
+              <div key={i} className="skeleton h-16 mb-2" />
             ))
-          ) : transactions?.length === 0 ? (
-            <p className="py-12 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              No transactions found yet.
-            </p>
+          ) : !transactions?.length ? (
+            <div className="py-16 text-center">
+              <div className="mx-auto h-14 w-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'var(--color-bg-elevated)' }}>
+                <WalletIcon size={24} className="opacity-20" />
+              </div>
+              <p className="text-sm font-semibold opacity-40">No transactions found yet</p>
+              <p className="text-xs opacity-30 mt-1">Your transaction history will appear here</p>
+            </div>
           ) : (
-            transactions?.map((tx) => (
-              <TransactionRow key={tx.id} tx={tx} onCopy={copyToClipboard} />
+            Object.entries(groupedTransactions ?? {}).map(([date, txs]) => (
+              <div key={date}>
+                <p className="text-[10px] font-bold uppercase tracking-widest py-3 px-2" style={{ color: 'var(--color-text-muted)' }}>
+                  {date}
+                </p>
+                {txs.map((tx) => (
+                  <TransactionRow key={tx.id} tx={tx} onCopy={copyToClipboard} />
+                ))}
+              </div>
             ))
           )}
         </div>
@@ -218,6 +287,11 @@ export default function WalletPage() {
 
       {/* Send Modal */}
       {showSendModal && <SendModal onClose={() => setShowSendModal(false)} balance={balance?.xlmBalance ?? '0'} />}
+      
+      {/* KYC Warning Modal */}
+      {showKycWarningModal && (
+        <KycRequiredModal onClose={() => setShowKycWarningModal(false)} />
+      )}
       
       {/* Receive Modal */}
       {showReceiveModal && (
@@ -231,11 +305,11 @@ export default function WalletPage() {
 
       {/* GCash Modal */}
       {showGcashModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="card-elevated w-full max-w-md animate-scale-in">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-extrabold">Connect GCash</h3>
-              <button onClick={() => setShowGcashModal(false)} className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+              <button onClick={() => setShowGcashModal(false)} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -271,11 +345,26 @@ export default function WalletPage() {
   );
 }
 
+function ActionButton({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="flex flex-col items-center justify-center p-4 rounded-xl transition-all hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98] group"
+      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
+    >
+      <div className="mb-2 group-hover:scale-110 transition-transform duration-200">
+        {icon}
+      </div>
+      <span className="text-xs font-bold">{label}</span>
+    </button>
+  );
+}
+
 function PlatformItem({ name, status, icon: Icon, isLive }: { name: string; status: string; icon: any; isLive?: boolean }) {
   return (
-    <div className="flex items-center justify-between rounded-xl p-3" style={{ background: 'var(--color-bg-card)' }}>
+    <div className="flex items-center justify-between rounded-xl p-3 transition-colors hover:bg-white/[0.02]" style={{ background: 'var(--color-bg-card)' }}>
       <div className="flex items-center gap-3">
-        <div className={`p-1.5 rounded-lg ${isLive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-800 text-slate-500'}`}>
+        <div className={`p-1.5 rounded-lg ${isLive ? 'bg-emerald-500/10 text-emerald-500' : 'text-slate-500'}`} style={{ background: isLive ? undefined : 'var(--color-bg-elevated)' }}>
           <Icon size={14} />
         </div>
         <span className="text-xs font-bold">{name}</span>
@@ -288,37 +377,39 @@ function PlatformItem({ name, status, icon: Icon, isLive }: { name: string; stat
 }
 
 function TransactionRow({ tx, onCopy }: { tx: Transaction; onCopy: (t: string) => void }) {
+  const time = new Date(tx.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
   return (
-    <div className="flex items-center justify-between rounded-xl p-4 transition-colors hover:bg-slate-800/30 group">
+    <div className="flex items-center justify-between rounded-xl p-4 transition-all hover:bg-white/[0.03] group">
       <div className="flex items-center gap-4">
         <div 
-          className="flex h-10 w-10 items-center justify-center rounded-full"
-          style={{ background: tx.isOutbound ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)' }}
+          className="flex h-10 w-10 items-center justify-center rounded-full transition-transform group-hover:scale-105"
+          style={{ background: tx.isOutbound ? 'rgba(239, 68, 68, 0.08)' : 'rgba(34, 197, 94, 0.08)' }}
         >
           {tx.isOutbound ? (
-            <ArrowUpRight size={18} className="text-red-500" />
+            <ArrowUpRight size={18} className="text-red-400" />
           ) : (
-            <ArrowDownLeft size={18} className="text-emerald-500" />
+            <ArrowDownLeft size={18} className="text-emerald-400" />
           )}
         </div>
         <div>
-          <p className="text-sm font-bold">{tx.type}</p>
-          <p className="text-xs opacity-50">{tx.timestamp}</p>
+          <p className="text-sm font-bold">{tx.label}</p>
+          <p className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{time}</p>
         </div>
       </div>
       <div className="text-right">
         <p className={`text-sm font-bold tabular-nums ${tx.isOutbound ? 'text-red-400' : 'text-emerald-400'}`}>
           {tx.isOutbound ? '-' : '+'}◎{tx.amount}
         </p>
-        <div className="flex items-center justify-end gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onCopy(tx.transactionHash)} className="text-[10px] uppercase font-bold text-slate-500 hover:text-white flex items-center gap-1">
+        <div className="flex items-center justify-end gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button onClick={() => onCopy(tx.transactionHash)} className="text-[10px] uppercase font-bold text-slate-500 hover:text-white flex items-center gap-1 transition-colors">
             <Copy size={10} /> Hash
           </button>
           <a 
             href={`${EXPLORER_BASE}/tx/${tx.transactionHash}`} 
             target="_blank" 
             rel="noreferrer"
-            className="text-[10px] uppercase font-bold text-slate-500 hover:text-white flex items-center gap-1"
+            className="text-[10px] uppercase font-bold text-slate-500 hover:text-white flex items-center gap-1 transition-colors"
           >
             <ExternalLink size={10} /> Verify
           </a>
@@ -369,11 +460,11 @@ function SendModal({ onClose, balance }: { onClose: () => void; balance: string 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="card-elevated w-full max-w-md animate-scale-in">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-extrabold">Send XLM</h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -417,10 +508,10 @@ function SendModal({ onClose, balance }: { onClose: () => void; balance: string 
 
 function ReceiveModal({ onClose, address, qrDataUrl, onCopy }: { onClose: () => void; address: string; qrDataUrl: string; onCopy: (t: string) => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="card-elevated w-full max-w-md animate-scale-in flex flex-col items-center text-center">
         <div className="w-full flex justify-end">
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -440,20 +531,61 @@ function ReceiveModal({ onClose, address, qrDataUrl, onCopy }: { onClose: () => 
 
         <div 
           onClick={() => onCopy(address)}
-          className="w-full rounded-xl p-4 bg-slate-900 border border-slate-800 cursor-pointer hover:border-emerald-500 transition-all group"
+          className="w-full rounded-xl p-4 cursor-pointer hover:border-emerald-500 transition-all group gradient-border"
+          style={{ background: 'var(--color-bg-card)' }}
         >
           <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">Wallet Address</p>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-mono break-all text-emerald-400 group-hover:text-emerald-300">
+            <span className="text-xs font-mono break-all text-emerald-400 group-hover:text-emerald-300 transition-colors">
               {address}
             </span>
-            <Copy size={16} className="shrink-0 opacity-40 group-hover:opacity-100" />
+            <Copy size={16} className="shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" />
           </div>
         </div>
 
         <p className="mt-6 text-[11px] opacity-40 italic">
           Only send Stellar Assets (XLM) to this address.
         </p>
+      </div>
+    </div>
+  );
+}
+
+function KycRequiredModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="card-elevated w-full max-w-md animate-scale-in text-center p-8 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-red-500 via-amber-500 to-red-500" />
+        <div className="w-full flex justify-end mb-2">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500 mb-6">
+          <ShieldAlert size={32} />
+        </div>
+        <h3 className="text-xl font-extrabold mb-3">Identity Verification Required</h3>
+        <p className="text-sm opacity-70 mb-8 leading-relaxed">
+          To comply with safety standards and regulatory requirements, all outbound XLM transfers and withdrawals require an active on-chain KYC verification.
+        </p>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => {
+              onClose();
+              router.push('/kyc');
+            }}
+            className="btn-primary btn-accent w-full justify-center"
+          >
+            Start KYC Verification
+          </button>
+          <button
+            onClick={onClose}
+            className="btn-primary btn-dark w-full justify-center"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

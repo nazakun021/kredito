@@ -54,6 +54,11 @@ router.post(
       throw badRequest('No active credit tier');
     }
 
+    // KYC enforcement: Silver (2), Gold (3), Platinum (4) require KYC
+    if (score.tier >= 2 && !score.kycVerified) {
+      throw badRequest('KYC verification required for this tier');
+    }
+
     const amountStroops = toStroops(amount);
     if (amountStroops > BigInt(score.borrowLimitRaw)) {
       throw badRequest('Amount exceeds tier limit');

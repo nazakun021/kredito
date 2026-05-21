@@ -14,6 +14,8 @@ export default function ConnectWalletButton() {
     isConnected, 
     publicKey, 
     isConnecting, 
+    isRestoring,
+    hasRestored,
     connect, 
     disconnect 
   } = useWalletStore();
@@ -62,6 +64,16 @@ export default function ConnectWalletButton() {
             disconnect={disconnect}
           />
         )}
+      </div>
+    );
+  }
+
+  // Only show the connect button once we've finished trying to restore the session
+  if (!hasRestored || isRestoring) {
+    return (
+      <div className="btn-primary btn-dark btn-sm flex w-auto items-center gap-2 px-4 py-2 opacity-50 cursor-wait">
+        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+        <span className="text-sm font-medium">Syncing…</span>
       </div>
     );
   }

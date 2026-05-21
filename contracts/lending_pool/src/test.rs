@@ -28,6 +28,16 @@ struct TestContext {
 fn setup_pool(flat_fee_bps: u32, loan_term_ledgers: u32) -> TestContext {
     let env = Env::default();
     env.mock_all_auths();
+    env.ledger().set(LedgerInfo {
+        timestamp: 0,
+        protocol_version: 22,
+        sequence_number: 0,
+        network_id: [0; 32],
+        base_reserve: 0,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 6_312_000,
+    });
 
     let admin = Address::generate(&env);
     let borrower = Address::generate(&env);
@@ -112,6 +122,8 @@ fn test_gold_tier_gets_lower_fee() {
     let ctx = setup_pool(500, 518_400);
 
     fund_pool(&ctx, POOL_FUNDING);
+    // Set KYC verified first, then set Tier 3 (Gold)
+    registry_client(&ctx).set_kyc_verified(&ctx.borrower, &true);
     registry_client(&ctx).set_tier(&ctx.borrower, &3);
 
     let borrow_amount = 10_000_000_000;
@@ -119,6 +131,18 @@ fn test_gold_tier_gets_lower_fee() {
 
     let loan = pool_client(&ctx).get_loan(&ctx.borrower).unwrap();
     assert_eq!(loan.fee, (borrow_amount * 150) / 10_000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #22)")]
+fn test_borrow_rejects_non_kyc_silver() {
+    let ctx = setup_pool(500, 518_400);
+    fund_pool(&ctx, POOL_FUNDING);
+    
+    // Set borrower to Silver (tier 2) but do NOT verify KYC
+    registry_client(&ctx).set_tier(&ctx.borrower, &2);
+    
+    pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
 }
 
 #[test]
@@ -536,7 +560,9 @@ fn test_time_deposit_early_withdrawal_penalty() {
     // Withdraw early
     pool_client(&ctx).withdraw_time_deposit(&depositor);
 
-    assert_eq!(xlm_client(&ctx).balance(&depositor), amount); // No interest
+    // 1% penalty on principal applied
+    let penalty = amount / 100;
+    assert_eq!(xlm_client(&ctx).balance(&depositor), amount - penalty);
 }
 
 #[test]
@@ -572,16 +598,16 @@ fn test_expired_tier_rejection() {
     registry_client(&ctx).set_tier(&ctx.borrower, &1);
 
     // Fast forward ledger sequence to expire the tier.
-    // TIER_EXPIRY_LEDGERS is 518,400.
+    // TIER_EXPIRY_LEDGERS is 6,307,200.
     ctx.env.ledger().set(LedgerInfo {
         timestamp: 0,
         protocol_version: 22,
-        sequence_number: 518_401,
+        sequence_number: 6_307_205,
         network_id: [0; 32],
         base_reserve: 0,
         min_temp_entry_ttl: 16,
         min_persistent_entry_ttl: 16,
-        max_entry_ttl: 1000000,
+        max_entry_ttl: 6_312_000,
     });
 
     pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);

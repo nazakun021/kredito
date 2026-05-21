@@ -158,7 +158,14 @@ export const useWalletStore = create<WalletState>((set) => ({
     }
 
     try {
-      const address = await getConnectedAddress();
+      let address = await getConnectedAddress();
+      
+      if (!address) {
+        // Wait 500ms and retry once before giving up (Freighter can be slow to initialize)
+        await new Promise((r) => setTimeout(r, 500));
+        address = await getConnectedAddress();
+      }
+
       if (address) {
         const networkDetails = await getWalletNetwork();
         set({
@@ -173,7 +180,7 @@ export const useWalletStore = create<WalletState>((set) => ({
             : null
         });
       } else {
-        // If we thought we were connected but can't get address, clear it
+        // If we thought we were connected but can't get address after retry, clear it
         safeLocalStorageRemove('kredito_wallet_connected');
         set({ isRestoring: false, hasRestored: true });
       }

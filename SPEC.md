@@ -102,10 +102,10 @@ pub struct Metrics {
 **Scoring formula** (mirrors backend `calculateScore`):
 
 ```
-score = (tx_count * 2)
-      + (repayment_count * 10)
+score = (tx_count * 1)
+      + (repayment_count * 15)
       + (min(avg_balance * 2 / 100, 10) * 5)
-      - (default_count * 25)
+      - (default_count * 30)
 ```
 
 Score is clamped to `0..=u32::MAX`. Negative intermediate values saturate to 0.
@@ -116,15 +116,19 @@ Score is clamped to `0..=u32::MAX`. Negative intermediate values saturate to 0.
 | ---- | -------- | --------- | ------------ |
 | 0    | Unrated  | —         | No           |
 | 1    | Bronze   | 40        | No           |
-| 2    | Silver   | 80        | No           |
-| 3    | Gold     | 120       | No           |
-| 4    | Verified | 40+       | Yes          |
+| 2    | Silver   | 80        | Yes          |
+| 3    | Gold     | 120       | Yes          |
+| 4    | Platinum | 200+      | Yes          |
 
-Tier 4 overrides tiers 1–3 when `kyc_verified == true AND score >= BRONZE_MIN_SCORE`.
+Tier 4 requires `kyc_verified == true AND score >= 200`.
 
-**Tier expiry:** Each `update_metrics` call sets `TierExpiry(wallet) = ledger + 518_400`
-(≈30 days at 5s/ledger). After expiry, `get_tier()` returns 0 until the next refresh.
-This incentivizes regular on-chain activity.
+**KYC enforcement for borrowing:** Tiers 2–4 (Silver, Gold, Platinum) require
+KYC verification before users can borrow from the lending pool. Bronze (Tier 1)
+can borrow without KYC.
+
+**Tier expiry:** Each `update_metrics` call sets `TierExpiry(wallet) = ledger + 6_307_200`
+(≈365 days at 5s/ledger). After expiry, `get_tier()` returns 0 until the next refresh.
+This incentivizes at least annual on-chain activity.
 
 **Public functions:**
 
@@ -198,7 +202,7 @@ pub struct TimeDepositRecord {
 | 1 (Bronze)   | `base_fee_bps` (500 bps = 5%)         |
 | 2 (Silver)   | `base_fee_bps - 200` (300 bps = 3%)   |
 | 3 (Gold)     | `base_fee_bps - 350` (150 bps = 1.5%) |
-| 4 (Verified) | `base_fee_bps - 500` (0 bps = 0%)     |
+| 4 (Platinum) | `base_fee_bps - 450` (50 bps = 0.5%)  |
 
 **Fee distribution on repayment:**
 
@@ -220,6 +224,14 @@ pending_rewards[staker] = (staker_balance * acc_reward_per_share / REWARD_SCALE)
 
 ```
 interest = amount × apy_bps × term_ledgers / (10_000 × 365_days_in_ledgers)
+```
+
+**Early withdrawal penalty:** Withdrawing before maturity forfeits all accrued
+interest and deducts a 1% penalty on the principal:
+
+```
+penalty = amount / 100
+payout = amount - penalty   (no interest)
 ```
 
 **Public functions:**
@@ -391,10 +403,10 @@ Test vectors in `engine.test.ts` validate this parity:
 
 ```typescript
 score =
-  txCount * 2 +
-  repaymentCount * 10 +
+  txCount * 1 +
+  repaymentCount * 15 +
   min(Math.floor((xlmBalance * 2) / 100), 10) * 5 -
-  defaultCount * 25;
+  defaultCount * 30;
 // clamped: Math.max(0, score)
 ```
 

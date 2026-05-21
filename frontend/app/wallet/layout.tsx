@@ -1,4 +1,5 @@
-// frontend/app/wallet/layout.tsx
+import { AppShell } from '@/components/app-shell';
+
 export default function WalletLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <AppShell>{children}</AppShell>;
 }

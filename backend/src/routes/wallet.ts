@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { Asset, Operation, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Address, Asset, Operation, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
 import axios from 'axios';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { asyncRoute, badRequest } from '../errors';
-import { horizonServer, networkPassphrase } from '../stellar/client';
+import { contractIds, horizonServer, networkPassphrase } from '../stellar/client';
+import { queryContract } from '../stellar/query';
 import { toStroops } from '../scoring/engine';
 
 const router = Router();
@@ -64,17 +65,29 @@ router.get(
       .order('desc')
       .call();
 
-    const formatted = payments.records.map((p: any) => ({
-      id: p.id,
-      type: p.type,
-      from: p.from,
-      to: p.to,
-      amount: p.amount,
-      asset: p.asset_type === 'native' ? 'XLM' : p.asset_code,
-      timestamp: p.created_at,
-      transactionHash: p.transaction_hash,
-      isOutbound: p.from === wallet,
-    }));
+    const formatted = payments.records.map((p: any) => {
+      const label = (() => {
+        if (p.type === 'payment') return p.from === wallet ? 'Sent XLM' : 'Received XLM';
+        if (p.type === 'create_account') return 'Account Funded';
+        if (p.type === 'invoke_host_function') return 'Smart Contract Call';
+        if (p.type === 'path_payment_strict_send' || p.type === 'path_payment_strict_receive')
+          return 'Swap';
+        return p.type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      })();
+
+      return {
+        id: p.id,
+        type: p.type,
+        label,
+        from: p.from,
+        to: p.to,
+        amount: p.amount,
+        asset: p.asset_type === 'native' ? 'XLM' : p.asset_code,
+        timestamp: p.created_at,
+        transactionHash: p.transaction_hash,
+        isOutbound: p.from === wallet,
+      };
+    });
 
     res.json(formatted);
   }),
@@ -94,6 +107,17 @@ router.post(
     }
 
     const wallet = req.wallet;
+
+    // Enforce KYC check before allowing XLM transfer/withdraw
+    const kycVerified = await queryContract<boolean>(
+      contractIds.creditRegistry,
+      'get_kyc_verified',
+      [Address.fromString(wallet).toScVal()]
+    );
+    if (!kycVerified) {
+      throw badRequest('KYC verification required before sending or withdrawing XLM');
+    }
+
     const sourceAccount = await horizonServer.loadAccount(wallet);
 
     const tx = new TransactionBuilder(sourceAccount, {
