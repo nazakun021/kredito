@@ -92,16 +92,19 @@ export async function getWalletNetwork(): Promise<{ network: string; networkPass
 
 /**
  * Signs a transaction XDR.
+ * @param network - Stellar network name ('PUBLIC' | 'TESTNET') used by Freighter for network matching.
  */
 export async function signTx(
   xdr: string, 
   address: string, 
-  networkPassphrase: string
+  networkPassphrase: string,
+  network?: string,
 ): Promise<{ signedXdr: string } | { error: string }> {
   try {
     const result = await signTransaction(xdr, {
       networkPassphrase,
-      address, // Freighter API uses 'address' parameter
+      address,
+      ...(network ? { network } : {}),
     });
 
     if (typeof result === 'string') return { signedXdr: result };
@@ -132,16 +135,20 @@ export async function loginWithFreighter() {
 
   const publicKey = connection.address;
 
-  const challengeRes = await authApi.post<{ challenge: string; networkPassphrase: string }>('/auth/challenge', {
+  const challengeRes = await authApi.post<{
+    challenge: string;
+    network: string;
+    networkPassphrase: string;
+  }>('/auth/challenge', {
     wallet: publicKey,
   });
 
-  // Use the passphrase the backend used to build the challenge.
-  // This guarantees the signing hash matches what the backend will verify,
-  // regardless of frontend env vars or Freighter wallet settings.
-  const passphrase = challengeRes.data.networkPassphrase;
+  // Use the network name + passphrase the backend used to build the challenge.
+  // Freighter prioritizes `network` over `networkPassphrase` when both are present,
+  // and this guarantees the signing hash matches what the backend will verify.
+  const { challenge, network, networkPassphrase } = challengeRes.data;
 
-  const signResult = await signTx(challengeRes.data.challenge, publicKey, passphrase);
+  const signResult = await signTx(challenge, publicKey, networkPassphrase, network);
   if ('error' in signResult) throw new Error(signResult.error);
 
   const loginRes = await authApi.post<{
