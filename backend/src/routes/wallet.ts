@@ -112,7 +112,7 @@ router.post(
     const kycVerified = await queryContract<boolean>(
       contractIds.creditRegistry,
       'get_kyc_verified',
-      [Address.fromString(wallet).toScVal()]
+      [Address.fromString(wallet).toScVal()],
     );
     if (!kycVerified) {
       throw badRequest('KYC verification required before sending or withdrawing XLM');

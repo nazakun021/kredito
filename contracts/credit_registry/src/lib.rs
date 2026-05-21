@@ -158,18 +158,22 @@ impl CreditRegistry {
         };
 
         let state_key = DataKey::CreditState(wallet.clone());
-        let mut state = env.storage().persistent().get::<_, CreditState>(&state_key).unwrap_or(CreditState {
-            metrics: Metrics {
-                tx_count: 0,
-                repayment_count: 0,
-                avg_balance: 0,
-                default_count: 0,
-            },
-            score: 0,
-            tier: 0,
-            tier_timestamp: 0,
-            tier_expiry: 0,
-        });
+        let mut state = env
+            .storage()
+            .persistent()
+            .get::<_, CreditState>(&state_key)
+            .unwrap_or(CreditState {
+                metrics: Metrics {
+                    tx_count: 0,
+                    repayment_count: 0,
+                    avg_balance: 0,
+                    default_count: 0,
+                },
+                score: 0,
+                tier: 0,
+                tier_timestamp: 0,
+                tier_expiry: 0,
+            });
 
         state.score = score;
         state.tier = tier;
@@ -186,9 +190,7 @@ impl CreditRegistry {
         issuer.require_auth();
 
         let kyc_key = DataKey::KycVerified(wallet.clone());
-        env.storage()
-            .persistent()
-            .set(&kyc_key, &false);
+        env.storage().persistent().set(&kyc_key, &false);
         maybe_extend_persistent_ttl(&env, &kyc_key);
 
         let state_key = DataKey::CreditState(wallet.clone());
@@ -285,9 +287,7 @@ impl CreditRegistry {
         issuer.require_auth();
 
         let kyc_key = DataKey::KycVerified(wallet.clone());
-        env.storage()
-            .persistent()
-            .set(&kyc_key, &verified);
+        env.storage().persistent().set(&kyc_key, &verified);
         maybe_extend_persistent_ttl(&env, &kyc_key);
 
         // Trigger score/tier update if KYC status changes
@@ -307,7 +307,9 @@ impl CreditRegistry {
         if state.is_some() {
             maybe_extend_persistent_ttl(&env, &state_key);
         }
-        state.map(|s| s.tier_expiry > env.ledger().sequence()).unwrap_or(false)
+        state
+            .map(|s| s.tier_expiry > env.ledger().sequence())
+            .unwrap_or(false)
     }
 
     pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {

@@ -137,7 +137,7 @@ export async function buildUnsignedContractCall(
 
 export async function submitSponsoredSignedXdr(signedInnerXdr: string, retries = 2) {
   const innerTx = TransactionBuilder.fromXDR(signedInnerXdr, networkPassphrase) as Transaction;
-  
+
   // Check if it's a Soroban transaction
   const isSoroban = innerTx.operations.some(
     (op) =>

@@ -24,7 +24,11 @@ router.post(
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
     const summary = await buildScoreSummary(req.wallet);
-    const txHashes = await updateOnChainMetrics(req.wallet, summary.metrics, summary.horizonMetrics);
+    const txHashes = await updateOnChainMetrics(
+      req.wallet,
+      summary.metrics,
+      summary.horizonMetrics,
+    );
     const payload = {
       ...summary,
       txHashes,

@@ -10,7 +10,6 @@ import {
   Clock,
   Copy, 
   ExternalLink, 
-  Globe, 
   Loader2, 
   Send, 
   TrendingUp,
@@ -22,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import Image from 'next/image';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
@@ -59,7 +59,6 @@ export default function WalletPage() {
     if (!isAuthenticated) router.replace('/');
   }, [isAuthenticated, router]);
 
-  const { networkPassphrase } = useWalletStore();
   const [showSendModal, setShowSendModal] = useState(false);
   const [showKycWarningModal, setShowKycWarningModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -77,7 +76,7 @@ export default function WalletPage() {
     queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
     queryFn: async () => {
       try {
-        return await api.get<any>('/credit/score').then((res) => res.data);
+        return await api.get<{ kycVerified: boolean }>('/credit/score').then((res) => res.data);
       } catch (err: unknown) {
         const error = err as { response?: { status?: number } };
         if (error?.response?.status === 404) return null;
@@ -360,7 +359,7 @@ function ActionButton({ onClick, icon, label }: { onClick: () => void; icon: Rea
   );
 }
 
-function PlatformItem({ name, status, icon: Icon, isLive }: { name: string; status: string; icon: any; isLive?: boolean }) {
+function PlatformItem({ name, status, icon: Icon, isLive }: { name: string; status: string; icon: React.ElementType; isLive?: boolean }) {
   return (
     <div className="flex items-center justify-between rounded-xl p-3 transition-colors hover:bg-white/[0.02]" style={{ background: 'var(--color-bg-card)' }}>
       <div className="flex items-center gap-3">
@@ -518,7 +517,7 @@ function ReceiveModal({ onClose, address, qrDataUrl, onCopy }: { onClose: () => 
         
         <div className="bg-white p-4 rounded-3xl mb-6">
           {qrDataUrl ? (
-            <img src={qrDataUrl} alt="Wallet QR" className="w-48 h-48" />
+            <Image src={qrDataUrl} alt="Wallet QR" width={192} height={192} className="w-48 h-48" unoptimized />
           ) : (
             <div className="w-48 h-48 flex items-center justify-center bg-slate-100 rounded-2xl">
               <Loader2 className="animate-spin text-slate-400" />

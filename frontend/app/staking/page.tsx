@@ -2,9 +2,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
-  ArrowRight, 
   Coins, 
   Info, 
   Loader2, 
@@ -17,11 +16,9 @@ import {
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { QUERY_KEYS } from '@/lib/queryKeys';
 import { toast } from 'sonner';
 import { signTx } from '@/lib/freighter';
 import { NETWORK_PASSPHRASE } from '@/lib/constants';
-import SummaryRow from '@/components/SummaryRow';
 
 interface StakingInfo {
   poolBalance: string;
@@ -38,8 +35,6 @@ interface StakingPosition {
 
 export default function StakingPage() {
   const user = useAuthStore((s) => s.user);
-  const { networkPassphrase } = useWalletStore();
-  const queryClient = useQueryClient();
   const [showStakeModal, setShowStakeModal] = useState(false);
   const [showUnstakeModal, setShowUnstakeModal] = useState(false);
 
@@ -49,7 +44,7 @@ export default function StakingPage() {
     refetchInterval: 30000,
   });
 
-  const { data: position, isLoading: isPositionLoading } = useQuery<StakingPosition>({
+  const { data: position } = useQuery<StakingPosition>({
     queryKey: ['staking-position', user?.wallet],
     queryFn: () => api.get('/staking/position').then((res) => res.data),
     enabled: !!user?.wallet,
@@ -166,7 +161,7 @@ export default function StakingPage() {
   );
 }
 
-function StatCard({ label, value, icon: Icon, loading, color }: { label: string; value: string; icon: any; loading: boolean; color?: string }) {
+function StatCard({ label, value, icon: Icon, loading, color }: { label: string; value: string; icon: React.ElementType; loading: boolean; color?: string }) {
   return (
     <div className="card-elevated animate-fade-up">
       <div className="flex items-center justify-between">

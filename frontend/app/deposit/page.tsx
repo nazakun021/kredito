@@ -4,9 +4,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
-  ArrowRight, 
-  Calendar, 
-  Clock, 
   Info, 
   Loader2, 
   PiggyBank, 
@@ -52,7 +49,7 @@ export default function DepositPage() {
 
   const { data: score } = useQuery({
     queryKey: QUERY_KEYS.score(user?.wallet ?? ''),
-    queryFn: () => api.get<any>('/credit/score').then((res) => res.data),
+    queryFn: () => api.get<{ kycVerified: boolean }>('/credit/score').then((res) => res.data),
     enabled: !!user?.wallet,
   });
 
@@ -94,8 +91,8 @@ export default function DepositPage() {
       toast.success('Funds withdrawn successfully!');
       queryClient.invalidateQueries({ queryKey: ['deposit-position'] });
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Withdrawal failed');
+    onError: (err: unknown) => {
+      toast.error((err as Error).message || 'Withdrawal failed');
     }
   });
 

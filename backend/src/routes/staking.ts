@@ -75,15 +75,10 @@ router.post(
     const wallet = req.wallet;
     const amountStroops = toStroops(amount);
 
-    const unsignedXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.lendingPool,
-      'stake',
-      [
-        Address.fromString(wallet).toScVal(),
-        nativeToScVal(amountStroops, { type: 'i128' }),
-      ],
-    );
+    const unsignedXdr = await buildUnsignedContractCall(wallet, contractIds.lendingPool, 'stake', [
+      Address.fromString(wallet).toScVal(),
+      nativeToScVal(amountStroops, { type: 'i128' }),
+    ]);
 
     return res.json({
       requiresSignature: true,
@@ -134,17 +129,12 @@ router.post(
     const latestLedger = await rpcServer.getLatestLedger();
     const expirationLedger = latestLedger.sequence + config.approvalLedgerWindow;
 
-    const unsignedXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.xlmSac,
-      'approve',
-      [
-        Address.fromString(wallet).toScVal(), // from
-        Address.fromString(contractIds.lendingPool).toScVal(), // spender
-        nativeToScVal(amountStroops, { type: 'i128' }), // amount
-        nativeToScVal(expirationLedger, { type: 'u32' }), // expiration_ledger
-      ],
-    );
+    const unsignedXdr = await buildUnsignedContractCall(wallet, contractIds.xlmSac, 'approve', [
+      Address.fromString(wallet).toScVal(), // from
+      Address.fromString(contractIds.lendingPool).toScVal(), // spender
+      nativeToScVal(amountStroops, { type: 'i128' }), // amount
+      nativeToScVal(expirationLedger, { type: 'u32' }), // expiration_ledger
+    ]);
 
     return res.json({
       requiresSignature: true,

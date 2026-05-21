@@ -127,10 +127,14 @@ export function toStroops(amount: number) {
   return BigInt(Math.round(amount * 10_000_000));
 }
 
-export function buildScoreFactors(metrics: WalletMetrics, source: 'generated' | 'onchain' = 'generated'): ScoreFactor[] {
-  const xlmBalanceFactor = source === 'onchain'
-    ? Math.min(Math.floor(metrics.xlmBalance / 100), 10)
-    : Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
+export function buildScoreFactors(
+  metrics: WalletMetrics,
+  source: 'generated' | 'onchain' = 'generated',
+): ScoreFactor[] {
+  const xlmBalanceFactor =
+    source === 'onchain'
+      ? Math.min(Math.floor(metrics.xlmBalance / 100), 10)
+      : Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
 
   return [
     {
@@ -178,10 +182,11 @@ export function buildScorePayload(
     txHashes?: { metricsTxHash?: string; scoreTxHash?: string };
   },
 ) {
-  const xlmBalanceFactor = input.source === 'onchain'
-    ? Math.min(Math.floor(input.metrics.xlmBalance / 100), 10)
-    : Math.min(Math.floor((input.metrics.xlmBalance * 2) / 100), 10);
-    
+  const xlmBalanceFactor =
+    input.source === 'onchain'
+      ? Math.min(Math.floor(input.metrics.xlmBalance / 100), 10)
+      : Math.min(Math.floor((input.metrics.xlmBalance * 2) / 100), 10);
+
   const factors = buildScoreFactors(input.metrics, input.source);
   const upcomingTier = nextTier(input.score, input.kycVerified);
 
@@ -257,7 +262,7 @@ export async function fetchHorizonMetrics(wallet: string): Promise<HorizonMetric
       .call();
 
     const inboundPaymentCount = payments.records.filter((p: any) => p.to === wallet).length;
-    
+
     // Use account sequence number as a proxy for total transactions
     // subtract a base if needed, but for scoring, a raw proxy is fine
     const totalTxCount = Number(BigInt(account.sequence) & 0xffffffffn);

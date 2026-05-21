@@ -144,12 +144,9 @@ router.post(
       });
     }
 
-    const unsignedXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.lendingPool,
-      'repay',
-      [Address.fromString(wallet).toScVal()],
-    );
+    const unsignedXdr = await buildUnsignedContractCall(wallet, contractIds.lendingPool, 'repay', [
+      Address.fromString(wallet).toScVal(),
+    ]);
 
     const summary = {
       principal: toXlmAmount(loan.principal),

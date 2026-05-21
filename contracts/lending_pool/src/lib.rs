@@ -49,9 +49,9 @@ pub enum DataKey {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimeDepositRecord {
     pub amount: i128,
-    pub deposited_at: u32,    // ledger sequence
-    pub term_ledgers: u32,    // e.g., 518400 ≈ 30 days
-    pub apy_bps: u32,         // fixed APY in basis points (e.g., 500 = 5%)
+    pub deposited_at: u32, // ledger sequence
+    pub term_ledgers: u32, // e.g., 518400 ≈ 30 days
+    pub apy_bps: u32,      // fixed APY in basis points (e.g., 500 = 5%)
     pub projected_interest: i128,
 }
 
@@ -126,7 +126,7 @@ impl LendingPool {
         env.storage()
             .instance()
             .set(&DataKey::LoanTermLedgers, &loan_term_ledgers);
-        
+
         bump_instance_ttl(&env);
     }
 
@@ -139,11 +139,7 @@ impl LendingPool {
 
         let xlm_token = get_xlm_token(&env);
         let client = token::Client::new(&env, &xlm_token);
-        client.transfer(
-            &admin,
-            &env.current_contract_address(),
-            &amount,
-        );
+        client.transfer(&admin, &env.current_contract_address(), &amount);
 
         let balance: i128 = env
             .storage()
@@ -310,11 +306,7 @@ impl LendingPool {
         // --- INTERACTION: external token transfer happens last ---
         let xlm_token = get_xlm_token(&env);
         let token_client = token::Client::new(&env, &xlm_token);
-        token_client.transfer(
-            &borrower,
-            &env.current_contract_address(),
-            &total_owed,
-        );
+        token_client.transfer(&borrower, &env.current_contract_address(), &total_owed);
     }
 
     pub fn mark_default(env: Env, borrower: Address) {
@@ -428,30 +420,39 @@ impl LendingPool {
 
         let xlm_token = get_xlm_token(&env);
         let client = token::Client::new(&env, &xlm_token);
-        client.transfer(
-            &staker,
-            &env.current_contract_address(),
-            &amount,
-        );
+        client.transfer(&staker, &env.current_contract_address(), &amount);
 
         // Reuse key construction
         let staker_balance_key = DataKey::StakerBalance(staker.clone());
-        let mut staker_balance = env.storage().persistent().get(&staker_balance_key).unwrap_or(0);
+        let mut staker_balance = env
+            .storage()
+            .persistent()
+            .get(&staker_balance_key)
+            .unwrap_or(0);
         staker_balance += amount;
-        env.storage().persistent().set(&staker_balance_key, &staker_balance);
-        env.storage().persistent().extend_ttl(&staker_balance_key, MIN_TTL, MAX_TTL);
+        env.storage()
+            .persistent()
+            .set(&staker_balance_key, &staker_balance);
+        env.storage()
+            .persistent()
+            .extend_ttl(&staker_balance_key, MIN_TTL, MAX_TTL);
 
         let mut total_staked = get_total_staked(&env);
         total_staked += amount;
-        env.storage().instance().set(&DataKey::TotalStaked, &total_staked);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalStaked, &total_staked);
 
         let mut staked_pool = get_staked_pool(&env);
         staked_pool += amount;
-        env.storage().instance().set(&DataKey::StakedPool, &staked_pool);
+        env.storage()
+            .instance()
+            .set(&DataKey::StakedPool, &staked_pool);
 
         update_reward_debt(&env, &staker, staker_balance);
 
-        env.events().publish((symbol_short!("stake"), staker), amount);
+        env.events()
+            .publish((symbol_short!("stake"), staker), amount);
         bump_instance_ttl(&env);
     }
 
@@ -472,7 +473,11 @@ impl LendingPool {
 
         // Reuse key construction
         let staker_balance_key = DataKey::StakerBalance(staker.clone());
-        let mut staker_balance = env.storage().persistent().get(&staker_balance_key).unwrap_or(0);
+        let mut staker_balance = env
+            .storage()
+            .persistent()
+            .get(&staker_balance_key)
+            .unwrap_or(0);
         if amount > staker_balance {
             panic_with_error!(&env, Error::InsufficientStake);
         }
@@ -482,11 +487,19 @@ impl LendingPool {
         // Claim rewards during unstake
         let rewards = get_staker_rewards(&env, &staker);
         if rewards > 0 {
-            env.storage().persistent().set(&DataKey::StakerRewards(staker.clone()), &0i128);
-            env.storage().persistent().extend_ttl(&DataKey::StakerRewards(staker.clone()), MIN_TTL, MAX_TTL);
+            env.storage()
+                .persistent()
+                .set(&DataKey::StakerRewards(staker.clone()), &0i128);
+            env.storage().persistent().extend_ttl(
+                &DataKey::StakerRewards(staker.clone()),
+                MIN_TTL,
+                MAX_TTL,
+            );
             let mut total_reward_pool = get_total_reward_pool(&env);
             total_reward_pool -= rewards;
-            env.storage().instance().set(&DataKey::TotalRewardPool, &total_reward_pool);
+            env.storage()
+                .instance()
+                .set(&DataKey::TotalRewardPool, &total_reward_pool);
 
             let mut sp = get_staked_pool(&env);
             sp -= rewards;
@@ -494,12 +507,18 @@ impl LendingPool {
         }
 
         staker_balance -= amount;
-        env.storage().persistent().set(&staker_balance_key, &staker_balance);
-        env.storage().persistent().extend_ttl(&staker_balance_key, MIN_TTL, MAX_TTL);
-        
+        env.storage()
+            .persistent()
+            .set(&staker_balance_key, &staker_balance);
+        env.storage()
+            .persistent()
+            .extend_ttl(&staker_balance_key, MIN_TTL, MAX_TTL);
+
         let mut total_staked = get_total_staked(&env);
         total_staked -= amount;
-        env.storage().instance().set(&DataKey::TotalStaked, &total_staked);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalStaked, &total_staked);
 
         let mut sp = get_staked_pool(&env);
         sp -= amount;
@@ -510,18 +529,19 @@ impl LendingPool {
         let total_to_send = amount + rewards;
         token_client.transfer(&env.current_contract_address(), &staker, &total_to_send);
 
-        env.events().publish((symbol_short!("unstake"), staker), (amount, rewards));
+        env.events()
+            .publish((symbol_short!("unstake"), staker), (amount, rewards));
         bump_instance_ttl(&env);
     }
 
     pub fn get_stake_info(env: Env, staker: Address) -> StakeInfo {
         let staker_balance = get_staker_balance(&env, &staker);
         let total_staked = get_total_staked(&env);
-        
+
         let acc_reward_per_share = get_acc_reward_per_share(&env);
         let reward_debt = get_reward_debt(&env, &staker);
-        let pending = ((staker_balance * acc_reward_per_share) / REWARD_SCALE)
-            .saturating_sub(reward_debt);
+        let pending =
+            ((staker_balance * acc_reward_per_share) / REWARD_SCALE).saturating_sub(reward_debt);
         let total_pending = get_staker_rewards(&env, &staker) + pending;
 
         let share_bps = if total_staked > 0 {
@@ -558,15 +578,15 @@ impl LendingPool {
         };
 
         // Projected interest at maturity (Cached optimization)
-        let projected_interest = (amount * apy_bps as i128 * term_ledgers as i128)
-            / (10_000 * LEDGERS_PER_YEAR);
+        let projected_interest =
+            (amount * apy_bps as i128 * term_ledgers as i128) / (10_000 * LEDGERS_PER_YEAR);
 
         let mut balance: i128 = env
             .storage()
             .instance()
             .get(&DataKey::PoolBalance)
             .unwrap_or(0);
-        
+
         if balance < projected_interest {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
@@ -574,11 +594,7 @@ impl LendingPool {
 
         let xlm_token = get_xlm_token(&env);
         let client = token::Client::new(&env, &xlm_token);
-        client.transfer(
-            &depositor,
-            &env.current_contract_address(),
-            &amount,
-        );
+        client.transfer(&depositor, &env.current_contract_address(), &amount);
 
         balance = balance
             .checked_add(amount)
@@ -589,7 +605,9 @@ impl LendingPool {
 
         let mut reserved = get_reserved_interest(&env);
         reserved += projected_interest;
-        env.storage().instance().set(&DataKey::ReservedInterest, &reserved);
+        env.storage()
+            .instance()
+            .set(&DataKey::ReservedInterest, &reserved);
 
         let record = TimeDepositRecord {
             amount,
@@ -636,11 +654,7 @@ impl LendingPool {
         };
 
         // Early withdrawal penalty: 1% of principal if not matured
-        let penalty = if !matured {
-            record.amount / 100
-        } else {
-            0
-        };
+        let penalty = if !matured { record.amount / 100 } else { 0 };
 
         let total_payout = record.amount + actual_interest - penalty;
 
@@ -649,7 +663,7 @@ impl LendingPool {
             .instance()
             .get(&DataKey::PoolBalance)
             .unwrap_or(0);
-        
+
         if record.amount > balance {
             panic_with_error!(&env, Error::InsufficientPoolLiquidity);
         }
@@ -666,7 +680,9 @@ impl LendingPool {
 
         let mut reserved = get_reserved_interest(&env);
         reserved -= projected_interest;
-        env.storage().instance().set(&DataKey::ReservedInterest, &reserved);
+        env.storage()
+            .instance()
+            .set(&DataKey::ReservedInterest, &reserved);
 
         env.storage().persistent().remove(&key);
 
@@ -674,8 +690,10 @@ impl LendingPool {
         let client = token::Client::new(&env, &xlm_token);
         client.transfer(&env.current_contract_address(), &depositor, &total_payout);
 
-        env.events()
-            .publish((symbol_short!("twithdraw"), depositor), (record.amount, actual_interest, penalty));
+        env.events().publish(
+            (symbol_short!("twithdraw"), depositor),
+            (record.amount, actual_interest, penalty),
+        );
         bump_instance_ttl(&env);
     }
 
@@ -733,35 +751,59 @@ fn bump_instance_ttl(env: &Env) {
 }
 
 fn get_total_staked(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::TotalStaked).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::TotalStaked)
+        .unwrap_or(0)
 }
 
 fn get_staker_balance(env: &Env, staker: &Address) -> i128 {
-    env.storage().persistent().get(&DataKey::StakerBalance(staker.clone())).unwrap_or(0)
+    env.storage()
+        .persistent()
+        .get(&DataKey::StakerBalance(staker.clone()))
+        .unwrap_or(0)
 }
 
 fn get_staker_rewards(env: &Env, staker: &Address) -> i128 {
-    env.storage().persistent().get(&DataKey::StakerRewards(staker.clone())).unwrap_or(0)
+    env.storage()
+        .persistent()
+        .get(&DataKey::StakerRewards(staker.clone()))
+        .unwrap_or(0)
 }
 
 fn get_reward_debt(env: &Env, staker: &Address) -> i128 {
-    env.storage().persistent().get(&DataKey::RewardDebt(staker.clone())).unwrap_or(0)
+    env.storage()
+        .persistent()
+        .get(&DataKey::RewardDebt(staker.clone()))
+        .unwrap_or(0)
 }
 
 fn get_acc_reward_per_share(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::AccRewardPerShare).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::AccRewardPerShare)
+        .unwrap_or(0)
 }
 
 fn get_total_reward_pool(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::TotalRewardPool).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::TotalRewardPool)
+        .unwrap_or(0)
 }
 
 fn get_staked_pool(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::StakedPool).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::StakedPool)
+        .unwrap_or(0)
 }
 
 fn get_reserved_interest(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::ReservedInterest).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::ReservedInterest)
+        .unwrap_or(0)
 }
 
 fn update_staker_rewards(env: &Env, staker: &Address) {
@@ -769,13 +811,18 @@ fn update_staker_rewards(env: &Env, staker: &Address) {
     if balance > 0 {
         let acc_reward_per_share = get_acc_reward_per_share(env);
         let reward_debt = get_reward_debt(env, staker);
-        let pending = ((balance * acc_reward_per_share) / REWARD_SCALE)
-            .saturating_sub(reward_debt);
+        let pending = ((balance * acc_reward_per_share) / REWARD_SCALE).saturating_sub(reward_debt);
         if pending > 0 {
             let mut rewards = get_staker_rewards(env, staker);
             rewards += pending;
-            env.storage().persistent().set(&DataKey::StakerRewards(staker.clone()), &rewards);
-            env.storage().persistent().extend_ttl(&DataKey::StakerRewards(staker.clone()), MIN_TTL, MAX_TTL);
+            env.storage()
+                .persistent()
+                .set(&DataKey::StakerRewards(staker.clone()), &rewards);
+            env.storage().persistent().extend_ttl(
+                &DataKey::StakerRewards(staker.clone()),
+                MIN_TTL,
+                MAX_TTL,
+            );
         }
     }
 }
@@ -783,8 +830,12 @@ fn update_staker_rewards(env: &Env, staker: &Address) {
 fn update_reward_debt(env: &Env, staker: &Address, balance: i128) {
     let acc_reward_per_share = get_acc_reward_per_share(env);
     let reward_debt = (balance * acc_reward_per_share) / REWARD_SCALE;
-    env.storage().persistent().set(&DataKey::RewardDebt(staker.clone()), &reward_debt);
-    env.storage().persistent().extend_ttl(&DataKey::RewardDebt(staker.clone()), MIN_TTL, MAX_TTL);
+    env.storage()
+        .persistent()
+        .set(&DataKey::RewardDebt(staker.clone()), &reward_debt);
+    env.storage()
+        .persistent()
+        .extend_ttl(&DataKey::RewardDebt(staker.clone()), MIN_TTL, MAX_TTL);
 }
 
 fn distribute_fee_to_stakers(env: &Env, amount: i128) {
@@ -792,14 +843,20 @@ fn distribute_fee_to_stakers(env: &Env, amount: i128) {
     if total_staked > 0 {
         let mut acc_reward_per_share = get_acc_reward_per_share(env);
         acc_reward_per_share += (amount * REWARD_SCALE) / total_staked;
-        env.storage().instance().set(&DataKey::AccRewardPerShare, &acc_reward_per_share);
-        
+        env.storage()
+            .instance()
+            .set(&DataKey::AccRewardPerShare, &acc_reward_per_share);
+
         let mut total_reward_pool = get_total_reward_pool(env);
         total_reward_pool += amount;
-        env.storage().instance().set(&DataKey::TotalRewardPool, &total_reward_pool);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalRewardPool, &total_reward_pool);
 
         let mut staked_pool = get_staked_pool(env);
         staked_pool += amount;
-        env.storage().instance().set(&DataKey::StakedPool, &staked_pool);
+        env.storage()
+            .instance()
+            .set(&DataKey::StakedPool, &staked_pool);
     }
 }

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Loader2, ShieldCheck, UserCheck, Lock } from 'lucide-react';
+import { Loader2, ShieldCheck, UserCheck, Lock } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { QUERY_KEYS } from '@/lib/queryKeys';
@@ -47,7 +47,7 @@ export default function KycPage() {
       setSuccess(true);
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.score(user?.wallet ?? '') });
       toast.success('KYC Verification Successful!');
-    } catch (err) {
+    } catch {
       toast.error('Verification failed. Please try again.');
     } finally {
       setLoading(false);

@@ -128,7 +128,7 @@ router.post(
     const kycVerified = await queryContract<boolean>(
       contractIds.creditRegistry,
       'get_kyc_verified',
-      [Address.fromString(wallet).toScVal()]
+      [Address.fromString(wallet).toScVal()],
     );
     if (!kycVerified) {
       throw badRequest('KYC verification required before withdrawing time deposits');
@@ -164,17 +164,12 @@ router.post(
     const latestLedger = await rpcServer.getLatestLedger();
     const expirationLedger = latestLedger.sequence + config.approvalLedgerWindow;
 
-    const unsignedXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.xlmSac,
-      'approve',
-      [
-        Address.fromString(wallet).toScVal(), // from
-        Address.fromString(contractIds.lendingPool).toScVal(), // spender
-        nativeToScVal(amountStroops, { type: 'i128' }), // amount
-        nativeToScVal(expirationLedger, { type: 'u32' }), // expiration_ledger
-      ],
-    );
+    const unsignedXdr = await buildUnsignedContractCall(wallet, contractIds.xlmSac, 'approve', [
+      Address.fromString(wallet).toScVal(), // from
+      Address.fromString(contractIds.lendingPool).toScVal(), // spender
+      nativeToScVal(amountStroops, { type: 'i128' }), // amount
+      nativeToScVal(expirationLedger, { type: 'u32' }), // expiration_ledger
+    ]);
 
     return res.json({
       requiresSignature: true,

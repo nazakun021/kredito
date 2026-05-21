@@ -12,12 +12,10 @@ import {
   ShieldCheck,
   TrendingUp,
   Wallet,
-  ArrowUpRight,
   Send,
   Loader2,
   X,
   ShieldAlert,
-  Copy,
   Info,
 } from 'lucide-react';
 import api from '@/lib/api';

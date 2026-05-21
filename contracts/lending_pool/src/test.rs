@@ -42,11 +42,19 @@ fn setup_pool(flat_fee_bps: u32, loan_term_ledgers: u32) -> TestContext {
     let admin = Address::generate(&env);
     let borrower = Address::generate(&env);
 
-    let xlm_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let xlm_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
 
     let registry_id = env.register(credit_registry::WASM, ());
     let registry_client = credit_registry::Client::new(&env, &registry_id);
-    registry_client.initialize(&admin, &TIER1_LIMIT, &TIER2_LIMIT, &TIER3_LIMIT, &KYC_TIER_LIMIT);
+    registry_client.initialize(
+        &admin,
+        &TIER1_LIMIT,
+        &TIER2_LIMIT,
+        &TIER3_LIMIT,
+        &KYC_TIER_LIMIT,
+    );
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
@@ -138,10 +146,10 @@ fn test_gold_tier_gets_lower_fee() {
 fn test_borrow_rejects_non_kyc_silver() {
     let ctx = setup_pool(500, 518_400);
     fund_pool(&ctx, POOL_FUNDING);
-    
+
     // Set borrower to Silver (tier 2) but do NOT verify KYC
     registry_client(&ctx).set_tier(&ctx.borrower, &2);
-    
+
     pool_client(&ctx).borrow(&ctx.borrower, &5_000_000_000);
 }
 
@@ -401,8 +409,11 @@ fn test_staking_happy_path() {
 
     // Unstake and check balance
     pool_client(&ctx).unstake(&staker, &stake_amount);
-    assert_eq!(xlm_client(&ctx).balance(&staker), stake_amount + expected_rewards);
-    
+    assert_eq!(
+        xlm_client(&ctx).balance(&staker),
+        stake_amount + expected_rewards
+    );
+
     let info_final = pool_client(&ctx).get_stake_info(&staker);
     assert_eq!(info_final.staked_amount, 0);
     assert_eq!(info_final.pending_rewards, 0);
@@ -439,14 +450,14 @@ fn test_multiple_stakers_proportional_rewards() {
     pool_client(&ctx).repay(&ctx.borrower);
 
     let total_staker_rewards = fee / 2; // 2,500,000,000
-    
+
     let info1 = pool_client(&ctx).get_stake_info(&staker1);
     let info2 = pool_client(&ctx).get_stake_info(&staker2);
 
     // Staker 1 has 25% share, Staker 2 has 75% share
     assert_eq!(info1.share_bps, 2500);
     assert_eq!(info2.share_bps, 7500);
-    
+
     // Check rewards (allowing for small rounding diffs if any, but should be exact here)
     assert_eq!(info1.pending_rewards, total_staker_rewards * 1 / 4);
     assert_eq!(info2.pending_rewards, total_staker_rewards * 3 / 4);

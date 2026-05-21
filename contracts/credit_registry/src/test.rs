@@ -2,7 +2,7 @@
 
 use super::{CreditRegistry, CreditRegistryClient, Metrics};
 use soroban_sdk::{
-    testutils::{Address as _, MockAuth, MockAuthInvoke, Ledger, LedgerInfo},
+    testutils::{Address as _, Ledger, LedgerInfo, MockAuth, MockAuthInvoke},
     Address, Env, IntoVal,
 };
 
@@ -29,7 +29,13 @@ fn initialize_registry(
                 sub_invokes: &[],
             },
         }])
-        .initialize(issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+        .initialize(
+            issuer,
+            &50_000_000_000,
+            &200_000_000_000,
+            &500_000_000_000,
+            &2_500_000_000_000,
+        );
 }
 
 #[test]
@@ -42,7 +48,13 @@ fn test_initialize_and_manage_scores() {
     let contract_id = env.register(CreditRegistry, ());
     let client = CreditRegistryClient::new(&env, &contract_id);
 
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
     let metrics = Metrics {
         tx_count: 20,
         repayment_count: 4,
@@ -93,7 +105,13 @@ fn test_initialize_requires_issuer_auth() {
     let contract_id = env.register(CreditRegistry, ());
     let client = CreditRegistryClient::new(&env, &contract_id);
 
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
 }
 
 #[test]
@@ -122,7 +140,13 @@ fn test_initialize_rejects_non_positive_limits() {
                 sub_invokes: &[],
             },
         }])
-        .initialize(&issuer, &0, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+        .initialize(
+            &issuer,
+            &0,
+            &200_000_000_000,
+            &500_000_000_000,
+            &2_500_000_000_000,
+        );
 }
 
 #[test]
@@ -151,7 +175,13 @@ fn test_initialize_rejects_descending_limits() {
                 sub_invokes: &[],
             },
         }])
-        .initialize(&issuer, &200_000_000_000, &50_000_000_000, &500_000_000_000, &2_500_000_000_000);
+        .initialize(
+            &issuer,
+            &200_000_000_000,
+            &50_000_000_000,
+            &500_000_000_000,
+            &2_500_000_000_000,
+        );
 }
 
 #[test]
@@ -164,8 +194,20 @@ fn test_double_initialize_panics() {
     let contract_id = env.register(CreditRegistry, ());
     let client = CreditRegistryClient::new(&env, &contract_id);
 
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
 }
 
 #[test]
@@ -201,7 +243,13 @@ fn test_set_tier_rejects_invalid_values() {
     let contract_id = env.register(CreditRegistry, ());
     let client = CreditRegistryClient::new(&env, &contract_id);
 
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
     client.set_tier(&user, &0);
 }
 
@@ -217,7 +265,13 @@ fn test_transfer_panics() {
     let contract_id = env.register(CreditRegistry, ());
     let client = CreditRegistryClient::new(&env, &contract_id);
 
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
     client.transfer(&user_a, &user_b, &1);
 }
 
@@ -234,7 +288,13 @@ fn test_transfer_from_panics() {
     let contract_id = env.register(CreditRegistry, ());
     let client = CreditRegistryClient::new(&env, &contract_id);
 
-    client.initialize(&issuer, &50_000_000_000, &200_000_000_000, &500_000_000_000, &2_500_000_000_000);
+    client.initialize(
+        &issuer,
+        &50_000_000_000,
+        &200_000_000_000,
+        &500_000_000_000,
+        &2_500_000_000_000,
+    );
     client.transfer_from(&spender, &user_a, &user_b, &1);
 }
 
