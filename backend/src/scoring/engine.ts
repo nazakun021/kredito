@@ -6,7 +6,7 @@ import { contractIds, horizonServer, rpcServer } from '../stellar/client';
 import { queryContract } from '../stellar/query';
 import { paginateEvents } from '../stellar/events';
 
-const REPAYMENT_LOOKBACK_LEDGERS = 250_000;
+const REPAYMENT_LOOKBACK_LEDGERS = 10_000;
 
 export interface WalletMetrics {
   txCount: number;
