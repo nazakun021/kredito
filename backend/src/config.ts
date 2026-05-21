@@ -31,6 +31,10 @@ if (missingVars.length > 0) {
 }
 
 // P2-7: Removed redundant required() calls. Using process.env directly now that check() has verified them.
+const rawStellarNetwork = (process.env.STELLAR_NETWORK || 'TESTNET').toUpperCase();
+const isPublic = rawStellarNetwork === 'PUBLIC' || rawStellarNetwork === 'MAINNET';
+const normalizedStellarNetwork = isPublic ? 'PUBLIC' : 'TESTNET';
+
 export const config = {
   port: Number(process.env.PORT || 3001),
   jwtSecret: process.env.JWT_SECRET!,
@@ -41,19 +45,19 @@ export const config = {
   contractIds: {
     xlmSac:
       process.env.XLM_SAC_ID ||
-      (process.env.STELLAR_NETWORK === 'PUBLIC'
+      (isPublic
         ? 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA'
         : 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC'),
     creditRegistry: process.env.REGISTRY_ID!,
     lendingPool: process.env.LENDING_POOL_ID!,
   },
 
-  stellarNetwork: process.env.STELLAR_NETWORK || 'TESTNET',
+  stellarNetwork: normalizedStellarNetwork,
   rpcUrl: process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
   horizonUrl: process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org',
   networkPassphrase:
     process.env.STELLAR_NETWORK_PASSPHRASE ||
-    (process.env.STELLAR_NETWORK === 'PUBLIC'
+    (isPublic
       ? 'Public Global Stellar Network ; October 2015'
       : 'Test SDF Network ; September 2015'),
 
