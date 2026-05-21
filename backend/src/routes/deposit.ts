@@ -107,7 +107,6 @@ router.post(
         Address.fromString(wallet).toScVal(),
         nativeToScVal(amountStroops, { type: 'i128' }),
         nativeToScVal(Number(termLedgers), { type: 'u32' }),
-        nativeToScVal(Number(apyBps), { type: 'u32' }),
       ],
     );
 
