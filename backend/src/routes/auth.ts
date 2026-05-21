@@ -83,8 +83,9 @@ router.post(
         config.homeDomain,
         config.webAuthDomain,
       );
-    } catch {
-      throw unauthorized('Wallet signature could not be verified or challenge expired');
+    } catch (err: any) {
+      console.error('❌ Authentication verification failed:', err);
+      throw unauthorized(`Wallet signature could not be verified or challenge expired: ${err.message || err}`);
     }
 
     const token = issueToken(clientAccountID);
