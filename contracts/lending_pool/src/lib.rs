@@ -365,7 +365,17 @@ impl LendingPool {
         get_total_staked(&env)
     }
 
+    pub fn get_total_staked_pub(env: Env) -> i128 {
+        bump_instance_ttl(&env);
+        get_total_staked(&env)
+    }
+
     pub fn get_total_reward_pool(env: Env) -> i128 {
+        bump_instance_ttl(&env);
+        get_total_reward_pool(&env)
+    }
+
+    pub fn get_total_reward_pool_pub(env: Env) -> i128 {
         bump_instance_ttl(&env);
         get_total_reward_pool(&env)
     }
@@ -470,6 +480,7 @@ impl LendingPool {
         let rewards = get_staker_rewards(&env, &staker);
         if rewards > 0 {
             env.storage().persistent().set(&DataKey::StakerRewards(staker.clone()), &0i128);
+            env.storage().persistent().extend_ttl(&DataKey::StakerRewards(staker.clone()), MIN_TTL, MAX_TTL);
             let mut total_reward_pool = get_total_reward_pool(&env);
             total_reward_pool -= rewards;
             env.storage().instance().set(&DataKey::TotalRewardPool, &total_reward_pool);
@@ -481,6 +492,7 @@ impl LendingPool {
 
         staker_balance -= amount;
         env.storage().persistent().set(&DataKey::StakerBalance(staker.clone()), &staker_balance);
+        env.storage().persistent().extend_ttl(&DataKey::StakerBalance(staker.clone()), MIN_TTL, MAX_TTL);
         
         let mut total_staked = get_total_staked(&env);
         total_staked -= amount;
@@ -505,7 +517,8 @@ impl LendingPool {
         
         let acc_reward_per_share = get_acc_reward_per_share(&env);
         let reward_debt = get_reward_debt(&env, &staker);
-        let pending = (staker_balance * acc_reward_per_share) / REWARD_SCALE - reward_debt;
+        let pending = ((staker_balance * acc_reward_per_share) / REWARD_SCALE)
+            .saturating_sub(reward_debt);
         let total_pending = get_staker_rewards(&env, &staker) + pending;
 
         let share_bps = if total_staked > 0 {
@@ -611,8 +624,9 @@ impl LendingPool {
 
         let actual_interest = if matured {
             let ledgers_elapsed = (current_ledger - record.deposited_at) as i128;
-            (record.amount * record.apy_bps as i128 * ledgers_elapsed)
-                / (10_000 * LEDGERS_PER_YEAR)
+            let uncapped = (record.amount * record.apy_bps as i128 * ledgers_elapsed)
+                / (10_000 * LEDGERS_PER_YEAR);
+            core::cmp::min(uncapped, projected_interest)
         } else {
             0
         };
@@ -748,11 +762,13 @@ fn update_staker_rewards(env: &Env, staker: &Address) {
     if balance > 0 {
         let acc_reward_per_share = get_acc_reward_per_share(env);
         let reward_debt = get_reward_debt(env, staker);
-        let pending = (balance * acc_reward_per_share) / REWARD_SCALE - reward_debt;
+        let pending = ((balance * acc_reward_per_share) / REWARD_SCALE)
+            .saturating_sub(reward_debt);
         if pending > 0 {
             let mut rewards = get_staker_rewards(env, staker);
             rewards += pending;
             env.storage().persistent().set(&DataKey::StakerRewards(staker.clone()), &rewards);
+            env.storage().persistent().extend_ttl(&DataKey::StakerRewards(staker.clone()), MIN_TTL, MAX_TTL);
         }
     }
 }
@@ -761,6 +777,7 @@ fn update_reward_debt(env: &Env, staker: &Address, balance: i128) {
     let acc_reward_per_share = get_acc_reward_per_share(env);
     let reward_debt = (balance * acc_reward_per_share) / REWARD_SCALE;
     env.storage().persistent().set(&DataKey::RewardDebt(staker.clone()), &reward_debt);
+    env.storage().persistent().extend_ttl(&DataKey::RewardDebt(staker.clone()), MIN_TTL, MAX_TTL);
 }
 
 fn distribute_fee_to_stakers(env: &Env, amount: i128) {

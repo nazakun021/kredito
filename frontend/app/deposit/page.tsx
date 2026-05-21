@@ -20,7 +20,7 @@ import { useWalletStore } from '@/store/walletStore';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { toast } from 'sonner';
 import { signTx } from '@/lib/freighter';
-import { TESTNET_PASSPHRASE } from '@/lib/constants';
+import { NETWORK_PASSPHRASE } from '@/lib/constants';
 
 const LEDGERS_PER_DAY = 17280; // 5s close time
 
@@ -61,13 +61,18 @@ export default function DepositPage() {
 
   const withdrawMutation = useMutation({
     mutationFn: async () => {
-      if (!active?.canWithdraw) throw new Error('Deposit has not matured yet.');
+      if (!active?.canWithdraw) {
+        const confirmed = window.confirm(
+          'Withdrawing before maturity will forfeit all accrued interest. You will only receive your principal amount. Continue?'
+        );
+        if (!confirmed) return;
+      }
       
       const { data } = await api.post('/deposit/withdraw');
       const signResult = await signTx(
         data.unsignedXdr, 
         user!.wallet!, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
+        networkPassphrase ?? NETWORK_PASSPHRASE
       );
       if ('error' in signResult) throw new Error(signResult.error);
       return api.post('/tx/sign-and-submit', {
@@ -137,12 +142,18 @@ export default function DepositPage() {
                 </div>
 
                 <button 
-                  disabled={!active.canWithdraw || withdrawMutation.isPending}
+                  disabled={withdrawMutation.isPending}
                   onClick={() => withdrawMutation.mutate()}
-                  className={`btn-primary w-full ${active.canWithdraw ? 'btn-accent' : 'btn-dark opacity-50'}`}
+                  className={`btn-primary w-full ${active.canWithdraw ? 'btn-accent' : 'btn-dark'}`}
                 >
-                  {withdrawMutation.isPending ? <Loader2 className="animate-spin" /> : active.canWithdraw ? <TrendingUp size={18} /> : <Clock size={18} />}
-                  {active.canWithdraw ? 'Withdraw Principal + Interest' : 'Locked until Maturity'}
+                  {withdrawMutation.isPending ? (
+                    <Loader2 className="animate-spin" />
+                  ) : active.canWithdraw ? (
+                    <TrendingUp size={18} />
+                  ) : (
+                    <X size={18} />
+                  )}
+                  {active.canWithdraw ? 'Withdraw Principal + Interest' : 'Withdraw Principal Only (Early)'}
                 </button>
               </div>
             </div>
@@ -162,7 +173,7 @@ export default function DepositPage() {
           <ul className="space-y-4 opacity-70">
             <li className="flex gap-3">
               <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">!</div>
-              <p>Principal is locked until the due ledger. Early withdrawal is not supported by the contract.</p>
+              <p>Withdrawing before maturity returns your principal only — accrued interest is forfeited.</p>
             </li>
             <li className="flex gap-3">
               <div className="h-5 w-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold">!</div>
@@ -240,15 +251,17 @@ function CreateDepositModal({ onClose, term }: { onClose: () => void; term: Depo
 
     setLoading(true);
     try {
+      // Create Deposit
       const { data } = await api.post('/deposit/create', { 
         amount, 
-        termLedgers: term.ledgers 
+        termLedgers: term.ledgers,
+        apyBps: term.apyBps
       });
       
       const signResult = await signTx(
         data.unsignedXdr, 
         user!.wallet!, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
+        networkPassphrase ?? NETWORK_PASSPHRASE
       );
       
       if ('error' in signResult) throw new Error(signResult.error);

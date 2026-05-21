@@ -15,15 +15,23 @@ router.get(
   asyncRoute(async (req, res) => {
     const [poolBalanceRaw, totalStakedRaw, totalRewardPoolRaw] = await Promise.all([
       queryContract<bigint>(contractIds.lendingPool, 'get_pool_balance', []),
-      queryContract<bigint>(contractIds.lendingPool, 'get_total_staked', []),
-      queryContract<bigint>(contractIds.lendingPool, 'get_total_reward_pool', []),
+      queryContract<bigint>(contractIds.lendingPool, 'get_total_staked_pub', []),
+      queryContract<bigint>(contractIds.lendingPool, 'get_total_reward_pool_pub', []),
     ]);
+
+    const totalRewardNum = Number(toXlmAmount(totalRewardPoolRaw ?? 0n));
+    const totalStakedNum = Number(toXlmAmount(totalStakedRaw ?? 0n));
+    // Annualized: assume current reward pool would be earned over 30 days
+    const estimatedApy =
+      totalStakedNum > 0
+        ? Number(((totalRewardNum / totalStakedNum) * (365 / 30) * 100).toFixed(1))
+        : 0.0;
 
     return res.json({
       poolBalance: toXlmAmount(poolBalanceRaw ?? 0n),
       totalStaked: toXlmAmount(totalStakedRaw ?? 0n),
       totalRewardPool: toXlmAmount(totalRewardPoolRaw ?? 0n),
-      apy: 8.5,
+      apy: estimatedApy,
     });
   }),
 );
@@ -101,6 +109,41 @@ router.post(
       contractIds.lendingPool,
       'unstake',
       [Address.fromString(wallet).toScVal(), nativeToScVal(amountStroops, { type: 'i128' })],
+    );
+
+    return res.json({
+      requiresSignature: true,
+      unsignedXdr,
+    });
+  }),
+);
+
+router.post(
+  '/approve',
+  authMiddleware,
+  asyncRoute(async (req: AuthRequest, res) => {
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw badRequest('Invalid amount');
+    }
+
+    const wallet = req.wallet;
+    const amountStroops = toStroops(amount);
+
+    // Get current ledger for expiry
+    const latestLedger = await rpcServer.getLatestLedger();
+    const expirationLedger = latestLedger.sequence + config.approvalLedgerWindow;
+
+    const unsignedXdr = await buildUnsignedContractCall(
+      wallet,
+      contractIds.xlmSac,
+      'approve',
+      [
+        Address.fromString(wallet).toScVal(), // from
+        Address.fromString(contractIds.lendingPool).toScVal(), // spender
+        nativeToScVal(amountStroops, { type: 'i128' }), // amount
+        nativeToScVal(expirationLedger, { type: 'u32' }), // expiration_ledger
+      ],
     );
 
     return res.json({

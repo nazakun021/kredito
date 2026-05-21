@@ -146,7 +146,8 @@ impl CreditRegistry {
         let score = match tier {
             1 => BRONZE_MIN_SCORE,
             2 => SILVER_MIN_SCORE,
-            _ => GOLD_MIN_SCORE,
+            3 => GOLD_MIN_SCORE,
+            _ => 200u32, // Tier 4 / Platinum — above all regular thresholds
         };
         env.storage()
             .persistent()

@@ -1,5 +1,5 @@
 import { Address, Operation, TransactionBuilder, nativeToScVal, xdr } from '@stellar/stellar-sdk';
-import { WalletMetrics, buildScorePayload, tierLabel } from '../scoring/engine';
+import { WalletMetrics, HorizonMetrics, buildScorePayload, tierLabel } from '../scoring/engine';
 import { contractIds, issuerKeypair, networkPassphrase, rpcServer } from './client';
 import { queryContract } from './query';
 import { pollTransaction } from './feebump';
@@ -39,15 +39,29 @@ async function invokeIssuerContractSingle(functionName: string, args: xdr.ScVal[
   return response.hash;
 }
 
-export async function updateOnChainMetrics(walletAddress: string, metrics: WalletMetrics) {
+export async function updateOnChainMetrics(
+  walletAddress: string,
+  metrics: WalletMetrics,
+  horizon?: HorizonMetrics,
+) {
   const wallet = Address.fromString(walletAddress).toScVal();
+
+  // Map horizon data into avg_balance so on-chain score matches displayed score
+  let horizonBonus = 0;
+  if (horizon) {
+    horizonBonus += horizon.walletAgeDays > 365 ? 400 : horizon.walletAgeDays > 180 ? 200 : 0;
+    horizonBonus += horizon.inboundPaymentCount > 50 ? 300 : 0;
+    horizonBonus += horizon.hasRegularActivity ? 200 : 0;
+  }
+
+  const avgBalanceForContract = Math.min(metrics.xlmBalance * 2 + horizonBonus, 1000);
 
   // Two sequential single-op transactions — Soroban does not allow multi-op txs
   const metricsTxHash = await invokeIssuerContractSingle('update_metrics_raw', [
     wallet,
     nativeToScVal(metrics.txCount, { type: 'u32' }),
     nativeToScVal(metrics.repaymentCount, { type: 'u32' }),
-    nativeToScVal(metrics.xlmBalance, { type: 'u32' }),
+    nativeToScVal(avgBalanceForContract, { type: 'u32' }),
     nativeToScVal(metrics.defaultCount, { type: 'u32' }),
   ]);
 

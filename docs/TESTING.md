@@ -17,7 +17,6 @@ cargo test --workspace
 
 - `contracts/credit_registry/src/test.rs`: Verifies scoring formulas, tier thresholds, and authorized metric updates.
 - `contracts/lending_pool/src/test.rs`: Verifies borrow/repay logic, interest calculations, and liquidity management.
-- `contracts/phpc_token/src/test.rs`: Verifies SEP-41 compliance and basic token flows.
 
 ---
 
@@ -72,7 +71,7 @@ Follow this checklist to verify a full user journey on Testnet:
 1. [ ] **Wallet Setup**: Create a new Freighter account and fund it via Friendbot.
 2. [ ] **Login**: Sign in to the homepage; verify the redirect to `/dashboard`.
 3. [ ] **Initial Score**: Click "Refresh Score" and sign the transaction. Verify metrics appear on the dashboard.
-4. [ ] **Borrow**: Navigate to `/loan/borrow`. Select an amount and confirm. Verify PHPC balance increases in Freighter.
+4. [ ] **Borrow**: Navigate to `/loan/borrow`. Select an amount and confirm. Verify XLM balance increases in Freighter.
 5. [ ] **Repay**: Navigate to `/loan/repay`. Sign both Approve and Repay transactions.
 6. [ ] **Validation**: Verify that the "Active Loan" status disappears and the "Loans Repaid" metric increments on the dashboard.
 

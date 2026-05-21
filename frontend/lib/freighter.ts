@@ -8,7 +8,7 @@ import {
   requestAccess,
   signTransaction,
 } from '@stellar/freighter-api';
-import { TESTNET_PASSPHRASE } from './constants';
+import { NETWORK_PASSPHRASE } from './constants';
 
 const authApi = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
@@ -134,7 +134,7 @@ export async function loginWithFreighter() {
   
   // Get network details for signing
   const networkDetails = await getWalletNetwork();
-  const passphrase = networkDetails?.networkPassphrase || TESTNET_PASSPHRASE;
+  const passphrase = networkDetails?.networkPassphrase || NETWORK_PASSPHRASE;
 
   const challengeRes = await authApi.post<{ challenge: string }>('/auth/challenge', {
     wallet: publicKey,

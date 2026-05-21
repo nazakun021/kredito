@@ -25,7 +25,7 @@ import { useWalletStore } from '@/store/walletStore';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { toast } from 'sonner';
 import { signTx } from '@/lib/freighter';
-import { TESTNET_PASSPHRASE } from '@/lib/constants';
+import { NETWORK_PASSPHRASE } from '@/lib/constants';
 
 interface Transaction {
   id: string;
@@ -347,7 +347,7 @@ function SendModal({ onClose, balance }: { onClose: () => void; balance: string 
       const signResult = await signTx(
         data.unsignedXdr, 
         user!.wallet!, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
+        networkPassphrase ?? NETWORK_PASSPHRASE
       );
       
       if ('error' in signResult) throw new Error(signResult.error);

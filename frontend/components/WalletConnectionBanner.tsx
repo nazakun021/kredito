@@ -3,7 +3,7 @@
 'use client';
 
 import { useWalletStore } from '../store/walletStore';
-import { REQUIRED_NETWORK } from '../lib/constants';
+import { REQUIRED_NETWORK, FRIENDLY_NETWORK_NAME } from '../lib/constants';
 import { AlertTriangle, Wallet } from 'lucide-react';
 
 export default function WalletConnectionBanner() {
@@ -12,8 +12,8 @@ export default function WalletConnectionBanner() {
   if (isConnected && network === REQUIRED_NETWORK) return null;
 
   const message = !isConnected
-    ? 'Wallet not connected — connect Freighter to continue with this transaction.'
-    : `Wrong network — switch Freighter to ${REQUIRED_NETWORK} to continue.`;
+    ? 'Wallet not connected — connect Freighter to continue.'
+    : `Wrong network — switch Freighter to ${FRIENDLY_NETWORK_NAME} to continue.`;
 
   return (
     <div 

@@ -16,4 +16,8 @@ export const rpcServer = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('
 
 export const issuerKeypair = Keypair.fromSecret(config.issuerSecretKey);
 
-export const contractIds = config.contractIds;
+export const contractIds = {
+  creditRegistry: config.contractIds.creditRegistry,
+  lendingPool: config.contractIds.lendingPool,
+  xlmSac: config.contractIds.xlmSac,
+};

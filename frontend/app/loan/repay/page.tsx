@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
+import { REQUIRED_NETWORK, NETWORK_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { tierGradient } from '@/lib/tiers';
 
@@ -96,14 +96,14 @@ export default function RepayPage() {
         const signResult = await signTx(
           data.unsignedXdr, 
           user.wallet, 
-          networkPassphrase ?? TESTNET_PASSPHRASE
+          networkPassphrase ?? NETWORK_PASSPHRASE
         );
         if ('error' in signResult) throw new Error(signResult.error);
 
         setTxStep(3); // Submitting
         const result = await api.post('/tx/sign-and-submit', {
           signedInnerXdr: [signResult.signedXdr],
-          flow: { action: 'repay' },
+          flow: { action: 'repay', step: 'repay' },
         });
 
         setTxStep(4); // Confirming

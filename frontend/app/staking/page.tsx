@@ -20,7 +20,7 @@ import { useWalletStore } from '@/store/walletStore';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { toast } from 'sonner';
 import { signTx } from '@/lib/freighter';
-import { TESTNET_PASSPHRASE } from '@/lib/constants';
+import { NETWORK_PASSPHRASE } from '@/lib/constants';
 import SummaryRow from '@/components/SummaryRow';
 
 interface StakingInfo {
@@ -85,7 +85,13 @@ export default function StakingPage() {
         {/* APR Card */}
         <div className="card-elevated animate-fade-up flex flex-col items-center justify-center text-center">
           <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Estimated APY</p>
-          <p className="mt-2 text-5xl font-extrabold text-emerald-500">{(info?.apy ?? 8.5).toFixed(1)}%</p>
+          {isInfoLoading ? (
+            <div className="skeleton h-12 w-24 mt-2 animate-pulse" />
+          ) : (
+            <p className="mt-2 text-5xl font-extrabold text-emerald-500">
+              {(info?.apy ?? 0).toFixed(1)}%
+            </p>
+          )}
           <p className="mt-4 text-xs opacity-50 max-w-[200px]">Based on current loan volume and pool size.</p>
         </div>
       </div>
@@ -184,36 +190,55 @@ function StakeModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('');
 
   const handleStake = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount) return;
-
     setLoading(true);
-    try {
-      const { data } = await api.post('/staking/stake', { amount });
-      
-      const signResult = await signTx(
-        data.unsignedXdr, 
-        user!.wallet!, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
-      );
-      
-      if ('error' in signResult) throw new Error(signResult.error);
 
-      await api.post('/tx/sign-and-submit', {
-        signedInnerXdr: [signResult.signedXdr],
-        flow: { action: 'stake' },
+    try {
+      // Step 1: Approve the XLM SAC to allow lending_pool to pull funds
+      setLoadingText("Approving XLM allowance...");
+      const { data: approveData } = await api.post("/staking/approve", {
+        amount,
+      });
+      const approveSign = await signTx(
+        approveData.unsignedXdr,
+        user!.wallet!,
+        networkPassphrase ?? NETWORK_PASSPHRASE,
+      );
+      if ("error" in approveSign) throw new Error(approveSign.error);
+      await api.post("/tx/sign-and-submit", {
+        signedInnerXdr: [approveSign.signedXdr],
+        flow: { action: "approve_xlm" },
       });
 
-      toast.success('Staked successfully!');
-      queryClient.invalidateQueries({ queryKey: ['staking-info'] });
-      queryClient.invalidateQueries({ queryKey: ['staking-position'] });
+      // Step 2: Stake
+      setLoadingText("Staking XLM...");
+      const { data: stakeData } = await api.post("/staking/stake", { amount });
+      const stakeSign = await signTx(
+        stakeData.unsignedXdr,
+        user!.wallet!,
+        networkPassphrase ?? NETWORK_PASSPHRASE,
+      );
+      if ("error" in stakeSign) throw new Error(stakeSign.error);
+      await api.post("/tx/sign-and-submit", {
+        signedInnerXdr: [stakeSign.signedXdr],
+        flow: { action: "stake" },
+      });
+
+      toast.success("Staked successfully!");
+      queryClient.invalidateQueries({ queryKey: ["staking-info"] });
+      queryClient.invalidateQueries({
+        queryKey: ["staking-position", user?.wallet],
+      });
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Staking failed');
+      toast.error(err instanceof Error ? err.message : "Staking failed");
     } finally {
       setLoading(false);
+      setLoadingText("");
     }
   };
 
@@ -246,7 +271,7 @@ function StakeModal({ onClose }: { onClose: () => void }) {
           </div>
           <button disabled={loading} type="submit" className="btn-primary btn-accent w-full mt-4">
             {loading ? <Loader2 className="animate-spin" /> : <Lock size={18} />}
-            {loading ? 'Processing...' : 'Confirm Stake'}
+            {loading ? loadingText || 'Processing...' : 'Confirm Stake'}
           </button>
         </form>
       </div>
@@ -277,7 +302,7 @@ function UnstakeModal({ onClose, position }: { onClose: () => void; position?: S
       const signResult = await signTx(
         data.unsignedXdr, 
         user!.wallet!, 
-        networkPassphrase ?? TESTNET_PASSPHRASE
+        networkPassphrase ?? NETWORK_PASSPHRASE
       );
       
       if ('error' in signResult) throw new Error(signResult.error);

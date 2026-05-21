@@ -17,7 +17,7 @@ export interface WalletMetrics {
 
 export interface HorizonMetrics {
   walletAgeDays: number;
-  currentBalanceXlm: number;
+  currentBalanceXlm: string;
   txCount: number;
   inboundPaymentCount: number;
   activitySpanDays: number;
@@ -33,7 +33,7 @@ export interface ScoreFactor {
 }
 
 export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics): number {
-  const xlmBalanceFactor = Math.min(Math.floor(metrics.xlmBalance / 100), 10);
+  const xlmBalanceFactor = Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
   let score =
     metrics.txCount * 2 +
     metrics.repaymentCount * 10 +
@@ -51,8 +51,8 @@ export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics)
   return Math.max(0, score);
 }
 
-export function scoreToTier(score: number): 0 | 1 | 2 | 3 | 4 {
-  if (score >= 200) return 4;
+export function scoreToTier(score: number, kycVerified = false): 0 | 1 | 2 | 3 | 4 {
+  if (kycVerified && score >= 40) return 4; // Any passing score with KYC = Tier 4
   if (score >= 120) return 3;
   if (score >= 80) return 2;
   if (score >= 40) return 1;
@@ -89,11 +89,15 @@ export function tierFeeBps(tier: number) {
   }
 }
 
-export function nextTier(score: number) {
+export function nextTier(score: number, kycVerified = false) {
+  if (kycVerified) {
+    if (score < 40) return { threshold: 40, label: 'Platinum (KYC)' };
+    return null;
+  }
+
   if (score < 40) return { threshold: 40, label: 'Bronze' };
   if (score < 80) return { threshold: 80, label: 'Silver' };
   if (score < 120) return { threshold: 120, label: 'Gold' };
-  if (score < 200) return { threshold: 200, label: 'Platinum' };
   return null;
 }
 
@@ -119,8 +123,10 @@ export function toStroops(amount: number) {
   return BigInt(Math.round(amount * 10_000_000));
 }
 
-export function buildScoreFactors(metrics: WalletMetrics): ScoreFactor[] {
-  const xlmBalanceFactor = Math.min(Math.floor(metrics.xlmBalance / 100), 10);
+export function buildScoreFactors(metrics: WalletMetrics, source: 'generated' | 'onchain' = 'generated'): ScoreFactor[] {
+  const xlmBalanceFactor = source === 'onchain'
+    ? Math.min(Math.floor(metrics.xlmBalance / 100), 10)
+    : Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
 
   return [
     {
@@ -168,9 +174,21 @@ export function buildScorePayload(
     txHashes?: { metricsTxHash?: string; scoreTxHash?: string };
   },
 ) {
-  const xlmBalanceFactor = Math.min(Math.floor(input.metrics.xlmBalance / 100), 10);
-  const factors = buildScoreFactors(input.metrics);
-  const upcomingTier = nextTier(input.score);
+  const xlmBalanceFactor = input.source === 'onchain'
+    ? Math.min(Math.floor(input.metrics.xlmBalance / 100), 10)
+    : Math.min(Math.floor((input.metrics.xlmBalance * 2) / 100), 10);
+    
+  const factors = buildScoreFactors(input.metrics, input.source);
+  const upcomingTier = nextTier(input.score, input.kycVerified);
+
+  let horizonBonus = 0;
+  if (input.horizonMetrics) {
+    if (input.horizonMetrics.walletAgeDays > 365) horizonBonus += 20;
+    else if (input.horizonMetrics.walletAgeDays > 180) horizonBonus += 10;
+
+    if (input.horizonMetrics.inboundPaymentCount > 50) horizonBonus += 15;
+    if (input.horizonMetrics.hasRegularActivity) horizonBonus += 10;
+  }
 
   return {
     walletAddress,
@@ -202,6 +220,7 @@ export function buildScorePayload(
       repaymentComponent: input.metrics.repaymentCount * 10,
       balanceComponent: xlmBalanceFactor * 5,
       defaultPenalty: input.metrics.defaultCount * 25,
+      horizonBonus: input.source === 'onchain' ? 0 : horizonBonus,
       total: input.score,
     },
     factors,
@@ -234,7 +253,11 @@ export async function fetchHorizonMetrics(wallet: string): Promise<HorizonMetric
       .call();
 
     const inboundPaymentCount = payments.records.filter((p: any) => p.to === wallet).length;
-    const txCount = payments.records.length;
+    
+    // Use account sequence number as a proxy for total transactions
+    // subtract a base if needed, but for scoring, a raw proxy is fine
+    const totalTxCount = Number(BigInt(account.sequence) & 0xffffffffn);
+    const txCount = Math.min(totalTxCount, 500);
 
     const activitySpanDays =
       payments.records.length > 1
@@ -249,7 +272,7 @@ export async function fetchHorizonMetrics(wallet: string): Promise<HorizonMetric
 
     return {
       walletAgeDays,
-      currentBalanceXlm,
+      currentBalanceXlm: currentBalanceXlm.toFixed(2),
       txCount,
       inboundPaymentCount,
       activitySpanDays,
@@ -258,7 +281,7 @@ export async function fetchHorizonMetrics(wallet: string): Promise<HorizonMetric
   } catch {
     return {
       walletAgeDays: 0,
-      currentBalanceXlm: 0,
+      currentBalanceXlm: '0.00',
       txCount: 0,
       inboundPaymentCount: 0,
       activitySpanDays: 0,
@@ -336,21 +359,21 @@ export async function fetchRepaymentMetrics(
       if (topicName === 'defaulted') defaultCount += 1;
     }
 
-    // RPC event retention is limited. If older events have rolled out of the
-    // available window, at least reflect the current persisted loan outcome.
-    if (repaymentCount === 0 || defaultCount === 0) {
-      try {
-        const latestLoan = await queryContract<{ repaid?: boolean; defaulted?: boolean }>(
-          contractIds.lendingPool,
-          'get_loan',
-          [Address.fromString(address).toScVal()],
-        );
+    // ✅ NEW: Use credit_registry on-chain metrics as the authoritative floor.
+    // This correctly recovers the full cumulative count even after RPC events expire,
+    // replacing the old `get_loan.repaid` boolean fallback that capped count at 1.
+    try {
+      const onChain = await queryContract<{
+        repayment_count?: number | bigint;
+        default_count?: number | bigint;
+      }>(contractIds.creditRegistry, 'get_metrics', [Address.fromString(address).toScVal()]);
 
-        if (latestLoan?.repaid) repaymentCount = Math.max(repaymentCount, 1);
-        if (latestLoan?.defaulted) defaultCount = Math.max(defaultCount, 1);
-      } catch {
-        // Ignore latest-loan fallback failures and return the event-derived counts.
+      if (onChain) {
+        repaymentCount = Math.max(repaymentCount, Number(onChain.repayment_count ?? 0));
+        defaultCount = Math.max(defaultCount, Number(onChain.default_count ?? 0));
       }
+    } catch {
+      // Ignore registry errors — fall back to event-derived counts
     }
 
     return { repaymentCount, defaultCount };
@@ -396,27 +419,8 @@ export async function buildScoreSummary(address: string) {
     ]),
   ]);
 
-  // P2-11: Fetch existing on-chain metrics to use as a floor.
-  // This prevents losing historical repayments/defaults when ledger events expire.
-  try {
-    const onChain = await queryContract<{
-      repayment_count?: number | bigint;
-      default_count?: number | bigint;
-    }>(contractIds.creditRegistry, 'get_metrics', [Address.fromString(address).toScVal()]);
-
-    if (onChain) {
-      metrics.repaymentCount = Math.max(
-        metrics.repaymentCount,
-        Number(onChain.repayment_count ?? 0),
-      );
-      metrics.defaultCount = Math.max(metrics.defaultCount, Number(onChain.default_count ?? 0));
-    }
-  } catch {
-    // Ignore errors fetching on-chain metrics, fallback to detected ones
-  }
-
   const score = calculateScore(metrics, horizonMetrics);
-  const tier = kycVerified && score >= 40 ? 4 : scoreToTier(score);
+  const tier = scoreToTier(score, kycVerified);
   const tierLimit = await getTierLimit(tier);
 
   return buildScorePayload(address, {

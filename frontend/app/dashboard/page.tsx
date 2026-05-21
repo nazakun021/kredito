@@ -2,13 +2,14 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import {
   ArrowRight,
   ChartColumn,
+  ChevronDown,
   Clock,
   RefreshCw,
   ShieldCheck,
@@ -72,6 +73,7 @@ export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const isAuthenticated = !!user && !!token;
+  const [isFormulaOpen, setIsFormulaOpen] = useState(false);
 
   // 1. Primary: Get the latest cached score (fast)
   const scoreQuery = useQuery({
@@ -372,36 +374,53 @@ export default function DashboardPage() {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <section className="card-elevated animate-fade-up">
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'var(--color-bg-elevated)' }}>
-              <ChartColumn size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold">Score formula</h2>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                {score?.formula.expression}
-              </p>
-            </div>
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading formula">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="skeleton h-16" />
-              ))}
-            </div>
-          ) : score ? (
-            <div className="rounded-2xl p-6 font-mono text-sm leading-8 overflow-x-auto" style={{ background: 'var(--color-bg-card)' }}>
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-x-2 max-w-sm text-sm">
-                <span>score</span> <span className="text-slate-500">=</span> <span className="text-right">({score.metrics.txCount} x 2) = {score.formula.txComponent}</span>
-                <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.repaymentCount} x 10) = {score.formula.repaymentComponent}</span>
-                <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.xlmBalanceFactor} x 5) = {score.formula.balanceComponent}</span>
-                <span></span> <span className="text-slate-500">-</span> <span className="text-right">({score.metrics.defaultCount} x 25) = {score.formula.defaultPenalty}</span>
-                <div className="col-span-3 border-t my-2 border-slate-700"></div>
-                <span className="font-bold">Total</span> <span></span> <span className="text-right font-bold text-emerald-500">= {score.formula.total}</span>
+          <button
+            onClick={() => setIsFormulaOpen((prev) => !prev)}
+            className="mb-5 flex w-full items-center justify-between gap-3 text-left"
+            aria-expanded={isFormulaOpen}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-lg"
+                style={{ background: 'var(--color-bg-elevated)' }}
+              >
+                <ChartColumn size={16} style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold">Score formula</h2>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  {score?.formula.expression}
+                </p>
               </div>
             </div>
-          ) : null}
+            <ChevronDown
+              size={16}
+              style={{ color: 'var(--color-text-muted)' }}
+              className={`transition-transform duration-200 ${isFormulaOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {isFormulaOpen && (
+            isLoading ? (
+              <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading formula">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="skeleton h-16" />
+                ))}
+              </div>
+            ) : score ? (
+              <div className="rounded-2xl p-6 font-mono text-sm leading-8 overflow-x-auto" style={{ background: 'var(--color-bg-card)' }}>
+                <div className="grid grid-cols-[1fr_auto_1fr] gap-x-2 max-w-sm text-sm">
+                  <span>score</span> <span className="text-slate-500">=</span> <span className="text-right">({score.metrics.txCount} x 2) = {score.formula.txComponent}</span>
+                  <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.repaymentCount} x 10) = {score.formula.repaymentComponent}</span>
+                  <span></span> <span className="text-slate-500">+</span> <span className="text-right">({score.metrics.xlmBalanceFactor} x 5) = {score.formula.balanceComponent}</span>
+                  <span></span> <span className="text-slate-500">-</span> <span className="text-right">({score.metrics.defaultCount} x 25) = {score.formula.defaultPenalty}</span>
+                  <div className="col-span-3 border-t my-2 border-slate-700"></div>
+                  <span className="font-bold">Total</span> <span></span> <span className="text-right font-bold text-emerald-500">= {score.formula.total}</span>
+                </div>
+              </div>
+            ) : null
+          )}
         </section>
 
         <section className="card-elevated animate-fade-up">

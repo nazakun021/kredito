@@ -15,7 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { getWalletNetwork, loginWithFreighter, waitForFreighter } from '@/lib/freighter';
-import { REQUIRED_NETWORK } from '@/lib/constants';
+import { REQUIRED_NETWORK, FRIENDLY_NETWORK_NAME } from '@/lib/constants';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
@@ -83,7 +83,7 @@ export default function Page() {
         const networkDetails = await getWalletNetwork();
         const networkError =
           networkDetails?.network && networkDetails.network !== REQUIRED_NETWORK
-            ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.`
+            ? `Switch Freighter to ${FRIENDLY_NETWORK_NAME} to continue.`
             : null;
 
         useWalletStore.setState({
@@ -199,7 +199,7 @@ export default function Page() {
               }}
             >
               <Globe size={12} aria-hidden="true" />
-              Built on Stellar · {REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet'}
+              Built on Stellar · {FRIENDLY_NETWORK_NAME}
             </div>
 
             <h1 className="mt-8 text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-5xl lg:text-7xl">
@@ -235,7 +235,7 @@ export default function Page() {
                   }}
                 >
                   <TrendingUp size={20} aria-hidden="true" />
-                  {isWrongNetwork ? `Switch Freighter to ${REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet'}` : 'Go to Dashboard'}
+                  {isWrongNetwork ? `Switch Freighter to ${FRIENDLY_NETWORK_NAME}` : 'Go to Dashboard'}
                   {!isWrongNetwork && <ArrowRight size={20} aria-hidden="true" />}
                 </button>
               ) : freighterReady || checkingFreighter ? (

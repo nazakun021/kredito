@@ -147,7 +147,7 @@ describe('Phase 9: Critical Invariants', () => {
         .set('Authorization', `Bearer ${config.adminApiSecret}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.error).toBe(0);
+      expect(response.body.errors).toBe(0);
       expect(response.body.skipped_idempotent).toBe(1);
     });
   });

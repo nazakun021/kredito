@@ -88,9 +88,9 @@ router.post(
   '/create',
   authMiddleware,
   asyncRoute(async (req: AuthRequest, res) => {
-    const { amount, termLedgers } = req.body;
-    if (!amount || !termLedgers) {
-      throw badRequest('Amount and termLedgers are required');
+    const { amount, termLedgers, apyBps } = req.body;
+    if (!amount || !termLedgers || !apyBps) {
+      throw badRequest('Amount, termLedgers, and apyBps are required');
     }
 
     const wallet = req.wallet;
@@ -103,7 +103,8 @@ router.post(
       [
         Address.fromString(wallet).toScVal(),
         nativeToScVal(amountStroops, { type: 'i128' }),
-        nativeToScVal(termLedgers, { type: 'u32' }),
+        nativeToScVal(Number(termLedgers), { type: 'u32' }),
+        nativeToScVal(Number(apyBps), { type: 'u32' }),
       ],
     );
 
@@ -125,6 +126,41 @@ router.post(
       contractIds.lendingPool,
       'withdraw_time_deposit',
       [Address.fromString(wallet).toScVal()],
+    );
+
+    return res.json({
+      requiresSignature: true,
+      unsignedXdr,
+    });
+  }),
+);
+
+router.post(
+  '/approve',
+  authMiddleware,
+  asyncRoute(async (req: AuthRequest, res) => {
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw badRequest('Invalid amount');
+    }
+
+    const wallet = req.wallet;
+    const amountStroops = toStroops(amount);
+
+    // Get current ledger for expiry
+    const latestLedger = await rpcServer.getLatestLedger();
+    const expirationLedger = latestLedger.sequence + config.approvalLedgerWindow;
+
+    const unsignedXdr = await buildUnsignedContractCall(
+      wallet,
+      contractIds.xlmSac,
+      'approve',
+      [
+        Address.fromString(wallet).toScVal(), // from
+        Address.fromString(contractIds.lendingPool).toScVal(), // spender
+        nativeToScVal(amountStroops, { type: 'i128' }), // amount
+        nativeToScVal(expirationLedger, { type: 'u32' }), // expiration_ledger
+      ],
     );
 
     return res.json({

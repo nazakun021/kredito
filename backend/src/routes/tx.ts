@@ -13,7 +13,19 @@ const router = Router();
 
 const submitFlowSchema = z
   .object({
-    action: z.enum(['borrow', 'repay']).optional(),
+    action: z
+      .enum([
+        'borrow',
+        'repay',
+        'send',
+        'stake',
+        'unstake',
+        'create_deposit',
+        'withdraw_deposit',
+        'update_metrics',
+        'approve_xlm',
+      ])
+      .optional(),
     step: z.string().optional(),
   })
   .optional();

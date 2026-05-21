@@ -18,13 +18,13 @@ If you prefer manual setup, create `backend/.env` from `backend/.env.example` an
 - `ISSUER_SECRET_KEY` for Stellar issuer signing
 - `ADMIN_API_SECRET` for `/api/admin/check-defaults`
 - `WEB_AUTH_SECRET_KEY` for SEP-10 challenge signing
-- `PHPC_ID`, `REGISTRY_ID`, `LENDING_POOL_ID` for deployed contracts
+- `XLM_SAC_ID`, `REGISTRY_ID`, `LENDING_POOL_ID` for deployed contracts
 
 Generate `ADMIN_API_SECRET` as a separate random token. Do not reuse `ISSUER_SECRET_KEY` in HTTP headers or cron jobs.
 
 Optional backend settings:
 
-- `APPROVAL_LEDGER_WINDOW=500` controls how long PHPC approval stays valid during repayment signing
+- `APPROVAL_LEDGER_WINDOW=500` controls how long XLM SAC approval stays valid during repayment signing
 - `CORS_ORIGINS` should be a comma-separated allowlist in production, not `*`
 
 Run:

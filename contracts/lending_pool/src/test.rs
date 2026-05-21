@@ -475,7 +475,43 @@ fn test_time_deposit_matures_with_interest() {
 
     pool_client(&ctx).withdraw_time_deposit(&depositor);
 
-    let expected_interest = (amount * 500 * (term + 1) as i128) / (10_000 * 6_307_200);
+    let expected_interest = (amount * 500 * term as i128) / (10_000 * 6_307_200);
+    assert_eq!(
+        xlm_client(&ctx).balance(&depositor),
+        amount + expected_interest
+    );
+}
+
+#[test]
+fn test_time_deposit_late_withdrawal_is_capped() {
+    let ctx = setup_pool(500, 518_400);
+    let depositor = Address::generate(&ctx.env);
+
+    let amount = 100_000_000_000;
+    let term = 10_000;
+    xlm_admin_client(&ctx).mint(&depositor, &amount);
+    xlm_client(&ctx).approve(&depositor, &ctx.pool_id, &amount, &2000);
+
+    fund_pool(&ctx, 10_000_000_000);
+
+    pool_client(&ctx).time_deposit(&depositor, &amount, &term);
+
+    // Fast forward way past maturity
+    ctx.env.ledger().set(LedgerInfo {
+        timestamp: 0,
+        protocol_version: 22,
+        sequence_number: term * 2,
+        network_id: [0; 32],
+        base_reserve: 0,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 1000000,
+    });
+
+    pool_client(&ctx).withdraw_time_deposit(&depositor);
+
+    // Interest should be capped at term, not term * 2
+    let expected_interest = (amount * 500 * term as i128) / (10_000 * 6_307_200);
     assert_eq!(
         xlm_client(&ctx).balance(&depositor),
         amount + expected_interest

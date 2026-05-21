@@ -5,7 +5,7 @@ import {
   getConnectedAddress, 
   getWalletNetwork 
 } from '../lib/freighter';
-import { REQUIRED_NETWORK } from '../lib/constants';
+import { REQUIRED_NETWORK, FRIENDLY_NETWORK_NAME } from '../lib/constants';
 import { toast } from 'sonner';
 import { useAuthStore } from './auth';
 
@@ -93,7 +93,7 @@ export const useWalletStore = create<WalletState>((set) => ({
       }
 
       if (networkDetails.network !== REQUIRED_NETWORK) {
-        const error = `Switch Freighter to ${REQUIRED_NETWORK} to continue.`;
+        const error = `Switch Freighter to ${FRIENDLY_NETWORK_NAME} to continue.`;
         set({
           isConnected: true,
           publicKey: connection.address,
@@ -169,7 +169,7 @@ export const useWalletStore = create<WalletState>((set) => ({
           isRestoring: false,
           hasRestored: true,
           connectionError: networkDetails?.network !== REQUIRED_NETWORK 
-            ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.` 
+            ? `Switch Freighter to ${FRIENDLY_NETWORK_NAME} to continue.` 
             : null
         });
       } else {

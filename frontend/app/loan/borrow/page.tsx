@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
+import { REQUIRED_NETWORK, FRIENDLY_NETWORK_NAME, NETWORK_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
 import CelebrationParticles from '@/components/CelebrationParticles';
@@ -137,7 +137,7 @@ export default function BorrowPage() {
         const signResult = await signTx(
           data.unsignedXdr, 
           user!.wallet!, 
-          networkPassphrase ?? TESTNET_PASSPHRASE
+          networkPassphrase ?? NETWORK_PASSPHRASE
         );
         if ('error' in signResult) throw new Error(signResult.error);
 
@@ -363,7 +363,7 @@ export default function BorrowPage() {
               {walletConnected && !isCorrectNetwork && (
                 <div className="mt-4 flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
                   <Info size={14} />
-                  Switch Freighter to {REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet'}
+                  Switch Freighter to {FRIENDLY_NETWORK_NAME}
                 </div>
               )}
 
