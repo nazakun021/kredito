@@ -25,8 +25,8 @@
   - Run simulation for `lending_pool` (similar to the palengke_payment/utang_escrow example)
   - Format output (stroops + XLM equivalent):
     ```
-    credit_registry : 166513752 stroops = 16.6513752 XLM
-    lending_pool    : 289970523 stroops = 28.9970523 XLM
+    credit_registry : 164885263 stroops = 16.4885263 XLM
+    lending_pool    : 294777950 stroops = 29.4777950 XLM
     ```
   - Forward the cost breakdown to the organizer so they can provide the funds
 

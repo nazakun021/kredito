@@ -30,7 +30,7 @@ Kredito uses deterministic on-chain transaction history to generate verifiable c
 
 Our scoring engine is completely transparent and verifiable on-chain. Each metric is weighted to reward network presence and financial reliability:
 
-`score = (tx_count × 2) + (repayment_count × 10) + (xlm_balance_factor × 5) − (default_count × 25)`
+`score = (tx_count × 1) + (repayment_count × 15) + (xlm_balance_factor × 5) − (default_count × 30)`
 
 ## Product Flow
 
