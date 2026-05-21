@@ -93,9 +93,9 @@ fn pool_client(ctx: &TestContext) -> LendingPoolClient<'_> {
 }
 
 fn fund_pool(ctx: &TestContext, amount: i128) {
-    xlm_admin_client(&ctx).mint(&ctx.admin, &amount);
-    xlm_client(&ctx).approve(&ctx.admin, &ctx.pool_id, &amount, &2000);
-    pool_client(&ctx).deposit(&amount);
+    xlm_admin_client(ctx).mint(&ctx.admin, &amount);
+    xlm_client(ctx).approve(&ctx.admin, &ctx.pool_id, &amount, &2000);
+    pool_client(ctx).deposit(&amount);
 }
 
 #[test]
@@ -459,7 +459,7 @@ fn test_multiple_stakers_proportional_rewards() {
     assert_eq!(info2.share_bps, 7500);
 
     // Check rewards (allowing for small rounding diffs if any, but should be exact here)
-    assert_eq!(info1.pending_rewards, total_staker_rewards * 1 / 4);
+    assert_eq!(info1.pending_rewards, total_staker_rewards / 4);
     assert_eq!(info2.pending_rewards, total_staker_rewards * 3 / 4);
 }
 
