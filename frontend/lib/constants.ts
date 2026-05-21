@@ -3,8 +3,14 @@
 export const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
 export const MAINNET_PASSPHRASE = "Public Global Stellar Network ; October 2015";
 
-export const REQUIRED_NETWORK =
-  process.env.NEXT_PUBLIC_NETWORK?.toUpperCase() ?? "PUBLIC";
+const getNormalizedNetwork = (net: string | undefined): string => {
+  if (!net) return 'PUBLIC';
+  const upper = net.toUpperCase();
+  if (upper === 'MAINNET' || upper === 'PUBLIC') return 'PUBLIC';
+  return 'TESTNET';
+};
+
+export const REQUIRED_NETWORK = getNormalizedNetwork(process.env.NEXT_PUBLIC_NETWORK);
 
 export const FRIENDLY_NETWORK_NAME =
   REQUIRED_NETWORK === 'PUBLIC' ? 'Mainnet' : 'Testnet';
