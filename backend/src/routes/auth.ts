@@ -65,6 +65,13 @@ router.post(
     let clientAccountID: string;
 
     try {
+      console.log('--- Auth Debug ---');
+      console.log('Incoming XDR:', parsed.data.signedChallenge);
+      console.log('Server PK:', webAuthKeypair.publicKey());
+      console.log('Network Passphrase:', config.networkPassphrase);
+      console.log('Home Domain:', config.homeDomain);
+      console.log('Web Auth Domain:', config.webAuthDomain);
+
       const details = WebAuth.readChallengeTx(
         parsed.data.signedChallenge,
         webAuthKeypair.publicKey(),
@@ -74,6 +81,7 @@ router.post(
       );
 
       clientAccountID = details.clientAccountID;
+      console.log('Client Account ID:', clientAccountID);
 
       WebAuth.verifyChallengeTxSigners(
         parsed.data.signedChallenge,
@@ -86,7 +94,7 @@ router.post(
     } catch (err: any) {
       console.error('❌ Authentication verification failed:', err);
       throw unauthorized(
-        `Wallet signature could not be verified or challenge expired: ${err.message || err}`,
+        `Wallet signature could not be verified or challenge expired: ${err.message || err}. Signed XDR: ${parsed.data.signedChallenge}`,
       );
     }
 
