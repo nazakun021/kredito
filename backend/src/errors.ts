@@ -70,7 +70,7 @@ function mapSorobanError(message: string) {
     ['repaymentoverflow', 'Calculation error'],
     ['#18', 'Loan is not yet overdue'],
     ['loannotoverdue', 'Loan is not yet overdue'],
-    ['insufficientbalance', 'Insufficient PHPC balance for repayment'],
+    ['insufficientbalance', 'Insufficient XLM balance for repayment'],
     ['insufficientallowance', 'Repayment approval did not settle correctly'],
     ['timeout', 'Stellar confirmation timed out. Try again.'],
   ];

@@ -63,7 +63,7 @@ Thumbs.db
 # --- Agents / AI Tools ---
 .agents/
 skills-lock.json
-repomix-output.md
+repomix-output.xml
 repomix.config.json
 .repomixignore
 

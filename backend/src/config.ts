@@ -18,7 +18,6 @@ check('JWT_SECRET');
 check('ISSUER_SECRET_KEY');
 check('ADMIN_API_SECRET');
 check('WEB_AUTH_SECRET_KEY');
-check('PHPC_ID');
 check('REGISTRY_ID');
 check('LENDING_POOL_ID');
 
@@ -40,7 +39,11 @@ export const config = {
   webAuthSecretKey: process.env.WEB_AUTH_SECRET_KEY!,
 
   contractIds: {
-    phpcToken: process.env.PHPC_ID!,
+    xlmSac:
+      process.env.XLM_SAC_ID ||
+      (process.env.STELLAR_NETWORK === 'PUBLIC'
+        ? 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA'
+        : 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC'),
     creditRegistry: process.env.REGISTRY_ID!,
     lendingPool: process.env.LENDING_POOL_ID!,
   },
@@ -48,7 +51,11 @@ export const config = {
   stellarNetwork: process.env.STELLAR_NETWORK || 'TESTNET',
   rpcUrl: process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
   horizonUrl: process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org',
-  networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
+  networkPassphrase:
+    process.env.STELLAR_NETWORK_PASSPHRASE ||
+    (process.env.STELLAR_NETWORK === 'PUBLIC'
+      ? 'Public Global Stellar Network ; October 2015'
+      : 'Test SDF Network ; September 2015'),
 
   homeDomain: process.env.HOME_DOMAIN || 'kredito.finance',
   webAuthDomain: process.env.WEB_AUTH_DOMAIN || 'api.kredito.finance',

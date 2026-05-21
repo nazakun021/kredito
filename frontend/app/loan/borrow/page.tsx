@@ -5,12 +5,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, Loader2, TimerReset, Info, Wallet } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, TimerReset, Info, Wallet, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors';
 import { useAuthStore } from '@/store/auth';
 import { useWalletStore } from '@/store/walletStore';
-import { REQUIRED_NETWORK, TESTNET_PASSPHRASE } from '@/lib/constants';
+import { REQUIRED_NETWORK, FRIENDLY_NETWORK_NAME, NETWORK_PASSPHRASE } from '@/lib/constants';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import WalletConnectionBanner from '@/components/WalletConnectionBanner';
 import CelebrationParticles from '@/components/CelebrationParticles';
@@ -24,6 +24,7 @@ interface ScoreResponse {
   borrowLimit: string;
   feeRate: number;
   feeBps: number;
+  kycVerified: boolean;
 }
 
 interface LoanStatusResponse {
@@ -107,14 +108,14 @@ export default function BorrowPage() {
   const isAmountValid = borrowAmount > 0 && borrowAmount <= borrowLimit;
   const amountError =
     hasAmountInteracted && borrowLimit > 0 && !isAmountValid
-      ? `Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`
+      ? `Enter an amount between ◎0.01 and ◎${borrowLimit.toFixed(2)}.`
       : '';
   const summaryRows = useMemo(
     () => [
       { label: 'Tier', value: score?.tierLabel || 'Unrated' },
       { label: 'Fee', value: `${(score?.feeRate || 0).toFixed(2)}%` },
       { label: 'Term', value: '30 days' },
-      { label: 'Repayment', value: `P${(borrowAmount + fee).toFixed(2)}`, strong: true },
+      { label: 'Repayment', value: `◎${(borrowAmount + fee).toFixed(2)}`, strong: true },
     ],
     [borrowAmount, fee, score?.feeRate, score?.tierLabel],
   );
@@ -122,7 +123,7 @@ export default function BorrowPage() {
   const handleBorrow = async () => {
     if (!isAmountValid) {
       setHasAmountInteracted(true);
-      setError(`Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`);
+      setError(`Enter an amount between ◎0.01 and ◎${borrowLimit.toFixed(2)}.`);
       return;
     }
 
@@ -137,7 +138,7 @@ export default function BorrowPage() {
         const signResult = await signTx(
           data.unsignedXdr, 
           user!.wallet!, 
-          networkPassphrase ?? TESTNET_PASSPHRASE
+          networkPassphrase ?? NETWORK_PASSPHRASE
         );
         if ('error' in signResult) throw new Error(signResult.error);
 
@@ -170,6 +171,32 @@ export default function BorrowPage() {
     }
   };
 
+  if (score && !score.kycVerified && score.tier >= 2) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative animate-fade-up">
+        <div className="card-elevated w-full p-8 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-yellow-500 via-amber-500 to-red-500" />
+          <div className="flex flex-col items-center">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
+              <ShieldCheck size={32} />
+            </div>
+            <h1 className="text-2xl font-extrabold">Identity Verification Required</h1>
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+              Your {score.tierLabel} tier requires KYC verification before accessing the lending pool. Bronze tier users can borrow without KYC.
+            </p>
+          </div>
+
+          <button
+            onClick={() => router.push('/kyc')}
+            className="btn-primary btn-accent mt-8 w-full justify-center"
+          >
+            Verify Identity
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (success) {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative">
@@ -186,9 +213,9 @@ export default function BorrowPage() {
           </div>
 
           <div className="mt-8 rounded-xl p-5 text-left" style={{ background: 'var(--color-bg-card)' }}>
-            <SummaryRow label="Amount" value={`P${success.amount}`} />
-            <SummaryRow label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`P${success.fee}`} />
-            <SummaryRow label="Total owed" value={`P${success.totalOwed}`} strong />
+            <SummaryRow label="Amount" value={`◎${success.amount}`} />
+            <SummaryRow label={`Fee (${(success.feeBps / 100).toFixed(2)}%)`} value={`◎${success.fee}`} />
+            <SummaryRow label="Total owed" value={`◎${success.totalOwed}`} strong />
           </div>
 
           <a 
@@ -218,9 +245,8 @@ export default function BorrowPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 animate-fade-up">
-
-        <h1 className="mt-2 text-2xl font-extrabold lg:text-3xl">Borrow from the pool</h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <h1 className="text-2xl font-extrabold lg:text-3xl">Borrow from the pool</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Eligibility is enforced by the on-chain tier stored in your Credit Passport.
         </p>
       </div>
@@ -235,10 +261,10 @@ export default function BorrowPage() {
           {isScoreLoading ? (
             <div className="skeleton mt-4 h-12 w-40" role="status" aria-busy="true" />
           ) : (
-            <p className="mt-4 text-4xl font-extrabold tabular-nums sm:text-5xl">P{borrowAmount.toFixed(2)}</p>
+            <p className="mt-4 text-4xl font-extrabold tabular-nums sm:text-5xl">◎{borrowAmount.toFixed(2)}</p>
           )}
           <p className="mt-2 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-            Max available now: P{borrowLimit.toFixed(2)}
+            Max available now: ◎{borrowLimit.toFixed(2)}
           </p>
           <div className="mt-6 space-y-3" style={{ color: 'var(--color-text-secondary)' }}>
             {isScoreLoading
@@ -298,7 +324,7 @@ export default function BorrowPage() {
               <div className="flex gap-3 rounded-xl p-4 text-sm mb-4" style={{ background: 'var(--color-accent-glow)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-accent)' }}>
                 <Info className="mt-0.5 shrink-0" size={16} style={{ color: 'var(--color-accent)' }} />
                 <p>
-                  After borrowing P{borrowAmount.toFixed(2)}, you will need to top up at least P{fee.toFixed(2)} PHPC before repayment so your wallet can cover the fee.
+                  After borrowing ◎{borrowAmount.toFixed(2)}, you will need to top up at least ◎{fee.toFixed(2)} XLM before repayment so your wallet can cover the fee.
                 </p>
               </div>
               {amountError && (
@@ -344,7 +370,7 @@ export default function BorrowPage() {
                   checked={agreed}
                   onChange={(event) => setAgreed(event.target.checked)}
                 />
-                <span>I confirm I want to borrow P{borrowAmount.toFixed(2)} and agree to repay within 30 days.</span>
+                <span>I confirm I want to borrow ◎{borrowAmount.toFixed(2)} and agree to repay within 30 days.</span>
               </label>
 
               {error || (walletConnected && !isCorrectNetwork ? walletError : null) ? (
@@ -363,7 +389,7 @@ export default function BorrowPage() {
               {walletConnected && !isCorrectNetwork && (
                 <div className="mt-4 flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
                   <Info size={14} />
-                  Switch Freighter to Testnet
+                  Switch Freighter to {FRIENDLY_NETWORK_NAME}
                 </div>
               )}
 
@@ -392,7 +418,7 @@ export default function BorrowPage() {
                     </>
                   ) : (
                     <>
-                      Confirm Borrow P{borrowAmount.toFixed(2)}
+                      Confirm Borrow ◎{borrowAmount.toFixed(2)}
                       <ArrowRight size={16} />
                     </>
                   )}
@@ -418,7 +444,7 @@ function getBorrowErrorMessage(err: unknown, borrowLimit: number) {
   }
 
   if (message === 'Amount exceeds tier limit') {
-    return `Enter an amount between P0.01 and P${borrowLimit.toFixed(2)}.`;
+    return `Enter an amount between ◎0.01 and ◎${borrowLimit.toFixed(2)}.`;
   }
 
   if (message === 'Active loan already exists') {

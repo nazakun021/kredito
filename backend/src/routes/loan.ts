@@ -8,23 +8,26 @@ import {
   estimateDueDateFromLedgers,
   getPoolSnapshot,
   tierFeeBps,
-  toPhpAmount,
+  toXlmAmount,
   toStroops,
 } from '../scoring/engine';
 import { buildUnsignedContractCall } from '../stellar/feebump';
-import { queryContract, getLoanFromChain, hasActiveLoan } from '../stellar/query';
-import { contractIds, rpcServer } from '../stellar/client';
+import { getLoanFromChain, hasActiveLoan } from '../stellar/query';
+import { contractIds, horizonServer, rpcServer } from '../stellar/client';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { ensureDemoWalletReady } from '../stellar/demo';
 
 const router = Router();
 
-async function getWalletTokenBalance(walletAddress: string) {
-  const result = await queryContract<bigint | number | string>(contractIds.phpcToken, 'balance', [
-    Address.fromString(walletAddress).toScVal(),
-  ]);
-  return BigInt(result ?? 0);
+async function getWalletXlmBalance(walletAddress: string) {
+  try {
+    const account = await horizonServer.loadAccount(walletAddress);
+    const native = account.balances.find((b) => b.asset_type === 'native');
+    return toStroops(Number(native?.balance || 0));
+  } catch {
+    return 0n;
+  }
 }
 
 router.post(
@@ -49,6 +52,11 @@ router.post(
     const score = await buildScoreSummary(wallet);
     if (score.tier < 1) {
       throw badRequest('No active credit tier');
+    }
+
+    // KYC enforcement: Silver (2), Gold (3), Platinum (4) require KYC
+    if (score.tier >= 2 && !score.kycVerified) {
+      throw badRequest('KYC verification required for this tier');
     }
 
     const amountStroops = toStroops(amount);
@@ -125,92 +133,46 @@ router.post(
     }
 
     const totalOwedStroops = loan.principal + loan.fee;
-    const walletBalanceStroops = await getWalletTokenBalance(wallet);
+    const walletBalanceStroops = await getWalletXlmBalance(wallet);
     if (walletBalanceStroops < totalOwedStroops) {
       const shortfall = totalOwedStroops - walletBalanceStroops;
       return res.status(422).json({
         error: 'InsufficientBalance',
-        shortfall: toPhpAmount(shortfall),
-        walletBalance: toPhpAmount(walletBalanceStroops),
-        totalOwed: toPhpAmount(totalOwedStroops),
+        shortfall: toXlmAmount(shortfall),
+        walletBalance: toXlmAmount(walletBalanceStroops),
+        totalOwed: toXlmAmount(totalOwedStroops),
       });
     }
 
-    const latestLedger = await rpcServer.getLatestLedger();
-    const expirationLedger = latestLedger.sequence + config.approvalLedgerWindow;
-
-    const approveArgs = [
+    const unsignedXdr = await buildUnsignedContractCall(wallet, contractIds.lendingPool, 'repay', [
       Address.fromString(wallet).toScVal(),
-      Address.fromString(contractIds.lendingPool).toScVal(),
-      nativeToScVal(totalOwedStroops, { type: 'i128' }),
-      nativeToScVal(expirationLedger, { type: 'u32' }),
-    ];
-
-    const unsignedApproveXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.phpcToken,
-      'approve',
-      approveArgs,
-    );
+    ]);
 
     const summary = {
-      principal: toPhpAmount(loan.principal),
-      fee: toPhpAmount(loan.fee),
-      totalOwed: toPhpAmount(totalOwedStroops),
-      walletPhpcBalance: toPhpAmount(walletBalanceStroops),
+      principal: toXlmAmount(loan.principal),
+      fee: toXlmAmount(loan.fee),
+      totalOwed: toXlmAmount(totalOwedStroops),
+      walletBalance: toXlmAmount(walletBalanceStroops),
     };
 
     type RepayResponse = {
       requiresSignature: true;
-      transactions: Array<{
-        type: 'approve';
-        unsignedXdr: string;
-        description: string;
-      }>;
+      unsignedXdr: string;
       summary: {
         principal: string;
         fee: string;
         totalOwed: string;
-        walletPhpcBalance: string;
+        walletBalance: string;
       };
     };
 
-    logger.info({ wallet, totalOwed: summary.totalOwed }, 'Repay approval prepared');
+    logger.info({ wallet, totalOwed: summary.totalOwed }, 'Repay transaction prepared');
     const response: RepayResponse = {
       requiresSignature: true,
-      transactions: [
-        {
-          type: 'approve',
-          unsignedXdr: unsignedApproveXdr,
-          description: `Authorize pool to spend ${toPhpAmount(totalOwedStroops)} PHPC`,
-        },
-      ],
+      unsignedXdr,
       summary,
     };
     return res.json(response);
-  }),
-);
-
-router.post(
-  '/repay-xdr',
-  authMiddleware,
-  asyncRoute(async (req: AuthRequest, res) => {
-    const wallet = req.wallet;
-    const loan = await getLoanFromChain(wallet);
-
-    if (!loan || loan.repaid || loan.defaulted) {
-      throw badRequest('No repayable loan found');
-    }
-
-    // Build against the CURRENT sequence number — approve has already settled by now
-    const unsignedRepayXdr = await buildUnsignedContractCall(
-      wallet,
-      contractIds.lendingPool,
-      'repay',
-      [Address.fromString(wallet).toScVal()],
-    );
-
-    res.json({ unsignedXdr: unsignedRepayXdr });
   }),
 );
 
@@ -223,7 +185,7 @@ router.get(
       getLoanFromChain(wallet),
       getPoolSnapshot(),
       rpcServer.getLatestLedger(),
-      getWalletTokenBalance(wallet),
+      getWalletXlmBalance(wallet),
     ]);
 
     if (!loan) {
@@ -271,13 +233,13 @@ router.get(
       poolBalance: poolSnapshot.poolBalance,
       loan: loan
         ? {
-            principal: toPhpAmount(loan.principal),
-            fee: toPhpAmount(loan.fee),
-            totalOwed: toPhpAmount(loan.principal + loan.fee),
-            walletBalance: toPhpAmount(walletBalanceStroops),
+            principal: toXlmAmount(loan.principal),
+            fee: toXlmAmount(loan.fee),
+            totalOwed: toXlmAmount(loan.principal + loan.fee),
+            walletBalance: toXlmAmount(walletBalanceStroops),
             shortfall:
               walletBalanceStroops < loan.principal + loan.fee
-                ? toPhpAmount(loan.principal + loan.fee - walletBalanceStroops)
+                ? toXlmAmount(loan.principal + loan.fee - walletBalanceStroops)
                 : '0.00',
             dueLedger,
             currentLedger,

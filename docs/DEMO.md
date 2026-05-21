@@ -24,9 +24,9 @@ This runbook outlines the steps for a live demonstration of the Kredito platform
 
 1. On the Dashboard, you'll see "Unrated" or a low score if it's a new wallet.
 2. Click **Refresh Score** (or **Calculate Score**).
-3. The backend will sweep the last 10,000 ledgers for your address history (payments, XLM balance, age).
+3. The backend will sweep your address history (payments, XLM balance, age).
 4. A transaction window will appear. Sign the **Update Metrics** transaction. This persists your credit metadata on-chain.
-5. The Dashboard should now display your **Credit Passport** with a Tier (e.g., Bronze, Silver, Gold) and a Borrow Limit.
+5. The Dashboard should now display your **Credit Passport** with a Tier (e.g., Bronze, Silver, Gold, Platinum) and a Borrow Limit.
 
 ### Step 3: Borrow from the Pool
 
@@ -39,14 +39,14 @@ This runbook outlines the steps for a live demonstration of the Kredito platform
 4. Click **Review & Confirm**.
 5. Check the confirmation box and click **Confirm Borrow**.
 6. Sign the Soroban transaction in Freighter.
-7. **Success!** Particles will appear, and you can view the transaction on Stellar Expert. Your wallet now contains the borrowed PHPC.
+7. **Success!** Particles will appear, and you can view the transaction on Stellar Expert. Your wallet now contains the borrowed XLM.
 
 ### Step 4: Top-up for Repayment (Demo Tip)
 
 _Note: Since Kredito is a pure micro-loan flow, you only received the principal. To repay, you need `principal + fee`._
 
-1. Explain that for the demo, we need a few extra PHPC to cover the interest/fee.
-2. Use the "issuer" or a script to send a small amount of PHPC to the demo wallet, or explain that in a real-world scenario, the user would already have some balance or top up via an anchor.
+1. Explain that for the demo, we need a few extra XLM to cover the interest/fee.
+2. If the wallet doesn't have enough to cover the fee, use Friendbot via Stellar Laboratory to top up the demo wallet.
 
 ### Step 5: Repay and Level Up
 
@@ -54,7 +54,7 @@ _Note: Since Kredito is a pure micro-loan flow, you only received the principal.
 2. You will see your active loan details and the due date.
 3. Click **Repay Loan**.
 4. Two steps will happen:
-   - **Approve**: You sign a transaction allowing the Lending Pool to pull the PHPC.
+   - **Approve**: You sign a transaction allowing the Lending Pool to pull the XLM.
    - **Repay**: You sign the actual repayment transaction.
 5. Once confirmed, the UI shows a success state.
 6. Return to the **Dashboard**. Note that your score/metrics have updated (specifically `loans_repaid` incremented), which may have increased your limit for the next loan!

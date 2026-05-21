@@ -35,7 +35,7 @@ vi.mock('../stellar/feebump', () => ({
 
 vi.mock('../scoring/engine', () => ({
   buildScoreSummary: vi.fn(),
-  toPhpAmount: vi.fn((v) => (Number(v) / 10_000_000).toFixed(2)),
+  toXlmAmount: vi.fn((v) => (Number(v) / 10_000_000).toFixed(2)),
 }));
 
 vi.mock('../stellar/issuer', () => ({
@@ -147,7 +147,7 @@ describe('Phase 9: Critical Invariants', () => {
         .set('Authorization', `Bearer ${config.adminApiSecret}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.error).toBe(0);
+      expect(response.body.errors).toBe(0);
       expect(response.body.skipped_idempotent).toBe(1);
     });
   });

@@ -5,7 +5,7 @@ import {
   getConnectedAddress, 
   getWalletNetwork 
 } from '../lib/freighter';
-import { REQUIRED_NETWORK } from '../lib/constants';
+import { REQUIRED_NETWORK, FRIENDLY_NETWORK_NAME } from '../lib/constants';
 import { toast } from 'sonner';
 import { useAuthStore } from './auth';
 
@@ -93,7 +93,7 @@ export const useWalletStore = create<WalletState>((set) => ({
       }
 
       if (networkDetails.network !== REQUIRED_NETWORK) {
-        const error = `Switch Freighter to ${REQUIRED_NETWORK} to continue.`;
+        const error = `Switch Freighter to ${FRIENDLY_NETWORK_NAME} to continue.`;
         set({
           isConnected: true,
           publicKey: connection.address,
@@ -158,7 +158,14 @@ export const useWalletStore = create<WalletState>((set) => ({
     }
 
     try {
-      const address = await getConnectedAddress();
+      let address = await getConnectedAddress();
+      
+      if (!address) {
+        // Wait 500ms and retry once before giving up (Freighter can be slow to initialize)
+        await new Promise((r) => setTimeout(r, 500));
+        address = await getConnectedAddress();
+      }
+
       if (address) {
         const networkDetails = await getWalletNetwork();
         set({
@@ -169,11 +176,11 @@ export const useWalletStore = create<WalletState>((set) => ({
           isRestoring: false,
           hasRestored: true,
           connectionError: networkDetails?.network !== REQUIRED_NETWORK 
-            ? `Switch Freighter to ${REQUIRED_NETWORK} to continue.` 
+            ? `Switch Freighter to ${FRIENDLY_NETWORK_NAME} to continue.` 
             : null
         });
       } else {
-        // If we thought we were connected but can't get address, clear it
+        // If we thought we were connected but can't get address after retry, clear it
         safeLocalStorageRemove('kredito_wallet_connected');
         set({ isRestoring: false, hasRestored: true });
       }

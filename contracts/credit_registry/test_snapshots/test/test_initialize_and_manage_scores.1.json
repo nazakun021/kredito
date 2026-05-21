@@ -34,6 +34,12 @@
                     "hi": 0,
                     "lo": 500000000000
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 2500000000000
+                  }
                 }
               ]
             }
@@ -97,6 +103,7 @@
         }
       ]
     ],
+    [],
     [],
     [],
     [],
@@ -241,7 +248,7 @@
             "key": {
               "vec": [
                 {
-                  "symbol": "CreditTier"
+                  "symbol": "CreditState"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -261,52 +268,7 @@
                 "key": {
                   "vec": [
                     {
-                      "symbol": "CreditTier"
-                    },
-                    {
-                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "u32": 0
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          200000
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Metrics"
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Metrics"
+                      "symbol": "CreditState"
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -318,15 +280,48 @@
                   "map": [
                     {
                       "key": {
-                        "symbol": "avg_balance"
+                        "symbol": "metrics"
                       },
                       "val": {
-                        "u32": 350
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "avg_balance"
+                            },
+                            "val": {
+                              "u32": 350
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "default_count"
+                            },
+                            "val": {
+                              "u32": 0
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "repayment_count"
+                            },
+                            "val": {
+                              "u32": 4
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tx_count"
+                            },
+                            "val": {
+                              "u32": 20
+                            }
+                          }
+                        ]
                       }
                     },
                     {
                       "key": {
-                        "symbol": "default_count"
+                        "symbol": "score"
                       },
                       "val": {
                         "u32": 0
@@ -334,18 +329,26 @@
                     },
                     {
                       "key": {
-                        "symbol": "repayment_count"
+                        "symbol": "tier"
                       },
                       "val": {
-                        "u32": 4
+                        "u32": 0
                       }
                     },
                     {
                       "key": {
-                        "symbol": "tx_count"
+                        "symbol": "tier_expiry"
                       },
                       "val": {
-                        "u32": 20
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tier_timestamp"
+                      },
+                      "val": {
+                        "u64": 0
                       }
                     }
                   ]
@@ -354,7 +357,7 @@
             },
             "ext": "v0"
           },
-          200000
+          6311999
         ]
       ],
       [
@@ -364,7 +367,7 @@
             "key": {
               "vec": [
                 {
-                  "symbol": "Score"
+                  "symbol": "KycVerified"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -384,7 +387,7 @@
                 "key": {
                   "vec": [
                     {
-                      "symbol": "Score"
+                      "symbol": "KycVerified"
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -393,13 +396,13 @@
                 },
                 "durability": "persistent",
                 "val": {
-                  "u32": 0
+                  "bool": false
                 }
               }
             },
             "ext": "v0"
           },
-          200000
+          6311999
         ]
       ],
       [
@@ -435,6 +438,21 @@
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "KycTierLimit"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "i128": {
+                            "hi": 0,
+                            "lo": 2500000000000
+                          }
                         }
                       },
                       {
@@ -489,7 +507,7 @@
             },
             "ext": "v0"
           },
-          200000
+          6311999
         ]
       ],
       [
@@ -510,7 +528,7 @@
             },
             "ext": "v0"
           },
-          200000
+          6311999
         ]
       ]
     ]

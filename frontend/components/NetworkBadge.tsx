@@ -16,12 +16,14 @@ export default function NetworkBadge() {
     <div 
       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border"
       style={{
-        background: isCorrect ? 'var(--color-accent-glow)' : 'var(--color-danger-bg)',
-        color: isCorrect ? 'var(--color-accent)' : 'var(--color-danger)',
-        borderColor: isCorrect ? 'var(--color-border-accent)' : 'var(--color-danger)'
+        background: isCorrect ? 'var(--color-success-bg)' : 'var(--color-danger-bg)',
+        color: isCorrect ? 'var(--color-success)' : 'var(--color-danger)',
+        borderColor: isCorrect ? 'var(--color-success-border)' : 'var(--color-danger)'
       }}
     >
-      {isCorrect ? 'Testnet ✓' : network === 'PUBLIC' ? '⚠ Wrong Network' : '⚠ Unknown Network'}
+      {isCorrect 
+        ? (network === 'PUBLIC' ? 'Mainnet ✓' : 'Testnet ✓') 
+        : network === 'PUBLIC' ? '⚠ Wrong Network' : '⚠ Unknown Network'}
     </div>
   );
 }
