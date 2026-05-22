@@ -43,6 +43,7 @@ export async function updateOnChainMetrics(
   walletAddress: string,
   metrics: WalletMetrics,
   horizon?: HorizonMetrics,
+  kycVerified = false,
 ) {
   const wallet = Address.fromString(walletAddress).toScVal();
 
@@ -56,10 +57,15 @@ export async function updateOnChainMetrics(
 
   const avgBalanceForContract = Math.min(metrics.xlmBalance * 2 + horizonBonus, 1000);
 
+  // Injected 40 points on KYC Verification (zero-cost to avoid contract upgrades/reuploads).
+  // Because the smart contract scoring formula is (tx_count * 1) + ...,
+  // adding 40 to the txCount sent to the contract will add exactly 40 points to the on-chain score.
+  const txCountForContract = metrics.txCount + (kycVerified ? 40 : 0);
+
   // Two sequential single-op transactions — Soroban does not allow multi-op txs
   const metricsTxHash = await invokeIssuerContractSingle('update_metrics_raw', [
     wallet,
-    nativeToScVal(metrics.txCount, { type: 'u32' }),
+    nativeToScVal(txCountForContract, { type: 'u32' }),
     nativeToScVal(metrics.repaymentCount, { type: 'u32' }),
     nativeToScVal(avgBalanceForContract, { type: 'u32' }),
     nativeToScVal(metrics.defaultCount, { type: 'u32' }),
@@ -112,12 +118,16 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
           nativeToScVal(finalTier, { type: 'u32' }),
         ]);
 
+  // If the user is KYC verified, the on-chain tx_count was inflated by 40 to grant the score bonus.
+  // We subtract 40 here for UI display accuracy, and show it as a distinct KYC factor.
+  const displayTxCount = kycVerified ? Math.max(0, Number(metrics?.tx_count ?? 0) - 40) : Number(metrics?.tx_count ?? 0);
+
   return buildScorePayload(walletAddress, {
     score: Number(score ?? 0),
     tier: finalTier,
     tierLimit: BigInt(tierLimit ?? 0),
     metrics: {
-      txCount: Number(metrics?.tx_count ?? 0),
+      txCount: displayTxCount,
       repaymentCount: Number(metrics?.repayment_count ?? 0),
       xlmBalance: Number(metrics?.avg_balance ?? 0),
       defaultCount: Number(metrics?.default_count ?? 0),

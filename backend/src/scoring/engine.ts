@@ -32,7 +32,7 @@ export interface ScoreFactor {
   points: number;
 }
 
-export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics): number {
+export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics, kycVerified = false): number {
   const xlmBalanceFactor = Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
   let score =
     metrics.txCount * 1 +
@@ -46,6 +46,10 @@ export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics)
 
     if (horizon.inboundPaymentCount > 50) score += 15;
     if (horizon.hasRegularActivity) score += 10;
+  }
+
+  if (kycVerified) {
+    score += 40;
   }
 
   return Math.max(0, score);
@@ -130,13 +134,14 @@ export function toStroops(amount: number) {
 export function buildScoreFactors(
   metrics: WalletMetrics,
   source: 'generated' | 'onchain' = 'generated',
+  kycVerified = false,
 ): ScoreFactor[] {
   const xlmBalanceFactor =
     source === 'onchain'
       ? Math.min(Math.floor(metrics.xlmBalance / 100), 10)
       : Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
 
-  return [
+  const factors = [
     {
       key: 'txCount',
       label: 'Transaction count',
@@ -166,6 +171,18 @@ export function buildScoreFactors(
       points: metrics.defaultCount * -30,
     },
   ];
+
+  if (kycVerified) {
+    factors.push({
+      key: 'kycBonus',
+      label: 'KYC Verification Bonus',
+      value: 1,
+      weight: 'kyc_verified × 40',
+      points: 40,
+    });
+  }
+
+  return factors;
 }
 
 export function buildScorePayload(
@@ -187,7 +204,7 @@ export function buildScorePayload(
       ? Math.min(Math.floor(input.metrics.xlmBalance / 100), 10)
       : Math.min(Math.floor((input.metrics.xlmBalance * 2) / 100), 10);
 
-  const factors = buildScoreFactors(input.metrics, input.source);
+  const factors = buildScoreFactors(input.metrics, input.source, input.kycVerified);
   const upcomingTier = nextTier(input.score, input.kycVerified);
 
   let horizonBonus = 0;
@@ -224,12 +241,13 @@ export function buildScorePayload(
     },
     formula: {
       expression:
-        'score = (tx_count × 1) + (repayment_count × 15) + (xlm_balance_factor × 5) - (default_count × 30) + (horizon_bonus)',
+        'score = (tx_count × 1) + (repayment_count × 15) + (xlm_balance_factor × 5) - (default_count × 30) + (horizon_bonus) + (kyc_bonus)',
       txComponent: input.metrics.txCount * 1,
       repaymentComponent: input.metrics.repaymentCount * 15,
       balanceComponent: xlmBalanceFactor * 5,
       defaultPenalty: input.metrics.defaultCount * 30,
       horizonBonus: input.source === 'onchain' ? 0 : horizonBonus,
+      kycBonus: input.kycVerified ? 40 : 0,
       total: input.score,
     },
     factors,
@@ -428,7 +446,7 @@ export async function buildScoreSummary(address: string) {
     ]),
   ]);
 
-  const score = calculateScore(metrics, horizonMetrics);
+  const score = calculateScore(metrics, horizonMetrics, kycVerified);
   const tier = scoreToTier(score, kycVerified);
   const tierLimit = await getTierLimit(tier);
 
