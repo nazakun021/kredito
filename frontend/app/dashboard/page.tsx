@@ -261,7 +261,11 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold">Boost your limit</p>
-                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Verify KYC to unlock Platinum tier</p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                    {score?.tier === 0
+                      ? 'Verify KYC to get +40 points & unlock Bronze borrowing tier'
+                      : 'Verify KYC to get +40 points & boost your borrow limit'}
+                  </p>
                 </div>
               </div>
               <ArrowRight size={16} style={{ color: 'var(--color-accent)' }} />
@@ -590,7 +594,7 @@ function KycRequiredModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="card-elevated w-full max-w-md animate-scale-in text-center p-8 relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-red-500 via-amber-500 to-red-500" />
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-linear-to-r from-red-500 via-amber-500 to-red-500" />
         <div className="w-full flex justify-end mb-2">
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
             <X size={20} />
