@@ -175,7 +175,7 @@ export default function BorrowPage() {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center py-12 text-center relative animate-fade-up">
         <div className="card-elevated w-full p-8 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-yellow-500 via-amber-500 to-red-500" />
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-linear-to-r from-yellow-500 via-amber-500 to-red-500" />
           <div className="flex flex-col items-center">
             <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
               <ShieldCheck size={32} />
@@ -341,9 +341,17 @@ export default function BorrowPage() {
                 <ArrowRight size={16} />
               </button>
               {score?.tier === 0 && (
-                <p className="mt-2 text-[11px] text-center" style={{ color: 'var(--color-text-muted)' }}>
-                  Your current tier doesn&apos;t qualify for borrowing.
-                </p>
+                <div className="mt-4 p-4 rounded-xl text-center space-y-3" style={{ background: 'var(--color-accent-glow)', border: '1px solid var(--color-border-accent)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    Your current tier doesn&apos;t qualify for borrowing. Verify your identity (KYC) to get +40 points and unlock the Bronze tier instantly!
+                  </p>
+                  <button 
+                    onClick={() => router.push('/kyc')} 
+                    className="btn-primary btn-accent w-full justify-center text-xs py-2"
+                  >
+                    Start KYC Verification
+                  </button>
+                </div>
               )}
             </div>
           ) : (
