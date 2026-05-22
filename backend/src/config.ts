@@ -58,7 +58,7 @@ export const config = {
   networkPassphrase:
     process.env.STELLAR_NETWORK_PASSPHRASE ||
     (isPublic
-      ? 'Public Global Stellar Network ; October 2015'
+      ? 'Public Global Stellar Network ; September 2015'
       : 'Test SDF Network ; September 2015'),
 
   homeDomain: process.env.HOME_DOMAIN || 'kredito.finance',
