@@ -1,7 +1,8 @@
 // frontend/lib/constants.ts
 
 export const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
-export const MAINNET_PASSPHRASE = "Public Global Stellar Network ; October 2015";
+export const MAINNET_PASSPHRASE = "Public Global Stellar Network ; September 2015";
+
 
 const getNormalizedNetwork = (net: string | undefined): string => {
   if (!net) return 'PUBLIC';
