@@ -28,6 +28,7 @@ router.post(
       req.wallet,
       summary.metrics,
       summary.horizonMetrics,
+      summary.kycVerified,
     );
     const payload = {
       ...summary,
@@ -55,10 +56,20 @@ router.post(
     // For this demo, we proceed directly to unlocking Tier 4 on-chain.
     const txHash = await setKycVerified(wallet, true);
 
+    // Immediately trigger a score update to apply the +40 credit points on-chain
+    const summary = await buildScoreSummary(wallet);
+    const txHashes = await updateOnChainMetrics(
+      wallet,
+      summary.metrics,
+      summary.horizonMetrics,
+      true, // kycVerified = true
+    );
+
     res.json({
       success: true,
       tier: 4,
       txHash,
+      txHashes,
     });
   }),
 );
