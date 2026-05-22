@@ -55,8 +55,6 @@ Instead of speculative blockchain use cases, Kredito focuses on practical financ
 
 ## Target Users
 
-Who are your primary users? (e.g., OFWs, unbanked Filipinos, MSMEs, merchants)
-
 - **Sari-sari Store Owners**: Small neighborhood business owners needing short-term working capital to buy bulk inventory.
 - **Freelancers & Gig Workers**: Users with consistent but fluctuating income streams and limited traditional banking access.
 - **First-Time Borrowers**: Young professionals or unbanked individuals without traditional credit history.
@@ -268,7 +266,7 @@ _Tip for Demoing:_ If your wallet needs extra XLM to cover the repayment fee, us
 - **Credit Registry Address**: `CAI54RZVSDNK2ZXDRFTUU4EO3IDZR23DJBOXCQ2CKX4A5RKAK7NVF2YK`
 - **Lending Pool Address**: `CBC3L4HR7XWHDB2VBS2DJK6CFIEEVBNR3XZUL5UYQPVCASRS2YDVPEZX`
 - **Native XLM SAC Address**: `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA`
-- **📸 Screenshot - Stellar Expert (Mainnet)**:
+- **Screenshot - Stellar Expert (Mainnet)**:
   ![Credit Registry Mainnet Screenshot](./images/img5.png)
   ![Lending Pool Mainnet Screenshot](./images/img6.png)
   ![Native XLM SAC Mainnet Screenshot](./images/img7.png)
@@ -277,20 +275,20 @@ _Tip for Demoing:_ If your wallet needs extra XLM to cover the repayment fee, us
 
 ## Demo
 
-- **🔗 Live App**: [kredito-iota.vercel.app](https://kredito-iota.vercel.app)
-- **📹 Demo Video**: [Demo Video Link](https://drive.google.com/drive/folders/1kTvBjHh4-7i3uG4Ou6SnLws0RxHNDjtL?usp=sharing)
-- **🖼️ Pitch Deck**: [Pitch Deck Link](https://canva.link/zfkuop86w9cqnch)
+- **Live App**: [kredito-iota.vercel.app](https://kredito-iota.vercel.app)
+- **Demo Video**: [Demo Video Link](https://drive.google.com/drive/folders/1kTvBjHh4-7i3uG4Ou6SnLws0RxHNDjtL?usp=sharing)
+- **Pitch Deck**: [Pitch Deck Link](https://docs.google.com/presentation/d/1Rs2iGc_Or35qvZvAA3H8LElbu6GsNQ5rwXffzSAXQP8/edit?usp=sharing)
 
 ---
 
 ## Team
 
-| Name                    | Role                                 | GitHub                                       |
-| :---------------------- | :----------------------------------- | :------------------------------------------- |
-| **Tirso Benedict Naza** | Full-stack & Smart Contract Engineer | [@nazakun021](https://github.com/nazakun021) |
+| Name                    | Role                 | GitHub                                       |
+| :---------------------- | :------------------- | :------------------------------------------- |
+| **Tirso Benedict Naza** | Full-stack Developer | [@nazakun021](https://github.com/nazakun021) |
 
 ---
 
-## 📄 License
+## License
 
 MIT
