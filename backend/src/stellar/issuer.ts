@@ -120,7 +120,9 @@ export async function getOnChainCreditSnapshot(walletAddress: string) {
 
   // If the user is KYC verified, the on-chain tx_count was inflated by 40 to grant the score bonus.
   // We subtract 40 here for UI display accuracy, and show it as a distinct KYC factor.
-  const displayTxCount = kycVerified ? Math.max(0, Number(metrics?.tx_count ?? 0) - 40) : Number(metrics?.tx_count ?? 0);
+  const displayTxCount = kycVerified
+    ? Math.max(0, Number(metrics?.tx_count ?? 0) - 40)
+    : Number(metrics?.tx_count ?? 0);
 
   return buildScorePayload(walletAddress, {
     score: Number(score ?? 0),

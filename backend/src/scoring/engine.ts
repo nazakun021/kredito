@@ -32,7 +32,11 @@ export interface ScoreFactor {
   points: number;
 }
 
-export function calculateScore(metrics: WalletMetrics, horizon?: HorizonMetrics, kycVerified = false): number {
+export function calculateScore(
+  metrics: WalletMetrics,
+  horizon?: HorizonMetrics,
+  kycVerified = false,
+): number {
   const xlmBalanceFactor = Math.min(Math.floor((metrics.xlmBalance * 2) / 100), 10);
   let score =
     metrics.txCount * 1 +
